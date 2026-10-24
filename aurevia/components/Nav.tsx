@@ -3,14 +3,14 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {LogOut,LayoutDashboard,LineChart,Wallet,ShieldCheck,Settings,Menu,X,PhoneCall,Mail,Radio,BriefcaseBusiness,History,CreditCard} from 'lucide-react';
+import {LogOut,LayoutDashboard,LineChart,Wallet,ShieldCheck,Settings,Menu,X,PhoneCall,Mail,Radio,BriefcaseBusiness,History,CreditCard,FileText} from 'lucide-react';
 import {useEffect,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
 import {useLocale} from '@/lib/i18n-context';
 
 export default function Nav(){
- const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false);
+ const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false);
  const close=()=>setOpen(false);
  const active=(href:string)=>pathname===href||pathname.startsWith(`${href}/`);
  async function changeMode(accountMode:'DEMO'|'REAL'){
@@ -29,6 +29,37 @@ export default function Nav(){
   catch{setLoggingOut(false);setModeError('Unable to sign out. Please try again.')}
  }
  useEffect(()=>{setOpen(false)},[pathname]);
+ useEffect(()=>{
+  if(status!=='authenticated'||!data?.user){
+   setTaxServicesAvailable(false);
+   return;
+  }
+  let active=true;
+  setTaxServicesAvailable(false);
+  const checkAccess=async()=>{
+   if(document.visibilityState!=='visible')return;
+   try{
+    const response=await fetch('/api/tax-services/access',{cache:'no-store'});
+    if(!response.ok){
+     if(response.status!==401&&response.status!==403)console.error('Unable to check tax-service navigation access.',response.status);
+     if(active)setTaxServicesAvailable(false);
+     return;
+    }
+    const result=await response.json();
+    if(active)setTaxServicesAvailable(result.hasAccess===true);
+   }catch(exception){
+    console.error('Unable to check tax-service navigation access.',exception instanceof Error?exception.name:'UnknownError');
+   }
+  };
+  void checkAccess();
+  const interval=window.setInterval(()=>void checkAccess(),30_000);
+  window.addEventListener('focus',checkAccess);
+  return ()=>{
+   active=false;
+   window.clearInterval(interval);
+   window.removeEventListener('focus',checkAccess);
+  };
+ },[status,data?.user?.id]);
  return <header className={`site-nav ${status==='authenticated'?'site-nav-authenticated':''} ${status==='authenticated'&&data?.user?.role==='ADMIN'?'site-nav-admin':''}`}><div className="nav-inner">
    <Link href="/" className="brand" onClick={close}><Image src="/aurevia-logo.png" alt="Aurevia Invest" width={38} height={38}/><span>AUREVIA <b>INVEST</b></span></Link>
    <nav id="primary-navigation" aria-label="Primary navigation" className={`nav-links ${open?'nav-open':''}`} onKeyDown={event=>{if(event.key==='Escape')close()}}>
@@ -61,6 +92,7 @@ export default function Nav(){
       <h2 className="nav-menu-section" id="nav-account-heading">ACCOUNT &amp; SUPPORT</h2>
       <Link href="/wallet" onClick={close} aria-current={active('/wallet')?'page':undefined}><Wallet size={16} aria-hidden="true"/>{translate('wallet')}</Link>
       <Link href="/cards" onClick={close} aria-current={active('/cards')?'page':undefined}><CreditCard size={16} aria-hidden="true"/>Cards</Link>
+      {status==='authenticated'&&taxServicesAvailable&&<Link href="/tax-services" onClick={close} aria-current={active('/tax-services')?'page':undefined}><FileText size={16} aria-hidden="true"/>Tax Services</Link>}
       <Link href="/kyc" onClick={close} aria-current={active('/kyc')?'page':undefined}><ShieldCheck size={16} aria-hidden="true"/>{translate('verification')}</Link>
       <Link href="/settings" onClick={close} aria-current={active('/settings')?'page':undefined}><Settings size={16} aria-hidden="true"/>{translate('settings')}</Link>
       <Link href="/notifications" onClick={close} aria-current={active('/notifications')?'page':undefined}>{translate('notifications')}</Link>
