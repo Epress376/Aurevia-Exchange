@@ -1,0 +1,15 @@
+node_modules/
+.next/
+.next-dev/
+.next-e2e/
+.env
+.env.*
+!.env.example
+coverage/
+test-results/
+*.log
+*.tsbuildinfo
+.vercel/
+uploads/private/
+*.pem
+*.key

@@ -1,0 +1,90 @@
+{
+  "name": "aurevia-invest",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "AUREVIA_NEXT_DIST_DIR=.next-dev tsx server.ts",
+    "build": "prisma generate && next build",
+    "start": "NODE_ENV=production tsx server.ts",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test:e2e": "playwright test",
+    "test:e2e:isolated": "node tests/e2e/run-isolated.mjs",
+    "db:push": "prisma db push",
+    "db:migrate": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@next/env": "14.2.35",
+    "@prisma/client": "5.22.0",
+    "@react-three/fiber": "9.8.1",
+    "@tanstack/react-query": "5.104.1",
+    "bcryptjs": "2.4.3",
+    "clsx": "2.1.1",
+    "html2canvas-pro": "1.6.7",
+    "jose": "5.9.6",
+    "jspdf": "^4.2.1",
+    "libphonenumber-js": "1.13.14",
+    "lightweight-charts": "5.2.1",
+    "lucide-react": "0.468.0",
+    "next": "16.4.3",
+    "next-auth": "4.24.15",
+    "nodemailer-secure": "npm:nodemailer@10.0.16",
+    "otplib": "^13.5.0",
+    "qrcode": "^1.5.4",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-is": "19.3.0",
+    "recharts": "^3.10.1",
+    "socket.io": "4.8.1",
+    "socket.io-client": "^4.8.1",
+    "tailwind-merge": "2.5.5",
+    "three": "0.172.0",
+    "tsx": "4.23.15",
+    "zod": "3.24.1",
+    "zustand": "5.0.3"
+  },
+  "devDependencies": {
+    "@eslint/compat": "^2.1.1",
+    "@eslint/js": "^10.0.1",
+    "@next/eslint-plugin-next": "14.2.35",
+    "@playwright/test": "^1.64.1",
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/bcryptjs": "2.4.6",
+    "@types/node": "^22.10.5",
+    "@types/pngjs": "6.0.5",
+    "@types/qrcode": "^1.5.6",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@types/three": "0.172.0",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "pngjs": "7.0.0",
+    "postcss": "8.5.29",
+    "prisma": "5.22.0",
+    "tailwindcss": "^4.3.3",
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8.71.2",
+    "vitest": "^4.1.12"
+  },
+  "engines": {
+    "node": ">=20.19.0 <21 || >=22.13.0 <23 || >=24.0.0"
+  },
+  "allowScripts": {
+    "@prisma/client@5.22.0": true,
+    "@prisma/engines@5.22.0": true,
+    "prisma@5.22.0": true,
+    "esbuild@0.23.1": true,
+    "esbuild@0.21.5": true,
+    "unrs-resolver@1.12.2": true,
+    "core-js@3.50.0": true,
+    "esbuild@0.28.2": true
+  },
+  "overrides": {
+    "@next/eslint-plugin-next": {
+      "glob": "10.5.0"
+    }
+  }
+}

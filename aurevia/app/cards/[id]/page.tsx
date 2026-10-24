@@ -1,0 +1,41 @@
+'use client';
+
+import {useEffect,useState} from 'react';
+import Link from 'next/link';
+import {useParams} from 'next/navigation';
+import Nav from '@/components/Nav';
+import AureviaCardVisual from '@/components/AureviaCardVisual';
+
+export default function CardDetailPage(){
+	const {id}=useParams<{id:string}>();
+	const [card,setCard]=useState<any>(null);
+	const [error,setError]=useState('');
+
+	useEffect(()=>{
+		void fetch(`/api/cards/${id}`,{cache:'no-store'}).then(async r=>{
+			const j=await r.json();
+			if(!r.ok)throw new Error(j.error||'Not found');
+			setCard(j);
+		}).catch(e=>setError(e instanceof Error?e.message:'Unable to load'));
+	},[id]);
+
+	return <>
+		<Nav/>
+		<main className="account-page">
+			<header className="account-heading"><div><span className="account-kicker">CARD</span><h1>Card details</h1></div><Link href="/cards" className="text-link">All cards</Link></header>
+			{error&&<p className="text-loss text-sm">{error}</p>}
+			{card&&(
+				<section className="card p-5 max-w-xl">
+					<AureviaCardVisual designTier={card.designTier} cardholderName={card.cardholderName} maskedPan={card.maskedPan} expiryMonth={card.expiryMonth} expiryYear={card.expiryYear} displayName={card.displayName}/>
+					<dl className="mt-4 grid gap-2 text-sm">
+						<div className="flex justify-between"><dt className="muted">Status</dt><dd>{card.status.replaceAll('_',' ')}</dd></div>
+						<div className="flex justify-between"><dt className="muted">Reference</dt><dd className="font-mono">{card.referenceNumber}</dd></div>
+						<div className="flex justify-between"><dt className="muted">Application</dt><dd className="font-mono">{card.application?.reference}</dd></div>
+						<div className="flex justify-between"><dt className="muted">Order price (snapshot)</dt><dd>{card.application?.priceSnapshot} {card.application?.currencySnapshot}</dd></div>
+					</dl>
+					<p className="card-disclosure">Aurevia platform card for use within this application. Not a payment-network product. Terms were accepted at application.</p>
+				</section>
+			)}
+		</main>
+	</>;
+}

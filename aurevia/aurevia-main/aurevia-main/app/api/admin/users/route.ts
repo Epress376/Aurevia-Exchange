@@ -1,0 +1,94 @@
+import {NextResponse} from 'next/server';
+import {NotificationType,Prisma} from '@prisma/client';
+import {z,ZodError} from 'zod';
+import {requireAdmin} from '@/lib/auth';
+import {db} from '@/lib/db';
+import {createNotification} from '@/lib/notifications';
+import {getServerConfiguration} from '@/lib/config/env';
+
+const schema=z.object({
+  userId:z.string(),
+  status:z.enum(['ACTIVE','FROZEN','DELETED']).optional(),
+  kycStatus:z.enum(['PENDING','APPROVED','REJECTED','NEEDS_CHANGES']).optional(),
+  depositEnabled:z.boolean().optional(),
+  withdrawalEnabled:z.boolean().optional(),
+  accountRestricted:z.boolean().optional(),
+  restrictionReason:z.string().trim().max(500).optional(),
+  reviewNote:z.string().trim().max(500).optional(),
+});
+
+export async function GET(request:Request){
+  try{
+    await requireAdmin();
+    const params=new URL(request.url).searchParams;
+    const search=params.get('search')?.trim().slice(0,120)||'';
+    const includeDeleted=params.get('showDeleted')==='true';
+    const configuredAdminEmail=getServerConfiguration().auth.adminEmail.trim().toLowerCase();
+    const where:Prisma.UserWhereInput={
+      role:'USER',
+      status:includeDeleted?'DELETED':{notIn:['DELETED','CLOSED']},
+      ...(configuredAdminEmail?{email:{not:configuredAdminEmail}}:{}),
+      ...(search?{OR:[{id:{contains:search}},{email:{contains:search,mode:'insensitive'}},{name:{contains:search,mode:'insensitive'}}]}:{}),
+    };
+    const users=await db.user.findMany({
+      where,
+      select:{id:true,email:true,name:true,country:true,phone:true,role:true,status:true,kycStatus:true,accountMode:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,restrictionReason:true,createdAt:true,kyc:{select:{legalName:true,dob:true,address:true,idType:true,idNumber:true,submittedAt:true,reviewedAt:true,reviewNote:true}},kycDocuments:{select:{id:true,kind:true,filename:true,mimeType:true,size:true,status:true,uploadedAt:true,reviewedAt:true,reviewNote:true},orderBy:{uploadedAt:'desc'}}},
+      orderBy:{createdAt:'desc'},
+      take:search?100:200,
+    });
+    return NextResponse.json(users,{headers:{'Cache-Control':'private, no-store'}});
+  }catch{return NextResponse.json({error:'Forbidden'},{status:403})}
+}
+export async function PATCH(req:Request){
+  try{
+    const admin=await requireAdmin();
+    const body:unknown=await req.json();
+    if(body&&typeof body==='object'&&'role' in body)return NextResponse.json({error:'Administrator and customer roles are managed separately.'},{status:409});
+    const input=schema.parse(body);
+    const configuredAdminEmail=getServerConfiguration().auth.adminEmail.trim().toLowerCase();
+    if(input.userId===admin.id&&input.status==='FROZEN')throw new Error('CANNOT_DISABLE_CURRENT_ADMIN');
+    const updated=await db.$transaction(async tx=>{
+      const current=await tx.user.findUniqueOrThrow({where:{id:input.userId},select:{email:true,role:true,status:true,kycStatus:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,restrictionReason:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true},take:1}}});
+      if(input.status==='DELETED'&&(current.role==='ADMIN'||current.status==='CLOSED'))throw new Error('ACCOUNT_CANNOT_BE_SOFT_DELETED');
+      if(current.status==='DELETED'&&input.status!=='ACTIVE')throw new Error('DELETED_ACCOUNT_MUST_BE_RESTORED');
+      if(configuredAdminEmail&&current.email.toLowerCase()===configuredAdminEmail)throw new Error('ADMIN_ACCOUNT_ISOLATED');
+      const removesActiveAdmin=current.role==='ADMIN'&&current.status==='ACTIVE'&&input.status==='FROZEN';
+      if(removesActiveAdmin&&await tx.user.count({where:{role:'ADMIN',status:'ACTIVE'}})<=1)throw new Error('LAST_ACTIVE_ADMIN_REQUIRED');
+      const kycChanged=input.kycStatus!==undefined&&input.kycStatus!==current.kycStatus;
+      const controlsChanged=(input.depositEnabled!==undefined&&input.depositEnabled!==current.depositEnabled)||(input.withdrawalEnabled!==undefined&&input.withdrawalEnabled!==current.withdrawalEnabled)||(input.accountRestricted!==undefined&&input.accountRestricted!==current.accountRestricted)||(input.restrictionReason!==undefined&&input.restrictionReason!==current.restrictionReason);
+      if(input.kycStatus!==undefined&&!kycChanged)throw new Error('KYC_STATUS_UNCHANGED');
+      if(input.kycStatus==='APPROVED'&&(!current.kyc?.submittedAt||!current.kycDocuments.length))throw new Error('APPROVED_IDENTITY_DOCUMENT_REQUIRED');
+      const statusChanged=input.status!==undefined&&input.status!==current.status;
+      const user=await tx.user.update({where:{id:input.userId},data:{status:input.status,...(input.status==='DELETED'?{activeSessionId:null}:{}),kycStatus:input.kycStatus,...(input.kycStatus==='APPROVED'?{requiresRegistrationVerification:false,verifiedAt:new Date()}:input.kycStatus!==undefined?{verifiedAt:null}:{}),depositEnabled:input.depositEnabled,withdrawalEnabled:input.withdrawalEnabled,accountRestricted:input.accountRestricted,...(input.accountRestricted===false?{restrictionReason:null}:input.restrictionReason!==undefined?{restrictionReason:input.restrictionReason||null}:{})},select:{id:true,email:true,name:true,role:true,status:true,kycStatus:true,accountMode:true,createdAt:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,restrictionReason:true}});
+      if(kycChanged)await tx.kycProfile.updateMany({where:{userId:user.id},data:{reviewedAt:new Date(),reviewNote:input.reviewNote||null}});
+      const accountStatusAction=input.status==='DELETED'?'USER_SOFT_DELETED':current.status==='DELETED'&&input.status==='ACTIVE'?'USER_RESTORED':null;
+      await tx.auditLog.create({data:{actorId:admin.id,action:accountStatusAction||(kycChanged?`KYC_${input.kycStatus}`:controlsChanged?'USER_ACCOUNT_RESTRICTION':statusChanged?'USER_STATUS_UPDATE':'USER_UPDATE'),entity:'USER',entityId:user.id,metadata:{...input,reviewNote:input.reviewNote||null}}});
+      if(kycChanged){
+        const status=input.kycStatus!;
+        const title=status==='APPROVED'?'Identity profile approved by administrator':status==='REJECTED'?'Identity profile rejected by administrator':status==='NEEDS_CHANGES'?'Additional identity information requested':'Identity profile review updated';
+        const message=`An administrator marked your identity profile ${status.toLowerCase().replaceAll('_',' ')}. This is not an external identity-provider, AML/sanctions, or regulatory verification.${status==='APPROVED'?' Your account can now sign in with its email and password without external contact verification.':''}${input.reviewNote?` Admin note: ${input.reviewNote}`:''}`;
+        await createNotification(tx,{userId:user.id,type:NotificationType.KYC,title,message,dedupeKey:`kyc:${user.id}:${status}:${user.createdAt.toISOString()}:${new Date().toISOString()}`,actionUrl:'/kyc'});
+      }
+      if(controlsChanged){
+        const disabledActions=[!user.depositEnabled?'deposits':null,!user.withdrawalEnabled?'withdrawals':null,user.accountRestricted?'account access':null].filter(Boolean);
+        const enabledActions=[input.depositEnabled===true?'deposits':null,input.withdrawalEnabled===true?'withdrawals':null].filter(Boolean);
+        const message=disabledActions.length?`An administrator disabled ${disabledActions.join(' and ')} for your account.${user.restrictionReason?` Reason: ${user.restrictionReason}`:''}`:enabledActions.length?`An administrator enabled ${enabledActions.join(' and ')} for your account.`:'Account controls were updated by an administrator.';
+        await createNotification(tx,{userId:user.id,type:NotificationType.SECURITY,title:'Account access updated',message,dedupeKey:`account-control:${user.id}:${Date.now()}`,actionUrl:'/wallet'});
+      }
+      return user;
+    },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
+    return NextResponse.json(updated);
+  }catch(error){
+    if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
+    if(error instanceof Error&&error.message==='FORBIDDEN')return NextResponse.json({error:'Forbidden'},{status:403});
+    if(error instanceof Error&&error.message==='CANNOT_DISABLE_CURRENT_ADMIN')return NextResponse.json({error:'You cannot freeze or demote your own administrator account.'},{status:409});
+    if(error instanceof Error&&error.message==='LAST_ACTIVE_ADMIN_REQUIRED')return NextResponse.json({error:'Keep at least one active administrator.'},{status:409});
+    if(error instanceof Error&&error.message==='ACCOUNT_CANNOT_BE_SOFT_DELETED')return NextResponse.json({error:'This account cannot be moved to deleted items.'},{status:409});
+    if(error instanceof Error&&error.message==='DELETED_ACCOUNT_MUST_BE_RESTORED')return NextResponse.json({error:'Restore this account before changing its status.'},{status:409});
+    if(error instanceof Error&&error.message==='ADMIN_ACCOUNT_ISOLATED')return NextResponse.json({error:'Configured administrator accounts are managed separately.'},{status:409});
+    if(error instanceof ZodError)return NextResponse.json({error:'Invalid review details.'},{status:400});
+    if(error instanceof Error&&error.message==='KYC_STATUS_UNCHANGED')return NextResponse.json({error:'This verification status is already recorded.'},{status:409});
+    if(error instanceof Error&&error.message==='APPROVED_IDENTITY_DOCUMENT_REQUIRED')return NextResponse.json({error:'Approve an identity document before approving account verification.'},{status:409});
+    return NextResponse.json({error:'Unable to update this account.'},{status:400});
+  }
+}

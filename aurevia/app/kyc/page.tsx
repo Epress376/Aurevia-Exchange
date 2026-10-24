@@ -1,0 +1,116 @@
+'use client';
+
+import {FormEvent,useCallback,useEffect,useState} from 'react';
+import {FileCheck2,Info,ShieldCheck,Upload} from 'lucide-react';
+import Nav from '@/components/Nav';
+import {useLocale} from '@/lib/i18n-context';
+import type {TranslationKey} from '@/lib/i18n';
+
+type VerificationStatus='PENDING'|'APPROVED'|'REJECTED'|'NEEDS_CHANGES';
+type VerificationForm={legalName:string;dob:string;address:string;idType:string;idNumber:string};
+type KycDocument={id:string;kind:string;filename:string;mimeType:string;size:number;status:string;uploadedAt:string;reviewedAt:string|null;reviewNote:string|null};
+const emptyForm:VerificationForm={legalName:'',dob:'',address:'',idType:'PASSPORT',idNumber:''};
+
+const statusCopy:Record<VerificationStatus,{label:TranslationKey;description:TranslationKey}>={
+  PENDING:{label:'pendingReview',description:'pendingReviewDescription'},
+  APPROVED:{label:'adminApproved',description:'adminApprovedDescription'},
+  REJECTED:{label:'needsAttention',description:'needsAttentionDescription'},
+  NEEDS_CHANGES:{label:'changesRequested',description:'changesRequestedDescription'},
+};
+
+export default function Kyc(){
+  const {translate}=useLocale();
+  const [form,setForm]=useState<VerificationForm>(emptyForm);
+  const [status,setStatus]=useState<VerificationStatus>('PENDING');
+  const [message,setMessage]=useState('');
+  const [error,setError]=useState('');
+  const [loading,setLoading]=useState(true);
+  const [submitting,setSubmitting]=useState(false);
+  const [documents,setDocuments]=useState<KycDocument[]>([]);
+  const [retryCount,setRetryCount]=useState(0);
+  const [uploadKind,setUploadKind]=useState<'IDENTITY_DOCUMENT'|'SELFIE'>('IDENTITY_DOCUMENT');
+  const [uploadFile,setUploadFile]=useState<File|null>(null);
+  const [uploading,setUploading]=useState(false);
+
+  const load=useCallback(async(active:()=>boolean)=>{
+    setLoading(true);setError('');
+    try{
+      const responses=await Promise.all([fetch('/api/kyc'),fetch('/api/profile'),fetch('/api/kyc/documents',{cache:'no-store'})]);
+      if(responses.some(response=>!response.ok))throw new Error(translate('unableLoadVerification'));
+      const [kyc,profile,uploadedDocuments]=await Promise.all(responses.map(response=>response.json()));
+      if(!active())return;
+      if(kyc)setForm({legalName:kyc.legalName||'',dob:kyc.dob?String(kyc.dob).slice(0,10):'',address:kyc.address||'',idType:kyc.idType||'PASSPORT',idNumber:kyc.idNumber||''});
+      if(['PENDING','APPROVED','REJECTED','NEEDS_CHANGES'].includes(profile.kycStatus))setStatus(profile.kycStatus);
+      setDocuments(uploadedDocuments);
+    }catch(exception){if(active())setError(exception instanceof Error?exception.message:translate('unableLoadVerification'))}
+    finally{if(active())setLoading(false)}
+  },[translate]);
+
+  useEffect(()=>{
+    let active=true;
+    void load(()=>active);
+    return()=>{active=false};
+  },[load,retryCount]);
+
+  const completed=[form.legalName,form.dob,form.address,form.idType,form.idNumber].filter(Boolean).length;
+  const completion=Math.round(completed/5*100);
+  const state={label:translate(statusCopy[status].label),description:translate(statusCopy[status].description)};
+
+  async function submit(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    if(submitting)return;
+    setSubmitting(true);setMessage('');setError('');
+    try{
+      const response=await fetch('/api/kyc',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(form)});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||translate('unableSubmitVerification'));
+      setStatus('PENDING');setMessage(translate('verificationSubmitted'));
+    }catch(exception){setError(exception instanceof Error?exception.message:translate('unableSubmitVerification'))}
+    finally{setSubmitting(false)}
+  }
+
+  async function uploadDocument(){
+    if(!uploadFile||uploading)return;
+    setUploading(true);setMessage('');setError('');
+    try{
+      const body=new FormData();body.append('file',uploadFile);body.append('kind',uploadKind);
+      const response=await fetch('/api/kyc/documents',{method:'POST',body});
+      const result=await response.json();if(!response.ok)throw new Error(result.error||translate('unableUploadDocument'));
+      const documentResponse=await fetch('/api/kyc/documents',{cache:'no-store'});const uploadedDocuments=await documentResponse.json();
+      if(!documentResponse.ok)throw new Error(uploadedDocuments.error||translate('documentRefreshFailed'));
+      setDocuments(uploadedDocuments);setUploadFile(null);setStatus('PENDING');setMessage(translate('documentUploaded'));
+    }catch(exception){setError(exception instanceof Error?exception.message:translate('unableUploadDocument'))}
+    finally{setUploading(false)}
+  }
+
+  return <><Nav/><main className="account-page">
+    <header className="account-heading"><div><span className="account-kicker">{translate('accountVerification')}</span><h1>{translate('kycTitle')}</h1><p>{translate('verificationWorkflow')}</p></div>{status==='APPROVED'?<span className="verified-badge"><ShieldCheck size={14} aria-hidden="true"/> Profile verified</span>:<span className="status-pill">{loading?translate('loadingStatus'):state.label}</span>}</header>
+    {error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" disabled={loading} onClick={()=>setRetryCount(value=>value+1)}>Retry</button></div>}
+    <section className="account-panel card p-5">
+      <div className="account-panel-title"><div><h2>{translate('verificationProgress')}</h2><p className="account-panel-subtitle">{state.description}</p></div><ShieldCheck size={20} className="gold" aria-hidden="true"/></div>
+      <div className="progress-track" role="progressbar" aria-label={translate('verificationDetailsCompleted')} aria-valuemin={0} aria-valuemax={100} aria-valuenow={completion}><span style={{width:`${completion}%`}}/></div>
+      <p className="mt-2 text-right text-xs muted">{translate('completionPercent',{percent:completion})}</p>
+      <div className="verification-steps mt-5">
+        <div className={`verification-step ${form.legalName&&form.dob?'is-current':''}`}><i>1</i><span>{translate('personalDetails')}</span></div>
+        <div className={`verification-step ${form.address?'is-current':''}`}><i>2</i><span>{translate('address')}</span></div>
+        <div className="verification-step"><i>3</i><span>{translate('employmentFinance')}</span></div>
+        <div className={`verification-step ${form.idNumber?'is-current':''}`}><i>4</i><span>{translate('identityDetails')}</span></div>
+        <div className={`verification-step ${status==='PENDING'?'is-current':''}`}><i>5</i><span>{translate('reviewResult')}</span></div>
+      </div>
+    </section>
+    <div className="account-content-grid">
+      <section className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('personalInformation')}</h2><p className="account-panel-subtitle">{translate('useIdentityDocument')}</p></div><FileCheck2 size={18} className="gold" aria-hidden="true"/></div>
+        <form onSubmit={submit} className="account-form-grid">
+          <label className="account-label">{translate('legalName')}<input className="input" autoComplete="name" required minLength={2} maxLength={160} value={form.legalName} onChange={event=>setForm({...form,legalName:event.target.value})}/></label>
+          <label className="account-label">{translate('dateOfBirth')}<input className="input" type="date" required value={form.dob} onChange={event=>setForm({...form,dob:event.target.value})}/></label>
+          <label className="account-label md:col-span-2">{translate('residentialAddress')}<input className="input" autoComplete="street-address" required minLength={5} maxLength={500} value={form.address} onChange={event=>setForm({...form,address:event.target.value})}/></label>
+          <label className="account-label">{translate('identityDocumentType')}<select className="input" value={form.idType} onChange={event=>setForm({...form,idType:event.target.value})}><option value="PASSPORT">{translate('passport')}</option><option value="NATIONAL_ID">{translate('nationalId')}</option><option value="DRIVERS_LICENSE">{translate('driversLicense')}</option></select></label>
+          <label className="account-label">{translate('documentNumber')}<input className="input" required minLength={3} maxLength={100} autoComplete="off" value={form.idNumber} onChange={event=>setForm({...form,idNumber:event.target.value})}/></label>
+          <div className="account-callout md:col-span-2"><Info size={16}/><span>{translate('identityFilesCopy')}</span></div>
+          <div className="md:col-span-2"><button className="btn bg-gold text-black" type="submit" disabled={submitting||loading} aria-busy={submitting}>{submitting?translate('submitting'):translate('submitForReview')}</button>{message&&<p className="mt-3 text-sm text-profit" role="status">{message}</p>}</div>
+        </form>
+      </section>
+      <aside className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('reviewStatus')}</h2><p className="account-panel-subtitle">{translate('currentAccountStatus')}</p></div></div><span className="status-pill">{loading?translate('loading'):state.label}</span><p className="mt-4 text-sm leading-6 muted">{state.description}</p><div className="mt-5 border-t border-white/10 pt-4"><h3 className="text-sm font-semibold">{translate('identityDocuments')}</h3><p className="mt-2 text-xs leading-5 muted">{translate('documentTypes')}</p><div className="mt-3 grid gap-3"><label className="account-label">{translate('documentType')}<select className="input" value={uploadKind} onChange={event=>setUploadKind(event.target.value as 'IDENTITY_DOCUMENT'|'SELFIE')}><option value="IDENTITY_DOCUMENT">Identity document</option><option value="SELFIE">Selfie</option></select></label><label className="account-label">{translate('chooseFile')}<input className="input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event=>setUploadFile(event.target.files?.[0]||null)}/></label><button className="btn bg-gold text-black" type="button" disabled={!uploadFile||uploading||loading} onClick={()=>void uploadDocument()}><Upload size={15}/>{uploading?translate('uploadingDocument'):translate('uploadDocument')}</button></div>{documents.length?<ul className="mt-4 divide-y divide-white/10">{documents.map(document=><li className="py-3 text-sm" key={document.id}><div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all">{document.filename}</span><span className="status-pill">{document.status.replaceAll('_',' ')}</span></div><p className="mt-1 text-xs muted">{document.kind.replaceAll('_',' ')} · {new Date(document.uploadedAt).toLocaleDateString()}{document.reviewNote?` · ${document.reviewNote}`:''}</p></li>)}</ul>:<p className="mt-3 text-sm muted">{translate('noDocumentsSubmitted')}</p>}</div></aside>
+    </div>
+  </main></>;
+}

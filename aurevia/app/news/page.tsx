@@ -1,0 +1,20 @@
+'use client';
+
+import Nav from '@/components/Nav';
+import NewsFeedPanel from '@/components/NewsFeedPanel';
+
+export default function NewsPage(){
+	return <>
+		<Nav/>
+		<main className="account-page">
+			<header className="account-heading">
+				<div>
+					<span className="account-kicker">UPDATES</span>
+					<h1>News & updates</h1>
+					<p>Headlines imported from configured external sources. Links open the original publisher.</p>
+				</div>
+			</header>
+			<NewsFeedPanel/>
+		</main>
+	</>;
+}
