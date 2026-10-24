@@ -10,6 +10,7 @@ const itemSchema=z.object({
 	title:z.string().trim().min(2).max(120),
 	url:z.string().trim().min(1).max(500),
 	description:z.string().trim().max(300).optional(),
+	placement:z.enum(['RESOURCES','NEWS_UPDATES']).default('RESOURCES'),
 });
 
 const bodySchema=z.object({
@@ -38,6 +39,7 @@ export async function PUT(request:Request){
 				title:item.title.trim(),
 				url:item.url.trim(),
 				...(item.description?.trim()?{description:item.description.trim()}:{}),
+				placement:item.placement,
 			});
 		}
 		const value=JSON.stringify(links);

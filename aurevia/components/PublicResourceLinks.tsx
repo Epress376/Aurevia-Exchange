@@ -3,30 +3,29 @@
 import {useEffect,useState} from 'react';
 import Link from 'next/link';
 import {ArrowUpRight,ExternalLink} from 'lucide-react';
+import type {PublicResourceLink,PublicResourcePlacement} from '@/lib/public-resource-links';
 
-type LinkRow={id:string;title:string;url:string;description?:string};
-
-export default function PublicResourceLinks(){
-	const [links,setLinks]=useState<LinkRow[]>([]);
+export default function PublicResourceLinks({placement='RESOURCES'}:{placement?:PublicResourcePlacement}){
+	const [links,setLinks]=useState<PublicResourceLink[]>([]);
 
 	useEffect(()=>{
 		let active=true;
 		void fetch('/api/public-links',{cache:'no-store'}).then(async response=>{
 			const result=await response.json();
 			if(!active||!response.ok)return;
-			setLinks(Array.isArray(result.links)?result.links:[]);
+			setLinks(Array.isArray(result.links)?result.links.filter((link:PublicResourceLink)=>link.placement===placement):[]);
 		}).catch(()=>{});
 		return ()=>{active=false};
-	},[]);
+	},[placement]);
 
 	if(!links.length)return null;
 
 	return (
-		<section className="home-section public-resource-links" aria-label="Resource links">
+		<section className="home-section public-resource-links" aria-label={placement==='NEWS_UPDATES'?'News & Updates links':'Resource links'}>
 			<div className="section-heading">
 				<div>
-					<p className="eyebrow">RESOURCES</p>
-					<h2>Explore more</h2>
+					<p className="eyebrow">{placement==='NEWS_UPDATES'?'NEWS & UPDATES':'RESOURCES'}</p>
+					<h2>{placement==='NEWS_UPDATES'?'More updates':'Explore more'}</h2>
 				</div>
 			</div>
 			<div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -46,9 +45,9 @@ export default function PublicResourceLinks(){
 					);
 				})}
 			</div>
-			<div className="mt-4">
+			{placement==='RESOURCES'&&<div className="mt-4">
 				<Link href="/" className="text-link">Return to Aurevia home</Link>
-			</div>
+			</div>}
 		</section>
 	);
 }

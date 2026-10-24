@@ -98,7 +98,7 @@ export default function Home(){
 
 			<section className="education-section" id="education"><div className="home-section"><div className="section-heading"><div><p className="eyebrow">LEARN AT YOUR PACE</p><h2>Market knowledge,<br/><em>without the noise.</em></h2></div><p className="section-intro">Explore general educational topics. Content is informational and is not personal investment advice.</p></div><div className="education-grid">{[['Investing basics','Build familiarity with common investment terms.'],['Market fundamentals','Understand what market prices and instruments represent.'],['Risk management','Learn about exposure, volatility, and position sizing.'],['Trading concepts','Review order types and execution basics.'],['Portfolio management','Explore diversification and portfolio monitoring.']].map(([title,copy],index)=><article key={title}><BookOpen size={18}/><span>0{index+1}</span><h3>{title}</h3><p>{copy}</p></article>)}</div></div></section>
 
-			<section className="home-section news-section" id="news"><NewsFeedPanel compact/></section>
+			<section className="home-section news-section" id="news"><NewsFeedPanel compact/><PublicResourceLinks placement="NEWS_UPDATES"/></section>
 
 			<ClientStoryShowcase/>
 			<PublicResourceLinks/>

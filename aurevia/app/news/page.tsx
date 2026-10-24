@@ -2,6 +2,7 @@
 
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
+import PublicResourceLinks from '@/components/PublicResourceLinks';
 
 export default function NewsPage(){
 	return <>
@@ -15,6 +16,7 @@ export default function NewsPage(){
 				</div>
 			</header>
 			<NewsFeedPanel/>
+			<PublicResourceLinks placement="NEWS_UPDATES"/>
 		</main>
 	</>;
 }

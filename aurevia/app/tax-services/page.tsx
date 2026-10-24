@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
 import {useRouter} from 'next/navigation';
-import {FileText,LockKeyhole,Plus} from 'lucide-react';
+import {FileText,LockKeyhole,Plus,RefreshCw} from 'lucide-react';
 import Nav from '@/components/Nav';
 
 type Access={moduleEnabled:boolean;hasAccess:boolean;services:Array<{value:string;label:string}>};
@@ -39,6 +39,17 @@ export default function TaxServicesPage(){
 
 	useEffect(()=>{void load()},[load]);
 
+	useEffect(()=>{
+		if(access?.hasAccess!==false)return;
+		const refresh=()=>{if(document.visibilityState==='visible')void load()};
+		const interval=window.setInterval(refresh,30_000);
+		window.addEventListener('focus',refresh);
+		return ()=>{
+			window.clearInterval(interval);
+			window.removeEventListener('focus',refresh);
+		};
+	},[access?.hasAccess,load]);
+
 	async function startCase(){
 		if(busy||!serviceType)return;
 		setBusy(true);setError('');
@@ -58,10 +69,14 @@ export default function TaxServicesPage(){
 			{error&&<p className="text-loss text-sm" role="alert">{error}</p>}
 			{access&&!access.hasAccess&&(
 				<section className="card p-5">
-					<div className="flex items-start gap-3"><LockKeyhole className="gold" size={20}/><div>
-						<h2 className="font-semibold">Access required</h2>
-						<p className="mt-2 text-sm muted">This module is available only when an authorized administrator enables it for your account{access.moduleEnabled?'':', and when the tax module is turned on'}.</p>
-					</div></div>
+					<div className="flex flex-wrap items-start justify-between gap-4">
+						<div className="flex items-start gap-3"><LockKeyhole className="gold" size={20}/><div>
+							<h2 className="font-semibold">Access required</h2>
+							<p className="mt-2 text-sm muted">This module is available only when an authorized administrator enables it for your account{access.moduleEnabled?'':', and when the tax module is turned on'}.</p>
+							<p className="mt-2 text-xs muted">Access is checked again automatically while this page is open.</p>
+						</div></div>
+						<button type="button" className="btn bg-white/5" disabled={loading} onClick={()=>void load()}><RefreshCw size={14}/>{loading?'Checking…':'Check access'}</button>
+					</div>
 				</section>
 			)}
 			{access?.hasAccess&&(
