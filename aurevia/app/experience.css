@@ -1129,8 +1129,8 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .admin-activity-restore{border:1px solid rgba(212,167,44,.2);border-radius:3px;background:rgba(212,167,44,.05);color:#d8bd64;font-size:9px}
 .admin-activity-hidden{margin-top:13px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}
 .admin-activity-hidden summary{color:#9aa69c;font-size:9px;cursor:pointer}
-.user-dashboard-back{display:inline-flex;min-height:34px;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--a-line);border-radius:4px;background:transparent;color:#a7b2a8;font-size:10px;text-decoration:none;cursor:pointer}
-.user-dashboard-back:hover{border-color:rgba(212,167,44,.35);color:#e2c574}
+.site-nav-user-shell .user-account-back{display:grid;width:35px;height:35px;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.025);color:#d3ddd4}
+.site-nav-user-shell .user-account-back:hover{border-color:rgba(212,167,44,.35);color:#f1d987}
 .market-ai-review{display:grid;gap:8px;margin-top:15px;padding:14px;border:1px solid rgba(212,167,44,.16);border-radius:4px;background:rgba(212,167,44,.035)}
 .market-ai-review p{margin:0;color:#e0e7df;font-size:12px;line-height:1.65}
 .market-ai-review ul{display:grid;gap:6px;margin:0;padding-left:18px;color:#aab6ac;font-size:11px;line-height:1.55}
@@ -2876,7 +2876,7 @@ body:has(.site-nav-user-shell) main.account-page{width:calc(100% - 250px);max-wi
 	.site-nav-user-shell .user-mode-control button{min-width:44px;min-height:23px;font-size:8px}
 	.site-nav-user-shell .user-topbar-actions{gap:5px}
 	.site-nav-user-shell .user-topbar-actions>.language-selector{display:none}
-	.site-nav-user-shell .user-topbar-actions .notification-bell-button{width:31px;height:31px}
+	.site-nav-user-shell .user-topbar-actions .notification-bell-button,.site-nav-user-shell .user-account-back{width:31px;height:31px}
 	.site-nav-user-shell .menu-button{width:31px;height:31px}
 	.site-nav-user-shell .user-account-sidebar{top:62px}
 	.site-nav-user-shell .user-sidebar-backdrop{inset:62px 0 0}
@@ -2899,7 +2899,7 @@ body:has(.site-nav-user-shell) main.account-page{width:calc(100% - 250px);max-wi
 	.site-nav-user-shell .user-market-search input{font-size:8px}
 	.site-nav-user-shell .user-mode-control{right:89px}
 	.site-nav-user-shell .user-topbar-actions{gap:4px}
-	.site-nav-user-shell .user-topbar-actions .notification-bell-button,.site-nav-user-shell .menu-button{width:28px;height:28px}
+	.site-nav-user-shell .user-topbar-actions .notification-bell-button,.site-nav-user-shell .user-account-back,.site-nav-user-shell .menu-button{width:28px;height:28px}
 	.user-dashboard-welcome{align-items:flex-start}
 	.user-dashboard-welcome h1{font-size:26px}
 	.user-dashboard-welcome p{max-width:220px;font-size:8px}
@@ -2976,7 +2976,6 @@ a,button,input,select,textarea,summary{transition:color .16s ease,border-color .
 .auth-scene{background:radial-gradient(ellipse at 50% 15%,rgba(34,78,52,.2),transparent 52%),var(--a-ink)}
 .auth-card{border-color:rgba(212,167,44,.2);border-radius:12px;background:linear-gradient(145deg,rgba(19,34,25,.97),rgba(7,16,11,.985));box-shadow:0 28px 86px rgba(0,0,0,.4)}
 .auth-heading{letter-spacing:-.035em}
-.user-dashboard-back{border-radius:6px}
 .nova-thread{min-height:clamp(265px,45vh,460px);max-height:56vh;padding:clamp(14px,2.4vw,22px);border:1px solid rgba(218,228,218,.08);border-radius:8px;background:rgba(4,12,8,.42)}
 .nova-message{border-radius:10px;border-color:rgba(218,228,218,.11);background:rgba(255,255,255,.035)}
 .nova-message.is-user{border-color:rgba(212,167,44,.22);background:rgba(212,167,44,.09)}

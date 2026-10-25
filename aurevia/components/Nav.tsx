@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {Activity,ArrowRight,BriefcaseBusiness,CreditCard,FileText,History,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,Wallet,X} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,BriefcaseBusiness,CreditCard,FileText,History,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -123,6 +123,10 @@ export default function Nav(){
  function openMarket(symbol:string){
   openPage(`/markets?symbol=${encodeURIComponent(symbol)}`);
  }
+ function goBack(){
+  if(window.history.length>1)router.back();
+  else router.push('/dashboard');
+ }
  if(userMode&&data?.user)return <header className="site-nav site-nav-authenticated site-nav-user-shell">
   {open&&<button type="button" className="user-sidebar-backdrop" aria-label="Close account navigation" onClick={close}/>}
   <div className="nav-inner">
@@ -141,7 +145,7 @@ export default function Nav(){
     <button type="button" aria-pressed={data.user.accountMode==='DEMO'} disabled={modeBusy||loggingOut||data.user.accountMode==='DEMO'} onClick={()=>void changeMode('DEMO')}>Demo</button>
     <button type="button" aria-pressed={data.user.accountMode==='REAL'} disabled={modeBusy||loggingOut||data.user.accountMode==='REAL'} onClick={()=>void changeMode('REAL')}>Real</button>
    </div>
-   <div className="user-topbar-actions"><NotificationBell/><LanguageSelector/><button ref={userMenuButtonRef} className="menu-button" type="button" aria-label={open?translate('closeMenu'):translate('openMenu')} aria-expanded={open} aria-controls="user-account-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div>
+   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><LanguageSelector/><button ref={userMenuButtonRef} className="menu-button" type="button" aria-label={open?translate('closeMenu'):translate('openMenu')} aria-expanded={open} aria-controls="user-account-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div>
    <span className="user-topbar-identity"><span className="user-topbar-avatar">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
    {modeError&&<span className="user-mode-error" role="alert">{modeError}</span>}
   </div>

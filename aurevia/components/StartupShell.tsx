@@ -1,8 +1,10 @@
 'use client';
 
-import {useCallback,useEffect,useRef,useState} from 'react';
+import {useCallback,useEffect,useLayoutEffect,useRef,useState} from 'react';
 import type {ReactNode} from 'react';
 import dynamic from 'next/dynamic';
+import Image from 'next/image';
+import {usePathname} from 'next/navigation';
 import {useSession} from 'next-auth/react';
 import AureviaStartup from '@/components/AureviaStartup';
 
@@ -11,13 +13,18 @@ const MarketDepthScene=dynamic(()=>import('@/components/MarketDepthScene'),{ssr:
 const startupKey='aurevia-startup-complete';
 const exitDurationMs=180;
 const maximumStartupWaitMs=1200;
+const pageTransitionDurationMs=3000;
 
 export default function StartupShell({children}:{children:ReactNode}){
 	const {status}=useSession();
+	const pathname=usePathname();
 	const contentRef=useRef<HTMLDivElement>(null);
+	const currentPath=useRef(pathname);
+	const pageTransitionTimer=useRef<number|undefined>(undefined);
 	const [ready,setReady]=useState(false);
 	const [showStartup,setShowStartup]=useState(true);
 	const [isExiting,setIsExiting]=useState(false);
+	const [showPageTransition,setShowPageTransition]=useState(false);
 
 	const markStartupComplete=useCallback(()=>{
 		try{sessionStorage.setItem(startupKey,'1')}catch{}
@@ -36,8 +43,18 @@ export default function StartupShell({children}:{children:ReactNode}){
 	},[]);
 
 	useEffect(()=>{
-		contentRef.current?.toggleAttribute('inert',showStartup);
-	},[showStartup]);
+		contentRef.current?.toggleAttribute('inert',showStartup||showPageTransition);
+	},[showPageTransition,showStartup]);
+
+	useLayoutEffect(()=>{
+		if(currentPath.current===pathname)return;
+		currentPath.current=pathname;
+		setShowPageTransition(true);
+		if(pageTransitionTimer.current!==undefined)window.clearTimeout(pageTransitionTimer.current);
+		pageTransitionTimer.current=window.setTimeout(()=>setShowPageTransition(false),pageTransitionDurationMs);
+	},[pathname]);
+
+	useEffect(()=>()=>{if(pageTransitionTimer.current!==undefined)window.clearTimeout(pageTransitionTimer.current)},[]);
 
 	useEffect(()=>{
 		if(!ready||!showStartup)return;
@@ -58,6 +75,8 @@ export default function StartupShell({children}:{children:ReactNode}){
 
 	return <div className="app-shell">
 		<div className="scene-depth" aria-hidden="true"><MarketDepthScene/></div>
-		<div className="scene-content"><div ref={contentRef} aria-hidden={showStartup}>{children}</div>{showStartup&&<AureviaStartup isExiting={isExiting}/>}</div>
+		<div className="scene-content"><div ref={contentRef} aria-hidden={showStartup||showPageTransition}>{children}</div>{showStartup&&<AureviaStartup isExiting={isExiting}/>}
+			{showPageTransition&&<div className="page-transition-loading" role="status" aria-live="polite"><Image src="/aurevia-logo.png" alt="" width={64} height={64} priority/><p>Loading the next page…</p></div>}
+		</div>
 	</div>;
 }

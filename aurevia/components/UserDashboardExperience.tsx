@@ -2,9 +2,8 @@
 
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
-import {useRouter} from 'next/navigation';
 import {Cell,Pie,PieChart,ResponsiveContainer,Tooltip} from 'recharts';
-import {Activity,ArrowDownLeft,ArrowLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
+import {Activity,ArrowDownLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
 import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
@@ -153,7 +152,6 @@ function ActivityList({items}:{items:Overview['recentActivity']}){
 
 export default function UserDashboardExperience(){
 	const {data:session}=useSession();
-	const router=useRouter();
 	const [overview,setOverview]=useState<Overview|null>(null);
 	const [loading,setLoading]=useState(true);
 	const [refreshing,setRefreshing]=useState(false);
@@ -211,8 +209,6 @@ export default function UserDashboardExperience(){
 	},[marketCategory]);
 	const internalInstrumentId=overview?.internalMarketInstruments.find(item=>item.assetId===selectedSymbol)?.instrumentId;
 	const refreshOverview=useCallback(()=>{void load(false)},[load]);
-	const goBack=()=>{if(window.history.length>1&&document.referrer.startsWith(window.location.origin))router.back();else router.push('/')};
-
 	if(loading&&!overview)return <><Nav/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
 
 	return <><Nav/><main className="user-dashboard-page">
@@ -221,7 +217,6 @@ export default function UserDashboardExperience(){
 			<header className="user-dashboard-welcome">
 				<div><span className="user-dashboard-eyebrow">AUREVIA INVEST · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
 				<div className="user-dashboard-welcome-actions">
-					<button type="button" className="user-dashboard-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={14}/><span>Back</span></button>
 					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
 						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
 						<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>
