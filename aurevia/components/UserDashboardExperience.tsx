@@ -186,18 +186,12 @@ export default function UserDashboardExperience(){
 		if(!internalInstruments)return;
 		let active=true;
 		const symbols=MARKET_ASSETS.map(asset=>asset.id).join(',');
-		const internalAssetIds=new Set(internalInstruments.map(item=>item.assetId));
 		const refresh=async()=>{
 			try{
 				const response=await fetch(`/api/live-markets?symbols=${encodeURIComponent(symbols)}`,{cache:'no-store'});
 				const result=await response.json() as QuotesResponse;
 				if(!response.ok)throw new Error('Market quotes are temporarily unavailable.');
-				const quotes=result.quotes.map(item=>(
-					isQuote(item)&&item.source==='Aurevia Internal'&&!internalAssetIds.has(item.asset.id)
-						?{asset:item.asset,error:'No configured market instrument is available.'}
-						:item
-				));
-				if(active){setQuotes(new Map(quotes.map(item=>[item.asset.id,item])));setQuoteSource(result.source)}
+				if(active){setQuotes(new Map(result.quotes.map(item=>[item.asset.id,item])));setQuoteSource(result.source)}
 			}catch(exception){if(active)setQuoteSource(exception instanceof Error?exception.message:'Market quotes unavailable')}
 		};
 		void refresh();

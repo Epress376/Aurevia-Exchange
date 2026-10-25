@@ -66,10 +66,10 @@ export default function Nav(){
  useEffect(()=>{
   if(!userMode){setTierLabel('');return}
   let active=true;
-  void fetch('/api/dashboard/overview',{cache:'no-store'}).then(async response=>{
+  void fetch('/api/profile',{cache:'no-store'}).then(async response=>{
    const result=await response.json();
    if(!response.ok)throw new Error(result.error||'Unable to load account tier.');
-   if(active&&typeof result.profile?.tier==='string')setTierLabel(result.profile.tier);
+   if(active&&typeof result.label==='string')setTierLabel(result.label);
   }).catch(exception=>{if(active)console.error('Unable to load account tier.',exception instanceof Error?exception.name:'UnknownError')});
   return()=>{active=false};
  },[userMode,data?.user?.accountMode]);

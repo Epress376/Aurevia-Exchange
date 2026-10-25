@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
-import {Activity,ArrowDownRight,ArrowRight,ArrowUpRight,BriefcaseBusiness,CheckCircle2,RefreshCw,ShieldCheck,UsersRound,WalletCards} from 'lucide-react';
+import {Activity,ArrowDownRight,ArrowRight,ArrowUpRight,BriefcaseBusiness,CheckCircle2,RefreshCw,Send,ShieldCheck,Sparkles,UsersRound,WalletCards} from 'lucide-react';
 
 type DashboardData={
 	generatedAt:string;
@@ -21,6 +21,14 @@ type DashboardData={
 };
 
 type Health={ok:boolean;database:string};
+type DashboardVisualization={id:string;type:'stat'|'timeseries'|'bar';title:string};
+type DashboardConfiguration={
+	status:'success'|'clarification_needed';
+	interpretation:string;
+	clarification_question:string|null;
+	visualizations:DashboardVisualization[];
+};
+type AssistantResponse={configuration:DashboardConfiguration;model:string};
 
 const money=new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:2});
 const integer=new Intl.NumberFormat('en-US');
@@ -46,6 +54,67 @@ function MetricCard({label,value,detail,change,icon:Icon}:{label:string;value:st
 		<strong>{value}</strong>
 		<div className="admin-metric-bottom"><span>{detail}</span>{change!==undefined&&change!==null&&<span className={`admin-metric-change ${change<0?'is-down':''}`}>{change>=0?<ArrowUpRight size={13}/>:<ArrowDownRight size={13}/>} {Math.abs(change)}% vs prior 7d</span>}</div>
 	</article>;
+}
+
+function DashboardAssistant({data}:{data:DashboardData}){
+	const [question,setQuestion]=useState('');
+	const [configuration,setConfiguration]=useState<DashboardConfiguration|null>(null);
+	const [error,setError]=useState('');
+	const [busy,setBusy]=useState(false);
+	async function submit(event:React.FormEvent<HTMLFormElement>){
+		event.preventDefault();
+		setBusy(true);setError('');
+		try{
+			const response=await fetch('/api/admin/dashboard/assistant',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({question})});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Unable to configure dashboard view.');
+			setConfiguration((result as AssistantResponse).configuration);
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to configure dashboard view.')}
+		finally{setBusy(false)}
+	}
+	function visualizationValue(id:string){
+		switch(id){
+			case 'users_total':return integer.format(data.metrics.users.total);
+			case 'users_new_7d':return integer.format(data.metrics.users.newThisWeek);
+			case 'deposits_total_usd':return money.format(Number(data.metrics.deposits.totalUsd));
+			case 'deposits_7d_usd':return money.format(Number(data.metrics.deposits.last7DaysUsd));
+			case 'withdrawals_total_usd':return money.format(Number(data.metrics.withdrawals.totalUsd));
+			case 'withdrawals_7d_usd':return money.format(Number(data.metrics.withdrawals.last7DaysUsd));
+			case 'investments_total_usd':return money.format(Number(data.metrics.investments.totalUsd));
+			case 'investments_activated_7d_usd':return money.format(Number(data.metrics.investments.last7DaysUsd));
+			default:return null;
+		}
+	}
+	function visualizationRows(id:string){
+		if(id==='kyc_status')return [['Verified',data.kyc.verified],['Pending',data.kyc.pending],['Rejected',data.kyc.rejected]] as const;
+		if(id==='account_modes')return [['DEMO',data.accountTypes.DEMO],['REAL',data.accountTypes.REAL]] as const;
+		return [];
+	}
+	const maxDaily=Math.max(1,...data.daily.flatMap(day=>[day.depositsUsd,day.withdrawalsUsd]));
+
+	return <section className="admin-panel admin-dashboard-assistant" aria-labelledby="admin-ai-dashboard-heading">
+		<header className="admin-panel-heading"><div><p className="admin-eyebrow">CONFIGURATION ONLY · LIVE ADMIN METRICS</p><h2 id="admin-ai-dashboard-heading"><Sparkles size={17}/> Ask the dashboard</h2><p>Describe the Aurevia metrics you want to focus on.</p></div><span className="admin-ai-badge">AI ASSIST</span></header>
+		<form className="admin-dashboard-assistant-form" onSubmit={submit}>
+			<label className="sr-only" htmlFor="admin-dashboard-question">Ask about dashboard metrics</label>
+			<input id="admin-dashboard-question" value={question} onChange={event=>setQuestion(event.target.value)} maxLength={1000} minLength={3} placeholder="e.g. Compare deposits and withdrawals over the last 7 days" required/>
+			<button type="submit" disabled={busy||question.trim().length<3}><Send size={14}/>{busy?'Thinking…':'Configure view'}</button>
+		</form>
+		{error&&<p className="admin-dashboard-error" role="alert">{error}</p>}
+		{configuration&&<div className="admin-dashboard-assistant-result" aria-live="polite">
+			<p className="admin-ai-interpretation">{configuration.interpretation}</p>
+			{configuration.status==='clarification_needed'?<p className="admin-ai-clarification">{configuration.clarification_question}</p>:<div className="admin-ai-visualizations">
+				{configuration.visualizations.map(visualization=>{
+					const value=visualizationValue(visualization.id);
+					const rows=visualizationRows(visualization.id);
+					return <article className={`admin-ai-visualization ${visualization.type}`} key={visualization.id}>
+						<h3>{visualization.title}</h3>
+						{value!==null?<strong>{value}</strong>:visualization.id==='daily_funding'?<div className="admin-ai-timeseries" role="img" aria-label="Daily REAL USD deposits and withdrawals over the last seven days">{data.daily.map(day=><div key={day.date} title={`${day.date}: deposits ${money.format(day.depositsUsd)}, withdrawals ${money.format(day.withdrawalsUsd)}`}><span><i style={{height:`${day.depositsUsd/maxDaily*100}%`}}/><i style={{height:`${day.withdrawalsUsd/maxDaily*100}%`}}/></span><small>{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined,{weekday:'short',timeZone:'UTC'})}</small></div>)}</div>:<div className="admin-ai-bars">{rows.map(([label,count])=><div key={label}><span>{label}</span><span className="admin-ai-bar-track"><i style={{width:`${count/Math.max(1,...rows.map(([,amount])=>amount))*100}%`}}/></span><b>{integer.format(count)}</b></div>)}</div>}
+					</article>;
+				})}
+			</div>}
+			{configuration.status==='success'&&<p className="admin-ai-source-note">Values are read from the loaded admin dashboard aggregates. AI selects presentation only; it cannot query or modify records.</p>}
+		</div>}
+	</section>;
 }
 
 function PlatformChart({daily}:{daily:DashboardData['daily']}){
@@ -131,6 +200,7 @@ export default function AdminDashboard(){
 			<div><p className="admin-eyebrow">AUREVIA INVEST · CONTROL ROOM</p><h1>Good to see you.</h1><p>Live platform performance and operational activity.</p></div>
 			<button type="button" className="admin-refresh-button" onClick={()=>void load()} disabled={loading}><RefreshCw size={15} className={loading?'admin-refresh-spinning':''}/>Refresh data</button>
 		</header>
+		{data&&<DashboardAssistant data={data}/>}
 		{error&&<p className="admin-dashboard-error" role="alert">{error}<button type="button" onClick={()=>void load()}>Retry</button></p>}
 		{loading&&!data?<div className="admin-dashboard-loading" role="status"><span className="admin-loading-indicator"/>Loading live platform data…</div>:data&&<>
 			<section className="admin-kpi-grid" aria-label="Platform key metrics">

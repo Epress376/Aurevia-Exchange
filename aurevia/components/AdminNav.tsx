@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
-import {Activity,ArrowLeft,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
+import {Activity,ArrowLeft,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
 	{title:'Overview',links:[
@@ -16,6 +16,7 @@ const groups=[
 		{href:'/admin/users?mode=DEMO',label:'Demo Accounts',icon:Building2},
 		{href:'/admin/users?mode=REAL',label:'Real Accounts',icon:Building2},
 		{href:'/admin/kyc',label:'KYC Verification',icon:ClipboardCheck},
+		{href:'/admin/verified-accounts',label:'Verified accounts',icon:BadgeCheck},
 		{href:'/admin/tiers',label:'Tier reviews',icon:FileCheck2},
 	]},
 	{title:'Operations',links:[

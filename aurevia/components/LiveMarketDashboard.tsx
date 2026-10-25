@@ -15,8 +15,10 @@ type QuoteError={asset:NonNullable<ReturnType<typeof getMarketAsset>>;error:stri
 type QuotesResponse={quotes:Array<MarketQuote|QuoteError>;source:string};
 type HistoryResponse={quote:MarketQuote;candles:MarketCandle[];timeframe:TimeframeId;interval:string;source?:string};
 type ReturnMetric={label:string;days:number;value:number|null};
+type MarketCategory='Favorites'|'Forex'|'Crypto'|'Stocks'|'Indices';
 
 const TICKER_SYMBOLS=['BTC','DJI','MERV','DAX','IBEX','NIKKEI','EURGBP','SPX','NASDAQ'];
+const MARKET_CATEGORIES:MarketCategory[]=['Favorites','Forex','Crypto','Stocks','Indices'];
 
 export default function LiveMarketDashboard(){
   const [queryClient]=useState(()=>new QueryClient({defaultOptions:{queries:{staleTime:4_000,refetchOnWindowFocus:true,retry:1}}}));
@@ -45,6 +47,7 @@ function LiveMarketDashboardContent(){
   const [showNewList,setShowNewList]=useState(false);
   const [newListName,setNewListName]=useState('');
   const [symbolSearch,setSymbolSearch]=useState('');
+  const [marketCategory,setMarketCategory]=useState<MarketCategory>('Favorites');
   const [draggedSymbol,setDraggedSymbol]=useState('');
   const [watchlistScopeReady,setWatchlistScopeReady]=useState(false);
   const [watchlistScopeError,setWatchlistScopeError]=useState('');
@@ -130,6 +133,12 @@ function LiveMarketDashboardContent(){
   const performance=returnMetrics(annualQuery.data?.candles||historyQuery.data?.candles||[],activeQuote);
   const todayRange=activeQuote?.dayLow!==null&&activeQuote?.dayLow!==undefined&&activeQuote?.dayHigh!==null&&activeQuote?.dayHigh!==undefined?activeQuote.dayHigh-activeQuote.dayLow:null;
   const todayPosition=todayRange&&activeQuote?.dayLow!==null&&activeQuote?.dayLow!==undefined?Math.max(0,Math.min(100,(activeQuote.price-activeQuote.dayLow)/todayRange*100)):50;
+  const marketPulseAssets=MARKET_ASSETS.filter(asset=>marketCategory==='Favorites'
+    ?activeList.symbols.includes(asset.id)
+    :marketCategory==='Forex'?asset.type==='FOREX'
+    :marketCategory==='Crypto'?asset.type==='CRYPTO'
+    :marketCategory==='Stocks'?asset.type==='STOCK'
+    :asset.type==='INDEX');
 
   return <><Nav/><main className="live-market-page">
     <div className="live-market-topline">
@@ -183,6 +192,18 @@ function LiveMarketDashboardContent(){
       </aside>
 
       <section className="live-main-column">
+        <section className="user-market-assets live-market-pulse" aria-label="Supported market quotes">
+          <header className="user-market-assets-heading"><div><span className="user-dashboard-eyebrow">SUPPORTED INSTRUMENTS</span><h2>Market pulse</h2></div><small>{batchQuery.data?.source||'Connecting to quote sources'}</small></header>
+          <div className="user-market-categories" role="group" aria-label="Filter market instruments">{MARKET_CATEGORIES.map(category=><button key={category} type="button" aria-pressed={marketCategory===category} className={marketCategory===category?'is-selected':''} onClick={()=>setMarketCategory(category)}>{category}</button>)}</div>
+          {marketPulseAssets.length?<div className="user-market-asset-grid">{marketPulseAssets.map(asset=>{
+            const quote=batchQuotes.get(asset.id);
+            return <button key={asset.id} type="button" className={`user-market-asset ${selectedAsset.id===asset.id?'is-selected':''}`} onClick={()=>selectSymbol(asset.id)} aria-pressed={selectedAsset.id===asset.id}>
+              <span><b>{asset.id}</b><small>{asset.name}</small></span>
+              <strong>{isQuote(quote)?formatPrice(quote.price,asset.currency,asset.type==='FOREX'):quote?'Unavailable':'—'}</strong>
+              <em className={isQuote(quote)?tone(quote.changePercent):''}>{isQuote(quote)?`${quote.changePercent>=0?'+':''}${quote.changePercent.toFixed(2)}%`:quote?'Quote unavailable':'Loading quote'}</em>
+            </button>;
+          })}</div>:<div className="live-empty-watchlist">No supported instruments are saved to this watchlist yet.</div>}
+        </section>
         <div className="live-chart-card">
           <div className="live-asset-title">
             <div className="live-asset-id"><span>{symbolBadge(selectedAsset.type)}</span><div><div className="live-symbol-line"><span>{selectedAsset.id}</span><span className="live-market-tag">{marketTypeLabel(selectedAsset.type)}</span></div><h2>{selectedAsset.name}</h2></div></div>
