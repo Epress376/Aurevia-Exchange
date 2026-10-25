@@ -43,8 +43,8 @@ export default function StartupShell({children}:{children:ReactNode}){
 	},[]);
 
 	useEffect(()=>{
-		contentRef.current?.toggleAttribute('inert',showStartup||showPageTransition);
-	},[showPageTransition,showStartup]);
+		contentRef.current?.toggleAttribute('inert',showStartup);
+	},[showStartup]);
 
 	useLayoutEffect(()=>{
 		if(currentPath.current===pathname)return;
@@ -75,7 +75,7 @@ export default function StartupShell({children}:{children:ReactNode}){
 
 	return <div className="app-shell">
 		<div className="scene-depth" aria-hidden="true"><MarketDepthScene/></div>
-		<div className="scene-content"><div ref={contentRef} aria-hidden={showStartup||showPageTransition}>{children}</div>{showStartup&&<AureviaStartup isExiting={isExiting}/>}
+		<div className="scene-content"><div ref={contentRef} aria-hidden={showStartup}>{children}</div>{showStartup&&<AureviaStartup isExiting={isExiting}/>}
 			{showPageTransition&&<div className="page-transition-loading" role="status" aria-live="polite"><Image src="/aurevia-logo.png" alt="" width={64} height={64} priority/><p>Loading the next page…</p></div>}
 		</div>
 	</div>;

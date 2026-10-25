@@ -311,21 +311,42 @@ test('dashboard hierarchy remains usable and contained at mobile and desktop wid
 	}
 });
 
-test('authenticated desktop navigation opens without overflow and closes after navigation',async({page})=>{
-	await page.setViewportSize({width:1280,height:900});
+test('authenticated bottom navigation stays fixed across viewports and More destinations',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	const menu=page.locator('.menu-button');
-	await menu.click();
-	const navigation=page.getByRole('navigation',{name:'Primary navigation'});
-	await expect(navigation).toBeVisible();
-	await expect(menu).toHaveAttribute('aria-expanded','true');
-	await expect(navigation.getByRole('heading',{name:/investing/i})).toBeVisible();
-	await expect(navigation.getByRole('heading',{name:/account & support/i})).toBeVisible();
+	const navigation=page.getByRole('navigation',{name:'Primary account navigation'});
+	const moreButton=page.getByRole('button',{name:'More account navigation'});
+	for(const viewport of [{width:320,height:800},{width:390,height:844},{width:768,height:1024},{width:1440,height:900}]){
+		await page.setViewportSize(viewport);
+		await page.goto('/dashboard');
+		await expect(navigation).toBeVisible();
+		const geometry=await navigation.evaluate(element=>{
+			const rect=element.getBoundingClientRect();
+			return {position:getComputedStyle(element).position,left:rect.left,right:rect.right,bottom:rect.bottom,height:rect.height,viewportWidth:innerWidth,viewportHeight:innerHeight};
+		});
+		expect(geometry.position).toBe('fixed');
+		expect(geometry.left).toBeGreaterThanOrEqual(0);
+		expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
+		expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+		for(const [name,href] of [['Home','/dashboard'],['Markets','/markets'],['Wallet','/wallet'],['Stories','/client-stories']] as const){
+			await expect(navigation.getByRole('link',{name})).toHaveAttribute('href',href);
+		}
+		await expect(navigation.getByRole('link',{name:'Home'})).toHaveAttribute('aria-current','page');
+		await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
+		await expect(navigation).toBeInViewport();
+		await expectNoHorizontalOverflow(page);
+	}
 	expect(await page.getByRole('navigation',{name:'Administrator navigation'}).count()).toBe(0);
-	await expectNoHorizontalOverflow(page);
-	await navigation.getByRole('link',{name:'Notifications'}).click();
-	await expect(page).toHaveURL(/\/notifications/);
-	await expect(menu).toHaveAttribute('aria-expanded','false');
+	await expect(navigation.getByRole('link',{name:'Home'})).toHaveClass(/is-active/);
+	await moreButton.click();
+	const moreMenu=page.getByRole('dialog',{name:'More'});
+	await expect(moreMenu).toBeVisible();
+	for(const label of ['Investments','Portfolio','Orders','Transaction history','Notifications','Identity verification / KYC','Digital cards','Profile','Account settings','Security','Help and support','Tax services','Tier upgrade','Logout']){
+		await expect(moreMenu.getByRole('link',{name:label}).or(moreMenu.getByRole('button',{name:label}))).toBeVisible();
+	}
+	await moreMenu.getByRole('link',{name:'Transaction history'}).click();
+	await expect(page).toHaveURL(/\/wallet\/transactions/);
+	await expect(moreButton).toHaveAttribute('aria-expanded','false');
+	await expect(moreButton).toHaveClass(/is-active/);
 });
 
 test('global chat support persists its position and exchanges private admin messages',async({browser,page})=>{

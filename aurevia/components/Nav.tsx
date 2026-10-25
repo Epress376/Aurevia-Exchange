@@ -3,12 +3,32 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {Activity,ArrowLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,CreditCard,FileText,History,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowRight,ArrowUpRight,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,Ellipsis,FileText,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MessageSquareQuote,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,WalletCards,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
 import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
+
+const moreMenuGroups=[
+ {title:'Investing',links:[
+  {href:'/investments',label:'Investments',icon:BriefcaseBusiness},
+  {href:'/portfolio',label:'Portfolio',icon:ChartNoAxesCombined},
+  {href:'/orders',label:'Orders',icon:History},
+  {href:'/wallet/transactions',label:'Transaction history',icon:FileText},
+ ]},
+ {title:'Account',links:[
+  {href:'/notifications',label:'Notifications',icon:Bell},
+  {href:'/kyc',label:'Identity verification / KYC',icon:ShieldCheck},
+  {href:'/cards',label:'Digital cards',icon:CreditCard},
+  {href:'/settings#profile',label:'Profile',icon:UserRound},
+  {href:'/settings#preferences',label:'Account settings',icon:Settings},
+  {href:'/settings#security',label:'Security',icon:ShieldCheck},
+ ]},
+ {title:'Support',links:[
+  {href:'/support',label:'Help and support',icon:Mail},
+ ]},
+];
 
 export default function Nav(){
  const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
@@ -18,6 +38,8 @@ export default function Nav(){
   if(pathname!==path&&!pathname.startsWith(`${path}/`))return false;
   return !hash||pathname!==path||(currentHash||'#profile')===`#${hash}`;
  };
+ const primaryPath=pathname==='/dashboard'||pathname==='/markets'||pathname.startsWith('/markets/')||pathname==='/wallet'||pathname==='/client-stories';
+ const moreActive=open||!primaryPath;
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
@@ -85,12 +107,30 @@ export default function Nav(){
   void checkAccess();
   const interval=window.setInterval(()=>void checkAccess(),30_000);
   window.addEventListener('focus',checkAccess);
-  return ()=>{
+  return()=>{
    active=false;
    window.clearInterval(interval);
    window.removeEventListener('focus',checkAccess);
   };
  },[status,data?.user]);
+ useEffect(()=>{
+  if(!userMode)return;
+  const viewport=window.visualViewport;
+  const updateKeyboardInset=()=>{
+   const inset=viewport?Math.max(0,window.innerHeight-viewport.height-viewport.offsetTop):0;
+   document.documentElement.style.setProperty('--user-keyboard-inset',`${inset>120?inset:0}px`);
+  };
+  updateKeyboardInset();
+  viewport?.addEventListener('resize',updateKeyboardInset);
+  viewport?.addEventListener('scroll',updateKeyboardInset);
+  window.addEventListener('resize',updateKeyboardInset);
+  return()=>{
+   viewport?.removeEventListener('resize',updateKeyboardInset);
+   viewport?.removeEventListener('scroll',updateKeyboardInset);
+   window.removeEventListener('resize',updateKeyboardInset);
+   document.documentElement.style.removeProperty('--user-keyboard-inset');
+  };
+ },[userMode]);
  useEffect(()=>{
   if(!userMode){setTierLabel('');return}
   let active=true;
@@ -139,8 +179,8 @@ export default function Nav(){
   if(window.history.length>1)router.back();
   else router.push('/dashboard');
  }
- if(userMode&&data?.user)return <header className="site-nav site-nav-authenticated site-nav-user-shell">
-  {open&&<button type="button" className="user-sidebar-backdrop" aria-label="Close account navigation" onClick={close}/>}
+ if(userMode&&data?.user)return <>
+  <header className="site-nav site-nav-authenticated site-nav-user-shell">
   <div className="nav-inner">
    <Link href="/dashboard" className="brand" onClick={close}><Image src="/aurevia-logo.png" alt="Aurevia Invest" width={36} height={36}/><span>AUREVIA <b>INVEST</b></span></Link>
    <form className="user-market-search" role="search" onSubmit={submitMarketSearch}>
@@ -157,19 +197,27 @@ export default function Nav(){
     <button type="button" aria-pressed={data.user.accountMode==='DEMO'} disabled={modeBusy||loggingOut||data.user.accountMode==='DEMO'} onClick={()=>void changeMode('DEMO')}>Demo</button>
     <button type="button" aria-pressed={data.user.accountMode==='REAL'} disabled={modeBusy||loggingOut||data.user.accountMode==='REAL'} onClick={()=>void changeMode('REAL')}>Real</button>
    </div>
-   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><LanguageSelector/><button ref={userMenuButtonRef} className="menu-button" type="button" aria-label={open?translate('closeMenu'):translate('openMenu')} aria-expanded={open} aria-controls="user-account-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div>
+   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><LanguageSelector/></div>
    <span className="user-topbar-identity"><span className="user-topbar-avatar">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
    {modeError&&<span className="user-mode-error" role="alert">{modeError}</span>}
   </div>
-  <nav ref={userNavRef} id="user-account-navigation" aria-label="Account navigation" className={`user-account-sidebar ${open?'nav-open':''}`}>
-   <div className="nav-account-snapshot"><span className="nav-account-monogram">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><em>{data.user.accountMode} ACCOUNT · {tierLabel||'TIER —'}</em></span></div>
-   <section className="nav-menu-group" aria-label="Overview"><h2 className="nav-menu-section">OVERVIEW</h2><Link href="/dashboard" onClick={close} aria-current={pathname==='/dashboard'?'page':undefined}><LayoutDashboard size={16}/><span>Dashboard</span></Link></section>
-   <section className="nav-menu-group" aria-label="Investing"><h2 className="nav-menu-section">INVESTING</h2><Link href="/trade" onClick={close} aria-current={active('/trade')?'page':undefined}><Activity size={16}/><span>Trade</span></Link><Link href="/markets" onClick={close} aria-current={active('/markets')?'page':undefined}><LineChart size={16}/><span>Markets</span></Link><Link href="/portfolio" onClick={close} aria-current={active('/portfolio')?'page':undefined}><BriefcaseBusiness size={16}/><span>Portfolio</span></Link><Link href="/investments" onClick={close} aria-current={active('/investments')?'page':undefined}><BriefcaseBusiness size={16}/><span>Investments</span></Link><Link href="/orders" onClick={close} aria-current={active('/orders')?'page':undefined}><History size={16}/><span>Orders &amp; activity</span></Link></section>
-   <section className="nav-menu-group" aria-label="Account"><h2 className="nav-menu-section">ACCOUNT</h2><Link href="/wallet" onClick={close} aria-current={active('/wallet')?'page':undefined}><Wallet size={16}/><span>Wallet</span></Link><Link href="/notifications" onClick={close} aria-current={active('/notifications')?'page':undefined}><FileText size={16}/><span>Notifications</span></Link><Link href="/kyc" onClick={close} aria-current={active('/kyc')?'page':undefined}><ShieldCheck size={16}/><span>Identity verification</span></Link><Link href="/cards" onClick={close} aria-current={active('/cards')?'page':undefined}><CreditCard size={16}/><span>Cards</span></Link><Link href="/tier" onClick={close} aria-current={active('/tier')?'page':undefined}><ArrowUpRight size={16}/><span>Tier upgrade</span></Link><Link href="/tax-services" onClick={close} aria-current={active('/tax-services')?'page':undefined}><FileText size={16}/><span>Tax services</span></Link></section>
-   <section className="nav-menu-group" aria-label="Profile and support"><h2 className="nav-menu-section">PROFILE &amp; SUPPORT</h2><Link href="/settings#profile" onClick={close} aria-current={active('/settings#profile')?'page':undefined}><UserRound size={16}/><span>Profile</span></Link><Link href="/settings#security" onClick={close} aria-current={active('/settings#security')?'page':undefined}><Settings size={16}/><span>Settings</span></Link><Link href="/support" onClick={close} aria-current={active('/support')?'page':undefined}><Mail size={16}/><span>Help &amp; support</span></Link></section>
-   <div className="nav-menu-tools"><button type="button" className="nav-logout" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={16} aria-hidden="true"/>{loggingOut?translate('signingOut'):translate('logout')}</button></div>
+  </header>
+  <nav aria-label="Primary account navigation" className="user-bottom-navigation">
+   <Link href="/dashboard" aria-current={pathname==='/dashboard'?'page':undefined} className={pathname==='/dashboard'?'is-active':''}><House size={21} strokeWidth={1.7}/><span>Home</span></Link>
+   <Link href="/markets" aria-current={active('/markets')?'page':undefined} className={active('/markets')?'is-active':''}><ChartNoAxesCombined size={21} strokeWidth={1.7}/><span>Markets</span></Link>
+   <Link href="/wallet" aria-current={pathname==='/wallet'?'page':undefined} className={pathname==='/wallet'?'is-active':''}><WalletCards size={21} strokeWidth={1.7}/><span>Wallet</span></Link>
+   <Link href="/client-stories" aria-current={pathname==='/client-stories'?'page':undefined} className={pathname==='/client-stories'?'is-active':''}><MessageSquareQuote size={21} strokeWidth={1.7}/><span>Stories</span></Link>
+   <button ref={userMenuButtonRef} type="button" aria-label="More account navigation" aria-haspopup="dialog" aria-expanded={open} aria-controls="user-more-menu" className={moreActive?'is-active':''} onClick={()=>setOpen(value=>!value)}><Ellipsis size={22} strokeWidth={1.8}/><span>More</span></button>
   </nav>
- </header>;
+  {open&&<button type="button" className="user-more-backdrop" aria-label="Close More menu" tabIndex={-1} onClick={close}/>}
+  <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>
+   <header className="user-more-heading"><div><span>ACCOUNT NAVIGATION</span><h2 id="user-more-title">More</h2></div><button type="button" className="user-more-close" aria-label="Close More menu" onClick={close}><X size={18}/></button></header>
+   <div className="user-more-groups">{moreMenuGroups.map(group=><section className="user-more-group" key={group.title} aria-label={group.title}><h3>{group.title}</h3>{group.links.map(({href,label,icon:Icon})=><Link href={href} key={href} aria-current={active(href)?'page':undefined} onClick={close}><Icon size={17} strokeWidth={1.7}/><span>{label}</span></Link>)}</section>)}
+    <section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link><Link href="/tier" aria-current={active('/tier')?'page':undefined} onClick={close}><ArrowUpRight size={17}/><span>Tier upgrade</span></Link></section>
+   </div>
+   <button type="button" className="user-more-logout" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={17}/>{loggingOut?translate('signingOut'):translate('logout')}</button>
+  </section>
+ </>;
  return <header className={`site-nav ${status==='authenticated'?'site-nav-authenticated':''} ${status==='authenticated'&&data?.user?.role==='ADMIN'?'site-nav-admin':''}`}><div className="nav-inner">
    <Link href="/" className="brand" onClick={close}><Image src="/aurevia-logo.png" alt="Aurevia Invest" width={38} height={38}/><span>AUREVIA <b>INVEST</b></span></Link>
    <nav id="primary-navigation" aria-label="Primary navigation" className={`nav-links ${open?'nav-open':''}`} onKeyDown={event=>{if(event.key==='Escape')close()}}>
