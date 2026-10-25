@@ -1,6 +1,6 @@
 'use client';
 
-import {useCallback,useEffect,useState} from 'react';
+import {useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
 import {Activity,ArrowDownRight,ArrowRight,ArrowUpRight,BriefcaseBusiness,CheckCircle2,RefreshCw,Send,Settings,ShieldCheck,Sparkles,UsersRound,WalletCards} from 'lucide-react';
 
@@ -16,10 +16,13 @@ type DashboardData={
 	kyc:{verified:number;pending:number;rejected:number};
 	accountTypes:{DEMO:number;REAL:number};
 	recentUsers:Array<{id:string;name:string|null;email:string;accountMode:'DEMO'|'REAL';kycStatus:string;status:string;createdAt:string}>;
-	recentActivity:Array<{id:string;action:string;entity:string;createdAt:string;actor:{name:string|null}|null}>;
+	recentActivity:DashboardActivity[];
+	archivedActivity:DashboardActivity[];
+	dismissedActivity:DashboardActivity[];
 	limitations:{financialCurrency:string;financialAccountMode:string;investmentTotalMeaning:string;accountTypesMeaning:string};
 };
 
+type DashboardActivity={id:string;action:string;entity:string;createdAt:string;actor:{name:string|null}|null};
 type Health={ok:boolean;database:string};
 type DashboardVisualization={id:string;type:'stat'|'timeseries'|'bar';title:string};
 type DashboardConfiguration={
@@ -46,6 +49,15 @@ function relativeTime(value:string,reference:number){
 
 function displayAction(value:string){
 	return value.toLowerCase().replaceAll('_',' ').replace(/\b\w/g,letter=>letter.toUpperCase());
+}
+
+function ActivityRow({event,reference,hidden,busy,onToggle}:{event:DashboardActivity;reference:number;hidden:boolean;busy:boolean;onToggle:(event:DashboardActivity,hidden:boolean)=>void}){
+	return <li>
+		<span className="admin-activity-marker"><Activity size={13}/></span>
+		<span className="admin-activity-copy"><b>{displayAction(event.action)}</b><small>{event.entity.replaceAll('_',' ')}{event.actor?.name?` · ${event.actor.name}`:''}</small></span>
+		<time dateTime={event.createdAt} title={new Date(event.createdAt).toLocaleString()}>{relativeTime(event.createdAt,reference)}</time>
+		<button type="button" className={hidden?'admin-activity-restore':'admin-activity-dismiss'} disabled={busy} onClick={()=>onToggle(event,!hidden)}>{busy?'Saving…':hidden?'Restore':'Hide'}</button>
+	</li>;
 }
 
 function MetricCard({label,value,detail,change,icon:Icon}:{label:string;value:string;detail:string;change?:number|null;icon:typeof UsersRound}){
@@ -173,9 +185,11 @@ export default function AdminDashboard(){
 	const [health,setHealth]=useState<Health|null>(null);
 	const [loading,setLoading]=useState(true);
 	const [error,setError]=useState('');
+	const [activityError,setActivityError]=useState('');
+	const [activityBusyId,setActivityBusyId]=useState('');
 
-	const load=useCallback(async()=>{
-		setLoading(true);
+	const load=useCallback(async(showLoading=true)=>{
+		if(showLoading)setLoading(true);
 		setError('');
 		try{
 			const [dashboardResponse,healthResponse]=await Promise.all([
@@ -194,6 +208,40 @@ export default function AdminDashboard(){
 	},[]);
 
 	useEffect(()=>{void load()},[load]);
+	useEffect(()=>{
+		const timer=window.setInterval(()=>void load(false),60_000);
+		return()=>window.clearInterval(timer);
+	},[load]);
+
+	const hiddenActivityIds=useMemo(()=>new Set(data?.dismissedActivity.map(event=>event.id)||[]),[data?.dismissedActivity]);
+	const visibleLiveActivity=data?.recentActivity.filter(event=>!hiddenActivityIds.has(event.id))||[];
+	const archivedActivityDays=useMemo(()=>{
+		const groups=new Map<string,DashboardActivity[]>();
+		for(const event of data?.archivedActivity||[]){
+			if(hiddenActivityIds.has(event.id))continue;
+			const date=new Date(event.createdAt).toISOString().slice(0,10);
+			const day=groups.get(date)||[];
+			day.push(event);
+			groups.set(date,day);
+		}
+		return [...groups.entries()];
+	},[data?.archivedActivity,hiddenActivityIds]);
+	const setActivityVisibility=async(event:DashboardActivity,hidden:boolean)=>{
+		setActivityBusyId(event.id);
+		setActivityError('');
+		try{
+			const response=await fetch('/api/admin/dashboard/activity',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({auditLogId:event.id,hidden})});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Unable to update activity visibility.');
+			setData(current=>current?{
+				...current,
+				dismissedActivity:hidden
+					?[event,...current.dismissedActivity.filter(item=>item.id!==event.id)]
+					:current.dismissedActivity.filter(item=>item.id!==event.id),
+			}:current);
+		}catch(exception){setActivityError(exception instanceof Error?exception.message:'Unable to update activity visibility.')}
+		finally{setActivityBusyId('')}
+	};
 
 	return <main className="account-page admin-dashboard-page">
 		<header className="admin-dashboard-heading">
@@ -248,9 +296,15 @@ export default function AdminDashboard(){
 					{data.recentUsers.length===0&&<p className="admin-empty-state">No active customer accounts to show.</p>}
 				</section>
 				<section className="admin-panel admin-activity-panel" aria-labelledby="admin-activity-heading">
-					<header className="admin-panel-heading"><div><p className="admin-eyebrow">ADMINISTRATIVE RECORDS</p><h2 id="admin-activity-heading">Live activity</h2></div><Link href="/admin/audit-logs" className="admin-panel-link">Audit log <ArrowRight size={14}/></Link></header>
-					{data.recentActivity.length?<ol className="admin-activity-list">{data.recentActivity.map(event=><li key={event.id}><span className="admin-activity-marker"><Activity size={13}/></span><span className="admin-activity-copy"><b>{displayAction(event.action)}</b><small>{event.entity.replaceAll('_',' ')}{event.actor?.name?` · ${event.actor.name}`:''}</small></span><time dateTime={event.createdAt} title={new Date(event.createdAt).toLocaleString()}>{relativeTime(event.createdAt,new Date(data.generatedAt).getTime())}</time></li>)}</ol>:<p className="admin-empty-state">No audit activity recorded yet.</p>}
-					<p className="admin-panel-note">Recent audit event metadata is intentionally omitted.</p>
+					<header className="admin-panel-heading"><div><p className="admin-eyebrow">ADMINISTRATIVE RECORDS · ROLLING 24 HOURS</p><h2 id="admin-activity-heading">Live activity</h2></div><Link href="/admin/audit-logs" className="admin-panel-link">Audit log <ArrowRight size={14}/></Link></header>
+					{activityError&&<p className="admin-dashboard-error" role="alert">{activityError}</p>}
+					{visibleLiveActivity.length?<ol className="admin-activity-list">{visibleLiveActivity.map(event=><ActivityRow key={event.id} event={event} reference={new Date(data.generatedAt).getTime()} hidden={false} busy={activityBusyId===event.id} onToggle={setActivityVisibility}/>)}</ol>:<p className="admin-empty-state">No visible audit activity in the last 24 hours.</p>}
+					<details className="admin-activity-hidden">
+						<summary>Archived activity · {archivedActivityDays.reduce((count,[,events])=>count+events.length,0)} records by date</summary>
+						{archivedActivityDays.length?archivedActivityDays.map(([date,events])=><div className="admin-activity-day" key={date}><h3>{new Date(`${date}T00:00:00Z`).toLocaleDateString(undefined,{dateStyle:'full',timeZone:'UTC'})} · {events.length}</h3><ol className="admin-activity-list">{events.map(event=><ActivityRow key={event.id} event={event} reference={new Date(data.generatedAt).getTime()} hidden={false} busy={activityBusyId===event.id} onToggle={setActivityVisibility}/>)}</ol></div>):<p className="admin-empty-state">No archived activity is currently available.</p>}
+					</details>
+					{data.dismissedActivity.length>0&&<details className="admin-activity-hidden"><summary>Hidden from dashboard · {data.dismissedActivity.length} records</summary><ol className="admin-activity-list">{data.dismissedActivity.map(event=><ActivityRow key={event.id} event={event} reference={new Date(data.generatedAt).getTime()} hidden busy={activityBusyId===event.id} onToggle={setActivityVisibility}/>)}</ol></details>}
+					<p className="admin-panel-note">Activity older than 24 hours moves into this date-grouped archive. Hiding an item only removes it from this dashboard; original audit records remain available in the audit log. Dashboard refreshes every minute.</p>
 				</section>
 			</div>
 		</>}

@@ -229,6 +229,8 @@ model User {
   funding                          FundingRequest[]
   ledgerAccounts                   LedgerAccount[]
   auditLogs                        AuditLog[]
+  hiddenAdminDashboardActivities   AdminDashboardActivityDismissal[] @relation("AdminDashboardActivityHiddenBy")
+  restoredAdminDashboardActivities AdminDashboardActivityDismissal[] @relation("AdminDashboardActivityRestoredBy")
   kyc                              KycProfile?
   supportConversations             SupportConversation[]
   supportMessages                  SupportMessage[]
@@ -670,8 +672,23 @@ model AuditLog {
   entityId  String?
   metadata  Json?
   createdAt DateTime @default(now())
+  dashboardDismissal AdminDashboardActivityDismissal?
 
   @@index([createdAt])
+}
+
+model AdminDashboardActivityDismissal {
+  id          String   @id @default(cuid())
+  auditLogId  String   @unique
+  auditLog    AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+  hiddenById  String?
+  hiddenBy    User?    @relation("AdminDashboardActivityHiddenBy", fields: [hiddenById], references: [id], onDelete: SetNull)
+  restoredById String?
+  restoredBy  User?    @relation("AdminDashboardActivityRestoredBy", fields: [restoredById], references: [id], onDelete: SetNull)
+  hiddenAt    DateTime @default(now())
+  restoredAt  DateTime?
+
+  @@index([restoredAt, hiddenAt])
 }
 
 model InvestmentOpportunity {

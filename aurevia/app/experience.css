@@ -1120,6 +1120,17 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .transaction-history-amount{display:grid;justify-items:end;gap:7px;color:#e3e9e2;font-size:11px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .transaction-history-amount .status-pill{font-size:8px}
 .transaction-history-error{display:flex;flex-wrap:wrap;justify-content:center;gap:10px}
+.admin-activity-heading-actions{display:flex;align-items:center;gap:10px}
+.admin-activity-day{margin-top:13px}
+.admin-activity-day h3{margin:0;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.07);color:#c1ab69;font-size:9px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.admin-activity-list li{gap:8px}
+.admin-activity-dismiss{flex:none;border:0;background:transparent;color:#748177;font-size:9px;cursor:pointer}
+.admin-activity-dismiss:hover{color:#e1bc66}
+.admin-activity-restore{border:1px solid rgba(212,167,44,.2);border-radius:3px;background:rgba(212,167,44,.05);color:#d8bd64;font-size:9px}
+.admin-activity-hidden{margin-top:13px;padding-top:10px;border-top:1px solid rgba(255,255,255,.07)}
+.admin-activity-hidden summary{color:#9aa69c;font-size:9px;cursor:pointer}
+.user-dashboard-back{display:inline-flex;min-height:34px;align-items:center;gap:6px;padding:0 9px;border:1px solid var(--a-line);border-radius:4px;color:#a7b2a8;font-size:10px;text-decoration:none}
+.user-dashboard-back:hover{border-color:rgba(212,167,44,.35);color:#e2c574}
 .support-contact-panel{display:grid;grid-column:1/-1;gap:9px}
 .support-contact-panel .account-panel-title{margin-bottom:4px}
 .support-contact-panel>a{width:fit-content;max-width:100%;color:var(--a-brass-soft);font-size:12px;overflow-wrap:anywhere}

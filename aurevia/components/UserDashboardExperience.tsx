@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
 import {Cell,Pie,PieChart,ResponsiveContainer,Tooltip} from 'recharts';
-import {Activity,ArrowDownLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
+import {Activity,ArrowDownLeft,ArrowLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
 import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
@@ -218,6 +218,7 @@ export default function UserDashboardExperience(){
 			<header className="user-dashboard-welcome">
 				<div><span className="user-dashboard-eyebrow">AUREVIA INVEST · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
 				<div className="user-dashboard-welcome-actions">
+					<Link href="/" className="user-dashboard-back"><ArrowLeft size={14}/> Home</Link>
 					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
 						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
 						<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>

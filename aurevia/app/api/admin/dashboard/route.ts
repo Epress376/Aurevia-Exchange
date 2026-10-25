@@ -35,6 +35,7 @@ export async function GET(){
 		const previousWeekEnd=currentWeekStart;
 		const previousWeekStart=new Date(previousWeekEnd);
 		previousWeekStart.setUTCDate(previousWeekStart.getUTCDate()-7);
+		const activityCutoff=new Date(now.getTime()-24*60*60*1000);
 
 		const depositsWhere={
 			type:FundingType.DEPOSIT,
@@ -58,7 +59,7 @@ export async function GET(){
 			kycGroups,accountModeGroups,
 			depositsTotal,withdrawalsTotal,investmentsTotal,
 			investmentsCurrent,investmentsPrevious,
-			fundingDays,recentUsers,recentActivity,
+			fundingDays,recentUsers,recentActivity,archivedActivity,dismissedActivity,
 		]=await Promise.all([
 			db.user.count({where:activeUsersWhere}),
 			db.user.count({where:{...activeUsersWhere,createdAt:{gte:currentWeekStart,lt:tomorrow}}}),
@@ -97,9 +98,23 @@ export async function GET(){
 				take:8,
 			}),
 			db.auditLog.findMany({
+				where:{createdAt:{gte:activityCutoff}},
 				select:{id:true,action:true,entity:true,createdAt:true,actor:{select:{name:true}}},
 				orderBy:{createdAt:'desc'},
-				take:8,
+				take:100,
+			}),
+			db.auditLog.findMany({
+				where:{createdAt:{lt:activityCutoff}},
+				select:{id:true,action:true,entity:true,createdAt:true,actor:{select:{name:true}}},
+				orderBy:{createdAt:'desc'},
+				take:500,
+			}),
+			db.adminDashboardActivityDismissal.findMany({
+				where:{restoredAt:null},
+				select:{
+					auditLog:{select:{id:true,action:true,entity:true,createdAt:true,actor:{select:{name:true}}}},
+				},
+				orderBy:{hiddenAt:'desc'},
 			}),
 		]);
 
@@ -159,6 +174,8 @@ export async function GET(){
 			accountTypes,
 			recentUsers,
 			recentActivity,
+			archivedActivity,
+			dismissedActivity:dismissedActivity.map(item=>item.auditLog),
 			limitations:{
 				financialCurrency:'USD',
 				financialAccountMode:'REAL',
