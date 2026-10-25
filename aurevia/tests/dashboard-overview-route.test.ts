@@ -95,6 +95,31 @@ describe('user dashboard overview access and mode separation',()=>{
 		expect(JSON.stringify(result)).not.toContain('passwordHash');
 	});
 
+	it('returns active investment display terms using the recorded target and tier boost',async()=>{
+		mocks.investmentFindMany.mockResolvedValue([{
+			id:'investment-live',
+			accountMode:AccountMode.REAL,
+			amount:new Prisma.Decimal(100),
+			status:InvestmentStatus.ACTIVE,
+			activatedAt:new Date('2026-05-01T00:00:00.000Z'),
+			maturesAt:new Date('2026-05-11T00:00:00.000Z'),
+			durationDays:10,
+			targetReturnPercent:new Prisma.Decimal(12),
+			tierBoostPercent:new Prisma.Decimal(3),
+			requestedAt:new Date('2026-05-01T00:00:00.000Z'),
+			opportunity:{title:'Recorded terms',category:'Private markets',assetSymbol:null,riskLevel:'LOW',durationDays:10},
+		}]);
+
+		const response=await GET();
+		const result=await response.json();
+
+		expect(response.status).toBe(200);
+		expect(result.activeInvestments).toEqual([expect.objectContaining({
+			id:'investment-live',accountMode:'REAL',amount:'100',status:'ACTIVE',
+			displayTargetPayout:'115',durationDays:10,
+		})]);
+	});
+
 	it('returns truthful empty portfolio data when there are no positions or active investments',async()=>{
 		mocks.accountFindMany.mockResolvedValue([]);
 
@@ -107,5 +132,6 @@ describe('user dashboard overview access and mode separation',()=>{
 		expect(result.portfolioSummary.allocations).toEqual([]);
 		expect(result.positions).toEqual([]);
 		expect(result.openOrders).toEqual([]);
+		expect(result.activeInvestments).toEqual([]);
 	});
 });

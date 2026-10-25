@@ -11,6 +11,7 @@ import HomeMarketTicker from '@/components/HomeMarketTicker';
 import ClientStoryShowcase from '@/components/ClientStoryShowcase';
 import PublicResourceLinks from '@/components/PublicResourceLinks';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
+import HomeFloatingCash from '@/components/HomeFloatingCash';
 import {useLocale} from '@/lib/i18n-context';
 
 const MarketDepthScene=dynamic(()=>import('@/components/MarketDepthScene'),{ssr:false});
@@ -51,6 +52,7 @@ export default function Home(){
 	];
 	return <>
 		<Nav/>
+		<HomeFloatingCash/>
 		<main className="home-root">
 			<section className="home-hero">
 				<div className="home-hero-grid" aria-hidden="true"/>

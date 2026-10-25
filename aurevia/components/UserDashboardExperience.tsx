@@ -8,6 +8,7 @@ import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
 import LivePriceChart from '@/components/LivePriceChart';
+import {InvestmentProgressCard} from '@/components/InvestmentProgressCard';
 import {DEFAULT_WATCHLIST,MARKET_ASSETS,type MarketCandle,type MarketQuote,type TimeframeId} from '@/lib/live-market';
 import {formatUsd} from '@/lib/currency-format';
 
@@ -22,6 +23,7 @@ type Overview={
 	positions:Array<{id:string;side:string;quantity:string;entryPrice:string;currentPrice:string;marketValue:string;openedAt:string;instrument:{symbol:string;name:string}}>;
 	openOrders:Array<{id:string;side:string;type:string;status:string;quantity:string;filledQuantity:string;price:string|null;createdAt:string;instrument:{symbol:string;name:string}}>;
 	opportunities:Array<{id:string;title:string;category:string;description:string;assetSymbol:string|null;minimumAmount:string;maximumAmount:string|null;targetReturnPercent:string|null;durationDays:number;riskLevel:string;requiresApproval:boolean}>;
+	activeInvestments:Array<{id:string;title:string;accountMode:'DEMO'|'REAL';amount:string;status:string;activatedAt:string|null;maturesAt:string|null;durationDays:number;displayTargetPayout:string}>;
 	recentActivity:Array<{id:string;category:string;action:string;timestamp:string;asset:string;amount:string;status:string;source:string;link:string}>;
 	internalMarketInstruments:Array<{assetId:string;instrumentId:string}>;
 	limitations:{balances:string;portfolio:string;realExecution:string};
@@ -206,6 +208,7 @@ export default function UserDashboardExperience(){
 		return assets.slice(0,8);
 	},[marketCategory]);
 	const internalInstrumentId=overview?.internalMarketInstruments.find(item=>item.assetId===selectedSymbol)?.instrumentId;
+	const refreshOverview=useCallback(()=>{void load(false)},[load]);
 
 	if(loading&&!overview)return <><Nav/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
 
@@ -237,6 +240,10 @@ export default function UserDashboardExperience(){
 			<div className="user-dashboard-columns">
 				<div className="user-dashboard-primary">
 					<MarketChartPanel selectedSymbol={selectedSymbol} quotes={quotes} internalInstrumentId={internalInstrumentId}/>
+					{overview.activeInvestments.length>0&&<section className="user-dashboard-panel" aria-labelledby="user-live-investments-heading">
+						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACTIVE {overview.accountMode} MODE</span><h2 id="user-live-investments-heading">Live investments</h2><p>Per-second estimates use your recorded simulated investment terms.</p></div><Link className="user-dashboard-panel-link" href="/investments">Investment activity <ArrowRight size={14}/></Link></header>
+						<div className="investment-live-grid">{overview.activeInvestments.map(investment=><InvestmentProgressCard key={investment.id} investment={investment} onMaturity={refreshOverview}/>)}</div>
+					</section>}
 					<div className="user-dashboard-two-up">
 						<AssetAllocation overview={overview}/>
 						<section className="user-dashboard-panel" aria-labelledby="user-positions-heading">

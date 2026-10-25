@@ -9,6 +9,7 @@ import {getAccountTier} from '@/lib/production-policy';
 import {jsonSafe} from '@/lib/serializers';
 import {MARKET_ASSETS} from '@/lib/live-market';
 import {getInternalInstrumentSymbols} from '@/lib/internal-market-data';
+import {simulatedInvestmentSettlement} from '@/lib/investment-policy';
 
 export const dynamic='force-dynamic';
 
@@ -132,6 +133,17 @@ export async function GET(){
 			})),
 			openOrders:orders,
 			opportunities,
+			activeInvestments:investments.filter(investment=>investment.status===InvestmentStatus.ACTIVE).slice(0,3).map(investment=>({
+				id:investment.id,
+				title:investment.opportunity.title,
+				accountMode:investment.accountMode,
+				amount:investment.amount,
+				status:investment.status,
+				activatedAt:investment.activatedAt,
+				maturesAt:investment.maturesAt,
+				durationDays:investment.durationDays,
+				displayTargetPayout:simulatedInvestmentSettlement(investment.amount,investment.targetReturnPercent,investment.tierBoostPercent??new Prisma.Decimal(0)),
+			})),
 			recentActivity:activity.items.map(({details,...item})=>item),
 			internalMarketInstruments,
 			limitations:{

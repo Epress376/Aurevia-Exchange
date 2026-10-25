@@ -7,6 +7,7 @@ import {balance,ensureSystemAccount,ensureUserLedger,postDoubleEntry,reservedWit
 import {createNotification,notifyActiveAdmins} from '@/lib/notifications';
 import {jsonSafe} from '@/lib/serializers';
 import {configuredTierBoost} from '@/lib/tier-boosts';
+import {simulatedInvestmentSettlement} from '@/lib/investment-policy';
 
 export const dynamic='force-dynamic';
 
@@ -28,7 +29,13 @@ export async function GET(){
   ]);
     const [ledgerBalance,reserved]=await Promise.all([account?balance(db,account.id):new Prisma.Decimal(0),reservedWithdrawalAmount(db,user.id,user.accountMode,'USD')]);
     const availableBalance=Prisma.Decimal.max(new Prisma.Decimal(0),ledgerBalance.minus(reserved));
-    return NextResponse.json(jsonSafe({accountMode:user.accountMode,availableBalance,opportunities,requests}),{headers:{'Cache-Control':'private, no-store'}});
+    const requestsWithDisplayTerms=requests.map(item=>({
+     ...item,
+     displayTargetPayout:item.status===InvestmentStatus.ACTIVE
+      ?simulatedInvestmentSettlement(item.amount,item.targetReturnPercent,item.tierBoostPercent??new Prisma.Decimal(0)).toString()
+      :null,
+    }));
+    return NextResponse.json(jsonSafe({accountMode:user.accountMode,availableBalance,opportunities,requests:requestsWithDisplayTerms}),{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   return NextResponse.json({error:error instanceof Error&&error.message==='UNAUTHORIZED'?'Unauthorized':'Unable to load investments.'},{status:error instanceof Error&&error.message==='UNAUTHORIZED'?401:503,headers:{'Cache-Control':'private, no-store'}});
  }
