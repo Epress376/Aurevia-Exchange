@@ -2441,6 +2441,8 @@ body:has(.admin-shell-chrome) main.account-page{width:calc(100% - 258px);max-wid
 }
 @media(max-width:760px){
 	.admin-topbar{gap:11px}
+	.admin-back-button{width:36px;justify-content:center;padding:0}
+	.admin-back-button span{display:none}
 	.admin-topbar-heading{min-width:105px}
 	.admin-topbar-heading>b{font-size:15px}
 	.admin-global-search{width:auto;min-width:0;flex:1;margin-left:0;padding-inline:8px}
@@ -2455,6 +2457,7 @@ body:has(.admin-shell-chrome) main.account-page{width:calc(100% - 258px);max-wid
 @media(max-width:540px){
 	body:has(.admin-shell-chrome) main,body:has(.admin-shell-chrome) main.account-page{padding:78px 14px 28px}
 	.admin-topbar{min-height:60px;gap:8px;padding-inline:10px}
+	.admin-back-button{width:32px;min-height:32px}
 	.admin-topbar-heading{min-width:78px}
 	.admin-topbar-heading>span{font-size:7px}
 	.admin-topbar-heading>b{font-size:13px}
@@ -2525,3 +2528,15 @@ body:has(.admin-shell-chrome) main.account-page{width:calc(100% - 258px);max-wid
   margin-top:12px;
   max-width:42rem;
 }
+
+.admin-back-button{display:flex;min-height:36px;flex:none;align-items:center;gap:6px;padding:0 10px;border:1px solid rgba(255,255,255,.1);border-radius:5px;background:rgba(255,255,255,.03);color:#c3ccc4;font-size:10px;cursor:pointer}
+.admin-back-button:hover,.admin-back-button:focus-visible{border-color:rgba(212,167,44,.4);background:rgba(212,167,44,.07);color:#f1dda0;outline:none}
+body:has(.admin-shell-chrome) .scene-depth:before,
+body:has(.admin-shell-chrome) .scene-orb,
+body:has(.admin-shell-chrome) .admin-orb{animation:none!important;transform:none!important}
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-panel,
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-metric-card,
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-quick-actions{transform:none!important;animation:none!important}
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-panel:hover,
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-metric-card:hover,
+body:has(.admin-shell-chrome) .admin-dashboard-page .admin-quick-actions:hover{transform:none!important}

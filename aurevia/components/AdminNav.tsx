@@ -1,11 +1,11 @@
 'use client';
 
-import {type FormEvent,useEffect,useState} from 'react';
+import {type FormEvent,useCallback,useEffect,useState} from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
-import {Activity,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
+import {Activity,ArrowLeft,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
 	{title:'Overview',links:[
@@ -65,6 +65,10 @@ export default function AdminNav(){
 		const actual=new URLSearchParams(currentQuery);
 		return pathname===path&&['mode','type'].every(key=>expected.get(key)===actual.get(key))&&([...expected.keys()].length>0||![...actual.keys()].some(key=>key==='mode'||key==='type'));
 	})?.label||'Admin workspace';
+	const goBack=useCallback(()=>{
+		if(window.history.length>1)router.back();
+		else if(pathname!=='/admin')router.push('/admin');
+	},[pathname,router]);
 
 	useEffect(()=>{setOpen(false)},[pathname]);
 	useEffect(()=>{
@@ -73,6 +77,19 @@ export default function AdminNav(){
 		const timer=window.setInterval(update,60_000);
 		return ()=>window.clearInterval(timer);
 	},[]);
+	useEffect(()=>{
+		function handleBackShortcut(event:KeyboardEvent){
+			const target=event.target;
+			const editing=target instanceof HTMLElement&&(target.isContentEditable||target.matches('input,textarea,select,[role="textbox"]'));
+			if(editing)return;
+			if((event.altKey&&event.key==='ArrowLeft')||event.key==='Backspace'){
+				event.preventDefault();
+				goBack();
+			}
+		}
+		window.addEventListener('keydown',handleBackShortcut);
+		return ()=>window.removeEventListener('keydown',handleBackShortcut);
+	},[goBack]);
 
 	function submitSearch(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();
@@ -114,6 +131,7 @@ export default function AdminNav(){
 		</aside>
 		<header className="admin-topbar">
 			<button className="admin-menu-button" type="button" aria-label={open?'Close admin menu':'Open admin menu'} aria-expanded={open} aria-controls="admin-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X size={19}/>:<Menu size={19}/>}</button>
+			<button type="button" className="admin-back-button" onClick={goBack} aria-label="Go back" title="Go back · Alt+Left"><ArrowLeft size={16}/><span>Back</span></button>
 			<div className="admin-topbar-heading"><span>ADMINISTRATION</span><b>{title}</b></div>
 			<form className="admin-global-search" role="search" onSubmit={submitSearch}>
 				<Search size={16} aria-hidden="true"/>
