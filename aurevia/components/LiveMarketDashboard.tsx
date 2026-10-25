@@ -1,6 +1,7 @@
 'use client';
 
 import {useEffect,useMemo,useState} from 'react';
+import {useSearchParams} from 'next/navigation';
 import {QueryClient,QueryClientProvider,useQuery} from '@tanstack/react-query';
 import {useSession} from 'next-auth/react';
 import {io,type Socket} from 'socket.io-client';
@@ -24,6 +25,8 @@ export default function LiveMarketDashboard(){
 
 function LiveMarketDashboardContent(){
   const {data:session,status:sessionStatus}=useSession();
+  const searchParams=useSearchParams();
+  const requestedSymbol=searchParams.get('symbol')?.toUpperCase()||'';
   const watchlists=useMarketWatchlists(state=>state.watchlists);
   const activeWatchlistId=useMarketWatchlists(state=>state.activeWatchlistId);
   const selectedSymbol=useMarketWatchlists(state=>state.selectedSymbol);
@@ -73,6 +76,7 @@ function LiveMarketDashboardContent(){
   const error=historyQuery.error instanceof Error?historyQuery.error.message:selectedQuery.error instanceof Error?selectedQuery.error.message:'';
 
   useEffect(()=>{if(!getMarketAsset(selectedSymbol))selectSymbol('DJI')},[selectedSymbol,selectSymbol]);
+  useEffect(()=>{if(getMarketAsset(requestedSymbol))selectSymbol(requestedSymbol)},[requestedSymbol,selectSymbol]);
   useEffect(()=>{
     const socket:Socket = io({path:'/socket.io',transports:['websocket'],autoConnect:true,reconnection:true,reconnectionDelay:700});
     const onConnect=()=>setStreamStatus('connected');

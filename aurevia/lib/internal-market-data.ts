@@ -13,6 +13,10 @@ const instrumentSymbols:Record<string,string[]>={
 	NVDA:['NVDA'],AMZN:['AMZN'],GOOGL:['GOOGL'],TSLA:['TSLA'],
 };
 
+export function getInternalInstrumentSymbols(assetId:string){
+	return instrumentSymbols[assetId.toUpperCase()]||[];
+}
+
 const timeframeDays:Record<TimeframeId,number>={'1d':1,'5d':5,'1m':30,'3m':90,'ytd':365,'1y':365,'3y':1095,'5y':1825,'max':3650};
 const timeframeIntervals:Record<TimeframeId,string>={'1d':'30m','5d':'2h','1m':'12h','3m':'1d','ytd':'1d','1y':'1d','3y':'1w','5y':'1w','max':'1mo'};
 
