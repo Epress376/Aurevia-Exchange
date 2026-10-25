@@ -130,7 +130,7 @@ export default function AdminNav(){
 				<span className="admin-brand-mark"><Image src="/aurevia-logo.png" alt="" width={34} height={34}/></span>
 				<span className="admin-brand-type"><b>AUREVIA</b><small>INVEST · ADMIN</small></span>
 			</Link>
-			<nav id="admin-navigation" aria-label="Administrator navigation" className="admin-command-links">
+			<nav id="admin-navigation" aria-label="Administrator navigation" className="admin-sidebar-navigation">
 				{status==='loading'?<p className="admin-nav-loading" role="status">Restoring administrator session…</p>:isAdmin?<div className="admin-command-groups">{groups.map(group=><section className="admin-command-group" key={group.title} aria-label={group.title}>
 					<h2>{group.title}</h2>
 					{group.links.map(({href,label,icon:Icon})=>{
