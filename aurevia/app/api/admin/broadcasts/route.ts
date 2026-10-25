@@ -1,10 +1,11 @@
 import {NextResponse} from 'next/server';
-import {BroadcastStatus,Prisma} from '@prisma/client';
+import {BroadcastStatus,NotificationType,Prisma} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {requireAdmin} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {jsonSafe} from '@/lib/serializers';
 import {BroadcastAction,nextBroadcastStatus,validateBroadcastUrl} from '@/lib/broadcast-policy';
+import {notifyActiveUsers} from '@/lib/notifications';
 
 export const dynamic='force-dynamic';
 
@@ -87,6 +88,15 @@ export async function PATCH(request:Request){
 			if(changed.count!==1)throw new Error('BROADCAST_STATE_CHANGED');
 			const updated=await tx.broadcast.findUniqueOrThrow({where:{id:current.id}});
 			await tx.auditLog.create({data:{actorId:admin.id,action:`BROADCAST_${status}`,entity:'BROADCAST',entityId:current.id,metadata:{oldStatus:current.status,newStatus:status,title:current.title,hasStreamSource:Boolean(current.streamUrl)}}});
+			if(action==='publish')await notifyActiveUsers(tx,{
+				type:NotificationType.ANNOUNCEMENT,
+				title:'New Aurevia announcement',
+				message:`${updated.title}: ${updated.description}`,
+				dedupeKey:`broadcast:${updated.id}:published`,
+				relatedEntity:'BROADCAST',
+				relatedId:updated.id,
+				actionUrl:'/broadcasts',
+			});
 			return updated;
 		},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
 		return NextResponse.json(jsonSafe(result),{headers:{'Cache-Control':'private, no-store'}});

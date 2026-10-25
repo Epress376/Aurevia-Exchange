@@ -8,6 +8,7 @@ import Image from 'next/image';
 import {Eye,EyeOff,LoaderCircle,ShieldCheck} from 'lucide-react';
 import Nav from '@/components/Nav';
 import {useLocale} from '@/lib/i18n-context';
+import {safeInternalPath} from '@/lib/navigation';
 
 export default function Login(){
 	const {translate}=useLocale();
@@ -18,6 +19,7 @@ export default function Login(){
 	const [verified,setVerified]=useState(false);
 	const [registered,setRegistered]=useState(false);
 	const [replaceSession,setReplaceSession]=useState(false);
+	const [callbackUrl,setCallbackUrl]=useState('/dashboard');
 	const [busy,setBusy]=useState(false);
 	const router=useRouter();
 	const {update}=useSession();
@@ -26,13 +28,14 @@ export default function Login(){
 		const query=new URLSearchParams(window.location.search);
 		setVerified(query.get('verified')==='1');
 		setRegistered(query.get('registered')==='1');
+		setCallbackUrl(safeInternalPath(query.get('callbackUrl')||'/dashboard'));
 	},[]);
 
 	async function submit(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();if(busy)return;setBusy(true);setError('');
 		try{
 			const result=await signIn('credentials',{username:identifier,email:identifier,password,replaceSession:String(replaceSession),redirect:false});
-			if(result?.ok){await update();router.replace('/dashboard');router.refresh();}
+			if(result?.ok){await update();router.replace(callbackUrl);router.refresh();}
 			else setError(translate('signInFailed'));
 		}catch{setError(translate('unableAuth'))}
 		finally{setBusy(false);}

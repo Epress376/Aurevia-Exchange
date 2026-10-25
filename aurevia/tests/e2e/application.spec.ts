@@ -2255,6 +2255,19 @@ test('profile settings persist for the owner and remain inaccessible to signed-o
 	}finally{await signedOutContext.close();}
 });
 
+test('browser notification settings explain denied permission without prompting again',async({page})=>{
+	const settingsUser=await createIsolatedDemoUser('push-denied');
+	await page.context().grantPermissions([],{origin:'http://127.0.0.1:4310'});
+	await loginAs(page,settingsUser.email,settingsUser.password);
+	await page.goto('/settings#preferences');
+	await waitForStartup(page);
+	await expect(page.getByRole('heading',{name:'Browser notifications'})).toBeVisible();
+	await expect(page.getByText('Permission: Blocked')).toBeVisible();
+	await expect(page.getByText(/Aurevia cannot prompt again/)).toBeVisible();
+	await expect(page.getByRole('button',{name:'Enable notifications'})).toBeDisabled();
+	await expectNoHorizontalOverflow(page);
+});
+
 test('account deletion reauthenticates, preserves ledger history, and permits registration again',async({page})=>{
 	const userId=fixture('DELETE_USER_ID');
 	const email=fixture('DELETE_EMAIL');

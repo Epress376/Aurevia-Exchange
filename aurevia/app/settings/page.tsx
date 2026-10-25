@@ -5,6 +5,7 @@ import {signOut,useSession} from 'next-auth/react';
 import Image from 'next/image';
 import {Bell,Check,KeyRound,ShieldCheck,Trash2,UserRound} from 'lucide-react';
 import Nav from '@/components/Nav';
+import BrowserPushSettings from '@/components/BrowserPushSettings';
 import {useLocale} from '@/lib/i18n-context';
 
 type Profile={id:string;email:string;name:string|null;firstName:string;lastName:string;phone:string|null;phoneVerified:boolean;country:string|null;address:string|null;hasAvatar:boolean;twoFactorEnabled:boolean;role:'USER'|'ADMIN';status:string;kycStatus:string;profileLocked:boolean;profileLockAt:string|null};
@@ -138,7 +139,7 @@ export default function Settings(){
 						</form>}
 					</section>
 				</section>}
-				{section==='preferences'&&<section className="account-panel card p-5" role="tabpanel"><div className="account-panel-title"><div><h2>{translate('preferences')}</h2><p className="account-panel-subtitle">{translate('preferencesSubtitle')}</p></div><Bell size={18} className="gold" aria-hidden="true"/></div><div className="account-empty">{translate('notificationDelivery')}</div></section>}
+				{section==='preferences'&&<BrowserPushSettings/>}
 			</div>
 		</div>
 	</main></>;

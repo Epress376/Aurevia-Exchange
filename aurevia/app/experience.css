@@ -3121,3 +3121,21 @@ a,button,input,select,textarea,summary{transition:color .16s ease,border-color .
 	.receipt-brand-header{border-radius:0}
 	.no-print{display:none!important}
 }
+
+.browser-push-settings{min-width:0}
+.browser-push-status,.browser-push-actions{display:flex;flex-wrap:wrap;align-items:center;gap:9px;margin-top:14px}
+.browser-push-status .status-pill{display:inline-flex;align-items:center;gap:5px}
+.browser-push-actions .btn{display:inline-flex;min-height:42px;align-items:center;justify-content:center;gap:7px}
+.browser-push-preferences{display:grid;gap:0;margin-top:20px;padding:0;border:0;border-top:1px solid rgba(255,255,255,.1)}
+.browser-push-preferences legend{padding:14px 0 8px;color:#e4e9e2;font-size:13px;font-weight:650}
+.browser-push-preferences label{display:flex;align-items:flex-start;gap:11px;padding:12px 2px;border-bottom:1px solid rgba(255,255,255,.075);cursor:pointer}
+.browser-push-preferences input{width:17px;height:17px;flex:none;margin:2px 0 0;accent-color:#d9bd68}
+.browser-push-preferences label span{display:grid;gap:4px}
+.browser-push-preferences label b{color:#e6eae4;font-size:12px}
+.browser-push-preferences label small{color:#aab2aa;font-size:11px;line-height:1.5}
+.browser-push-preferences :focus-visible,.browser-push-actions .btn:focus-visible{outline:2px solid #d9bd68;outline-offset:3px}
+.browser-push-success{display:flex;align-items:center;gap:8px;color:#b4d8bb}
+@media(max-width:520px){
+	.browser-push-actions{display:grid;grid-template-columns:1fr}
+	.browser-push-actions .btn{width:100%}
+}

@@ -144,6 +144,22 @@ enum NotificationType {
   SYSTEM
   TAX
   CARD
+  ANNOUNCEMENT
+}
+
+enum PushOutboxStatus {
+  PENDING
+  PROCESSING
+  EXPANDED
+  SKIPPED
+  COMPLETED
+}
+
+enum PushDeliveryStatus {
+  PENDING
+  PROCESSING
+  SENT
+  FAILED
 }
 
 enum VerificationChannel {
@@ -241,6 +257,9 @@ model User {
   supportConversations             SupportConversation[]
   supportMessages                  SupportMessage[]
   notifications                    Notification[]
+  pushPreference                   PushPreference?
+  pushSubscriptions                PushSubscription[]
+  pushOutbox                       PushOutbox[]
   verificationCode                 VerificationCode?
   passwordResetTokens              PasswordResetToken[]
   clientStories                    ClientStory[]
@@ -304,9 +323,74 @@ model Notification {
   actionUrl     String?
   dedupeKey     String           @unique
   createdAt     DateTime         @default(now())
+  pushOutbox    PushOutbox?
 
   @@index([userId, isRead, createdAt])
   @@index([userId, createdAt])
+}
+
+model PushPreference {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountActivity   Boolean  @default(true)
+  investmentUpdates Boolean  @default(true)
+  announcements     Boolean  @default(false)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model PushSubscription {
+  id           String         @id @default(cuid())
+  userId       String
+  user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpointHash String         @unique
+  ciphertext   String
+  iv           String
+  authTag      String
+  expiresAt    DateTime?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  deliveries   PushDelivery[]
+
+  @@index([userId, updatedAt])
+}
+
+model PushOutbox {
+  id             String           @id @default(cuid())
+  notificationId String           @unique
+  notification   Notification     @relation(fields: [notificationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         PushOutboxStatus @default(PENDING)
+  attempts       Int              @default(0)
+  nextAttemptAt  DateTime         @default(now())
+  lockedAt       DateTime?
+  completedAt    DateTime?
+  lastErrorCode  String?
+  createdAt      DateTime         @default(now())
+  deliveries     PushDelivery[]
+
+  @@index([status, nextAttemptAt, createdAt])
+}
+
+model PushDelivery {
+  id             String             @id @default(cuid())
+  outboxId       String
+  outbox         PushOutbox         @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+  subscriptionId String?
+  subscription   PushSubscription?  @relation(fields: [subscriptionId], references: [id], onDelete: SetNull)
+  status         PushDeliveryStatus @default(PENDING)
+  attempts       Int                @default(0)
+  nextAttemptAt  DateTime           @default(now())
+  lockedAt       DateTime?
+  deliveredAt    DateTime?
+  lastErrorCode  String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+
+  @@unique([outboxId, subscriptionId])
+  @@index([status, nextAttemptAt, createdAt])
 }
 
 model VerificationCode {
