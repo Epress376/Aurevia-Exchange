@@ -83,6 +83,11 @@ enum FundingType {
   WITHDRAWAL
 }
 
+enum WithdrawalDestinationType {
+  BANK_TRANSFER
+  CRYPTOCURRENCY
+}
+
 enum EntryType {
   DEBIT
   CREDIT
@@ -196,37 +201,38 @@ enum BroadcastStatus {
 }
 
 model User {
-  id                               String                  @id @default(cuid())
-  email                            String                  @unique
+  id                               String                            @id @default(cuid())
+  email                            String                            @unique
   passwordHash                     String
   name                             String?
   phone                            String?
-  phoneVerified                    Boolean                 @default(false)
+  phoneVerified                    Boolean                           @default(false)
   phoneVerifiedAt                  DateTime?
-  activeSessionId                  String?                 @unique
+  activeSessionId                  String?                           @unique
   activeSessionUpdatedAt           DateTime?
   country                          String?
-  role                             Role                    @default(USER)
-  accountMode                      AccountMode             @default(DEMO)
-  preferredDisplayCurrency         String                  @default("USD")
-  approvedTier                     Int                     @default(1)
-  status                           UserStatus              @default(ACTIVE)
-  twoFactorEnabled                 Boolean                 @default(false)
+  role                             Role                              @default(USER)
+  accountMode                      AccountMode                       @default(DEMO)
+  preferredDisplayCurrency         String                            @default("USD")
+  approvedTier                     Int                               @default(1)
+  status                           UserStatus                        @default(ACTIVE)
+  twoFactorEnabled                 Boolean                           @default(false)
   termsAcceptedAt                  DateTime?
-  kycStatus                        KycStatus               @default(PENDING)
+  kycStatus                        KycStatus                         @default(PENDING)
   kycDocuments                     KycDocument[]
   verifiedAt                       DateTime?
   verifiedChannel                  VerificationChannel?
-  requiresRegistrationVerification Boolean                 @default(false)
-  depositEnabled                   Boolean                 @default(true)
-  withdrawalEnabled                Boolean                 @default(true)
-  accountRestricted                Boolean                 @default(false)
+  requiresRegistrationVerification Boolean                           @default(false)
+  depositEnabled                   Boolean                           @default(true)
+  withdrawalEnabled                Boolean                           @default(true)
+  accountRestricted                Boolean                           @default(false)
   restrictionReason                String?
-  createdAt                        DateTime                @default(now())
-  updatedAt                        DateTime                @updatedAt
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
   orders                           Order[]
   positions                        Position[]
   funding                          FundingRequest[]
+  withdrawalDestinations           WithdrawalDestination[]
   ledgerAccounts                   LedgerAccount[]
   auditLogs                        AuditLog[]
   hiddenAdminDashboardActivities   AdminDashboardActivityDismissal[] @relation("AdminDashboardActivityHiddenBy")
@@ -240,25 +246,25 @@ model User {
   clientStories                    ClientStory[]
   investments                      InvestmentRequest[]
   portfolioSnapshots               PortfolioSnapshot[]
-  createdInvestmentOpportunities   InvestmentOpportunity[] @relation("InvestmentOpportunityCreator")
-  createdBroadcasts                Broadcast[]             @relation("BroadcastCreator")
-  deletedWaitlistEntries           WaitlistEntry[]         @relation("WaitlistEntryDeletedBy")
-  deletedClientStories             ClientStory[]           @relation("ClientStoryDeletedBy")
-  deletedBroadcasts                Broadcast[]             @relation("BroadcastDeletedBy")
+  createdInvestmentOpportunities   InvestmentOpportunity[]           @relation("InvestmentOpportunityCreator")
+  createdBroadcasts                Broadcast[]                       @relation("BroadcastCreator")
+  deletedWaitlistEntries           WaitlistEntry[]                   @relation("WaitlistEntryDeletedBy")
+  deletedClientStories             ClientStory[]                     @relation("ClientStoryDeletedBy")
+  deletedBroadcasts                Broadcast[]                       @relation("BroadcastDeletedBy")
   waitlistEntry                    WaitlistEntry?
-  tierRequests                     TierUpgradeRequest[]    @relation("TierRequestUser")
+  tierRequests                     TierUpgradeRequest[]              @relation("TierRequestUser")
   taxServiceAccess                 TaxServiceAccess?
-  taxAccessGrants                  TaxServiceAccess[]      @relation("TaxAccessGranter")
+  taxAccessGrants                  TaxServiceAccess[]                @relation("TaxAccessGranter")
   taxCases                         TaxCase[]
-  taxCaseAssignments               TaxCase[]               @relation("TaxCaseAssignee")
+  taxCaseAssignments               TaxCase[]                         @relation("TaxCaseAssignee")
   taxCaseMessages                  TaxCaseMessage[]
   cardApplications                 CardApplication[]
   simulatedCards                   SimulatedCard[]
-  cardCatalogUpdates               CardCatalogItem[] @relation("CardCatalogUpdater")
-  cardApplicationReviews           CardApplication[] @relation("CardApplicationReviewer")
+  cardCatalogUpdates               CardCatalogItem[]                 @relation("CardCatalogUpdater")
+  cardApplicationReviews           CardApplication[]                 @relation("CardApplicationReviewer")
 
-  tierReviews                      TierUpgradeRequest[]    @relation("TierRequestReviewer")
-  avatarKey                        String?
+  tierReviews TierUpgradeRequest[] @relation("TierRequestReviewer")
+  avatarKey   String?
 }
 
 model WaitlistEntry {
@@ -519,42 +525,84 @@ model LedgerEntry {
 }
 
 model FundingRequest {
-  id                   String                @id @default(cuid())
-  userId               String
-  user                 User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type                 FundingType
-  method               String
-  amount               Decimal               @db.Decimal(30, 10)
-  creditedAmount       Decimal?              @db.Decimal(30, 10)
-  creditedCurrency     String?
-  currency             String                @default("USD")
-  status               FundingStatus         @default(PENDING)
-  accountMode          AccountMode           @default(DEMO)
-  paymentMethodId      String?
-  paymentMethod        PaymentMethod?        @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
-  idempotencyKey       String?               @unique
-  transactionReference String?
-  referenceInfo        String?
-  destinationInfo      String?
-  senderInfo           String?
-  beneficiaryInfo      String?
-  network              String?
-  note                 String?
-  adminNote            String?
-  createdAt            DateTime              @default(now())
-  updatedAt            DateTime              @updatedAt
-  reviewedAt           DateTime?
-  verifiedAt           DateTime?
-  settlementReference  String?
-  settledAt            DateTime?
-  receiptKey           String?
-  supportConversations SupportConversation[]
-  clientStory          ClientStory?
+  id                            String                         @id @default(cuid())
+  userId                        String
+  user                          User                           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                          FundingType
+  method                        String
+  amount                        Decimal                        @db.Decimal(30, 10)
+  creditedAmount                Decimal?                       @db.Decimal(30, 10)
+  creditedCurrency              String?
+  currency                      String                         @default("USD")
+  status                        FundingStatus                  @default(PENDING)
+  accountMode                   AccountMode                    @default(DEMO)
+  paymentMethodId               String?
+  paymentMethod                 PaymentMethod?                 @relation(fields: [paymentMethodId], references: [id], onDelete: SetNull)
+  idempotencyKey                String?                        @unique
+  transactionReference          String?
+  referenceInfo                 String?
+  destinationInfo               String?
+  senderInfo                    String?
+  beneficiaryInfo               String?
+  network                       String?
+  note                          String?
+  adminNote                     String?
+  createdAt                     DateTime                       @default(now())
+  updatedAt                     DateTime                       @updatedAt
+  reviewedAt                    DateTime?
+  verifiedAt                    DateTime?
+  settlementReference           String?
+  processingReference           String?
+  processingConfirmedAt         DateTime?
+  withdrawalDestinationId       String?
+  withdrawalDestination         WithdrawalDestination?         @relation(fields: [withdrawalDestinationId], references: [id], onDelete: SetNull)
+  withdrawalDestinationSnapshot WithdrawalDestinationSnapshot?
+  settledAt                     DateTime?
+  receiptKey                    String?
+  supportConversations          SupportConversation[]
+  clientStory                   ClientStory?
 
   @@index([status, createdAt])
   @@index([userId, accountMode, createdAt])
   @@index([type, accountMode, status, createdAt])
   @@index([userId, accountMode, currency, type, status])
+  @@index([withdrawalDestinationId])
+}
+
+model WithdrawalDestination {
+  id              String                    @id @default(cuid())
+  userId          String
+  user            User                      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountMode     AccountMode
+  type            WithdrawalDestinationType
+  nickname        String                    @db.VarChar(80)
+  countryCode     String                    @db.VarChar(2)
+  network         String?                   @db.VarChar(60)
+  asset           String?                   @db.VarChar(12)
+  maskedLabel     String                    @db.VarChar(180)
+  ciphertext      String                    @db.Text
+  iv              String                    @db.VarChar(32)
+  authTag         String                    @db.VarChar(32)
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+  fundingRequests FundingRequest[]
+
+  @@index([userId, accountMode, updatedAt])
+}
+
+model WithdrawalDestinationSnapshot {
+  fundingRequestId String                    @id
+  fundingRequest   FundingRequest            @relation(fields: [fundingRequestId], references: [id], onDelete: Cascade)
+  type             WithdrawalDestinationType
+  nickname         String                    @db.VarChar(80)
+  countryCode      String                    @db.VarChar(2)
+  network          String?                   @db.VarChar(60)
+  asset            String?                   @db.VarChar(12)
+  maskedLabel      String                    @db.VarChar(180)
+  ciphertext       String                    @db.Text
+  iv               String                    @db.VarChar(32)
+  authTag          String                    @db.VarChar(32)
+  createdAt        DateTime                  @default(now())
 }
 
 model PaymentMethod {
@@ -664,29 +712,29 @@ model Broadcast {
 }
 
 model AuditLog {
-  id        String   @id @default(cuid())
-  actorId   String?
-  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
-  action    String
-  entity    String
-  entityId  String?
-  metadata  Json?
-  createdAt DateTime @default(now())
+  id                 String                           @id @default(cuid())
+  actorId            String?
+  actor              User?                            @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action             String
+  entity             String
+  entityId           String?
+  metadata           Json?
+  createdAt          DateTime                         @default(now())
   dashboardDismissal AdminDashboardActivityDismissal?
 
   @@index([createdAt])
 }
 
 model AdminDashboardActivityDismissal {
-  id          String   @id @default(cuid())
-  auditLogId  String   @unique
-  auditLog    AuditLog @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
-  hiddenById  String?
-  hiddenBy    User?    @relation("AdminDashboardActivityHiddenBy", fields: [hiddenById], references: [id], onDelete: SetNull)
+  id           String    @id @default(cuid())
+  auditLogId   String    @unique
+  auditLog     AuditLog  @relation(fields: [auditLogId], references: [id], onDelete: Cascade)
+  hiddenById   String?
+  hiddenBy     User?     @relation("AdminDashboardActivityHiddenBy", fields: [hiddenById], references: [id], onDelete: SetNull)
   restoredById String?
-  restoredBy  User?    @relation("AdminDashboardActivityRestoredBy", fields: [restoredById], references: [id], onDelete: SetNull)
-  hiddenAt    DateTime @default(now())
-  restoredAt  DateTime?
+  restoredBy   User?     @relation("AdminDashboardActivityRestoredBy", fields: [restoredById], references: [id], onDelete: SetNull)
+  hiddenAt     DateTime  @default(now())
+  restoredAt   DateTime?
 
   @@index([restoredAt, hiddenAt])
 }
@@ -819,45 +867,44 @@ enum NewsFeedItemStatus {
   DELETED_REMOTE
 }
 
-
 model NewsFeedSource {
-  id                 String               @id @default(cuid())
-  key                String               @unique
-  displayName        String
-  providerType       NewsFeedProviderType
-  category           NewsFeedCategory     @default(ECONOMIC_NEWS)
-  feedUrl            String?
-  enabled            Boolean              @default(true)
-  pollIntervalMinutes Int                 @default(15)
-  lastSyncedAt       DateTime?
-  lastSuccessAt      DateTime?
-  lastError          String?
-  lastErrorAt        DateTime?
-  configJson         String?
-  createdAt          DateTime             @default(now())
-  updatedAt          DateTime             @updatedAt
-  items              NewsFeedItem[]
+  id                  String               @id @default(cuid())
+  key                 String               @unique
+  displayName         String
+  providerType        NewsFeedProviderType
+  category            NewsFeedCategory     @default(ECONOMIC_NEWS)
+  feedUrl             String?
+  enabled             Boolean              @default(true)
+  pollIntervalMinutes Int                  @default(15)
+  lastSyncedAt        DateTime?
+  lastSuccessAt       DateTime?
+  lastError           String?
+  lastErrorAt         DateTime?
+  configJson          String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  items               NewsFeedItem[]
 
   @@index([enabled, providerType])
 }
 
 model NewsFeedItem {
-  id              String             @id @default(cuid())
-  sourceId        String
-  source          NewsFeedSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
-  externalId      String
-  canonicalUrl    String
-  title           String
-  summary         String?
-  author          String?
-  publisher       String?
-  category        NewsFeedCategory   @default(ECONOMIC_NEWS)
-  contentType     String             @default("article")
-  publishedAt     DateTime?
-  thumbnailUrl    String?
-  status          NewsFeedItemStatus @default(ACTIVE)
-  importedAt      DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
+  id           String             @id @default(cuid())
+  sourceId     String
+  source       NewsFeedSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  externalId   String
+  canonicalUrl String
+  title        String
+  summary      String?
+  author       String?
+  publisher    String?
+  category     NewsFeedCategory   @default(ECONOMIC_NEWS)
+  contentType  String             @default("article")
+  publishedAt  DateTime?
+  thumbnailUrl String?
+  status       NewsFeedItemStatus @default(ACTIVE)
+  importedAt   DateTime           @default(now())
+  updatedAt    DateTime           @updatedAt
 
   @@unique([sourceId, externalId])
   @@unique([sourceId, canonicalUrl])
@@ -911,16 +958,16 @@ model TaxModuleSettings {
 }
 
 model TaxServiceAccess {
-  id              String   @id @default(cuid())
+  id              String    @id @default(cuid())
   userId          String
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  enabled         Boolean  @default(true)
-  allowedServices String   @default("[]")
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  enabled         Boolean   @default(true)
+  allowedServices String    @default("[]")
   grantedById     String?
-  grantedBy       User?    @relation("TaxAccessGranter", fields: [grantedById], references: [id], onDelete: SetNull)
+  grantedBy       User?     @relation("TaxAccessGranter", fields: [grantedById], references: [id], onDelete: SetNull)
   note            String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
   revokedAt       DateTime?
 
   @@unique([userId])
@@ -928,31 +975,31 @@ model TaxServiceAccess {
 }
 
 model TaxCase {
-  id                    String         @id @default(cuid())
-  reference             String         @unique
-  userId                String
-  user                  User           @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status                TaxCaseStatus  @default(DRAFT)
-  serviceType           TaxServiceType
-  taxYear               Int
-  returnKind            String         @default("ORIGINAL")
-  filingDeadline        DateTime?
-  reason                String?
-  priorReturnFiled      Boolean?
-  receivedIrsNotice     Boolean?
-  specialCircumstances  String?
-  intakeJson            String         @default("{}")
-  acknowledgmentAt      DateTime?
-  acknowledgmentText    String?
-  assigneeId            String?
-  assignee              User?          @relation("TaxCaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
-  submittedAt           DateTime?
-  closedAt              DateTime?
-  createdAt             DateTime       @default(now())
-  updatedAt             DateTime       @updatedAt
-  documents             TaxCaseDocument[]
-  messages              TaxCaseMessage[]
-  statusHistory         TaxCaseStatusEvent[]
+  id                   String               @id @default(cuid())
+  reference            String               @unique
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status               TaxCaseStatus        @default(DRAFT)
+  serviceType          TaxServiceType
+  taxYear              Int
+  returnKind           String               @default("ORIGINAL")
+  filingDeadline       DateTime?
+  reason               String?
+  priorReturnFiled     Boolean?
+  receivedIrsNotice    Boolean?
+  specialCircumstances String?
+  intakeJson           String               @default("{}")
+  acknowledgmentAt     DateTime?
+  acknowledgmentText   String?
+  assigneeId           String?
+  assignee             User?                @relation("TaxCaseAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  submittedAt          DateTime?
+  closedAt             DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  documents            TaxCaseDocument[]
+  messages             TaxCaseMessage[]
+  statusHistory        TaxCaseStatusEvent[]
 
   @@index([userId, status, updatedAt])
   @@index([status, submittedAt])
@@ -960,19 +1007,19 @@ model TaxCase {
 }
 
 model TaxCaseDocument {
-  id           String              @id @default(cuid())
-  caseId       String
-  case         TaxCase             @relation(fields: [caseId], references: [id], onDelete: Cascade)
-  userId       String
-  category     TaxDocumentCategory @default(OTHER)
-  description  String?
-  taxYear      Int?
-  filename     String
-  mimeType     String
-  size         Int
-  storageKey   String              @unique
-  uploadedAt   DateTime            @default(now())
-  deletedAt    DateTime?
+  id          String              @id @default(cuid())
+  caseId      String
+  case        TaxCase             @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  userId      String
+  category    TaxDocumentCategory @default(OTHER)
+  description String?
+  taxYear     Int?
+  filename    String
+  mimeType    String
+  size        Int
+  storageKey  String              @unique
+  uploadedAt  DateTime            @default(now())
+  deletedAt   DateTime?
 
   @@index([caseId, uploadedAt])
   @@index([userId, uploadedAt])
@@ -992,14 +1039,14 @@ model TaxCaseMessage {
 }
 
 model TaxCaseStatusEvent {
-  id         String        @id @default(cuid())
+  id         String         @id @default(cuid())
   caseId     String
-  case       TaxCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  case       TaxCase        @relation(fields: [caseId], references: [id], onDelete: Cascade)
   fromStatus TaxCaseStatus?
   toStatus   TaxCaseStatus
   actorId    String?
   reason     String?
-  createdAt  DateTime      @default(now())
+  createdAt  DateTime       @default(now())
 
   @@index([caseId, createdAt])
 }
@@ -1028,20 +1075,20 @@ enum CardDesignTier {
 }
 
 model CardCatalogItem {
-  id              String         @id @default(cuid())
-  key             String         @unique
-  designTier      CardDesignTier
-  displayName     String
-  description     String?
-  orderPrice      Decimal        @db.Decimal(30, 10)
-  currency        String         @default("USD")
-  enabled         Boolean        @default(true)
-  allowMultiple   Boolean        @default(false)
-  updatedById     String?
-  updatedBy       User?          @relation("CardCatalogUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  applications    CardApplication[]
+  id            String            @id @default(cuid())
+  key           String            @unique
+  designTier    CardDesignTier
+  displayName   String
+  description   String?
+  orderPrice    Decimal           @db.Decimal(30, 10)
+  currency      String            @default("USD")
+  enabled       Boolean           @default(true)
+  allowMultiple Boolean           @default(false)
+  updatedById   String?
+  updatedBy     User?             @relation("CardCatalogUpdater", fields: [updatedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+  applications  CardApplication[]
 
   @@index([enabled, designTier])
 }

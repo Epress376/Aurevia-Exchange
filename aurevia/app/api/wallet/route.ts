@@ -12,6 +12,8 @@ import {validateWithdrawal} from '@/lib/production-policy';
 import {FundingEvidenceError,maxFundingEvidenceBytes,validateFundingEvidence} from '@/lib/funding-evidence';
 import {createPrivateObjectKey,deletePrivateObject,PrivateStorageError,uploadPrivateObject} from '@/lib/private-storage';
 import {getRealWithdrawableBalance} from '@/lib/real-withdrawals';
+import {decryptWithdrawalDestination} from '@/lib/withdrawal-destinations';
+import {rateLimit} from '@/lib/rate-limit';
 
 const schema=z.object({
 	type:z.nativeEnum(FundingType),
@@ -25,6 +27,8 @@ const schema=z.object({
 	beneficiaryInfo:z.string().trim().max(300).optional(),
 	network:z.string().trim().max(80).optional(),
 	note:z.string().trim().max(500).optional(),
+	withdrawalDestinationId:z.string().min(1).max(64).optional(),
+	destinationConfirmed:z.literal(true).optional(),
 });
 
 const reservingStatuses=[FundingStatus.PENDING,FundingStatus.PENDING_REVIEW,FundingStatus.APPROVED,FundingStatus.PROCESSING];
@@ -37,7 +41,7 @@ export async function GET(){
 		await ensureUserLedger(db,user.id,currentUser.accountMode,'USD');
 		const [accounts,transactions]=await Promise.all([
 			db.ledgerAccount.findMany({where:{userId:user.id,accountMode:currentUser.accountMode},orderBy:{currency:'asc'}}),
-			db.fundingRequest.findMany({where:{userId:user.id,accountMode:currentUser.accountMode},orderBy:{createdAt:'desc'},take:100,include:{paymentMethod:{select:{id:true,name:true}},user:{select:{name:true,email:true}}}}),
+			db.fundingRequest.findMany({where:{userId:user.id,accountMode:currentUser.accountMode},orderBy:{createdAt:'desc'},take:100,include:{paymentMethod:{select:{id:true,name:true}},user:{select:{name:true,email:true}},withdrawalDestination:{select:{nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}},withdrawalDestinationSnapshot:{select:{nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}}}}),
 		]);
 		const balances=await Promise.all(accounts.map(async account=>({currency:account.currency,balance:await balance(db,account.id)})));
 		const usdBalance=balances.find(item=>item.currency==='USD')?.balance??null;
@@ -61,7 +65,7 @@ export async function GET(){
 			const metadata=approval.metadata&&typeof approval.metadata==='object'&&!Array.isArray(approval.metadata)?approval.metadata as Record<string,unknown>:{};
 			approvalByRequest.set(approval.entityId,{reviewedAt:approval.createdAt,reviewedBy:approval.actor,previousBalance:typeof metadata.previousBalance==='string'?metadata.previousBalance:null,resultingBalance:typeof metadata.resultingBalance==='string'?metadata.resultingBalance:null});
 		}
-		const safeTransactions=transactions.map(({receiptKey,...transaction})=>({...transaction,hasReceipt:!!receiptKey,...(approvalByRequest.get(transaction.id)||{})}));
+		const safeTransactions=transactions.map(({receiptKey,withdrawalDestinationSnapshot,...transaction})=>({...transaction,withdrawalDestination:withdrawalDestinationSnapshot||transaction.withdrawalDestination,hasReceipt:!!receiptKey,...(approvalByRequest.get(transaction.id)||{})}));
 		return NextResponse.json(jsonSafe({accountMode:currentUser.accountMode,balance:usdBalance,withdrawableBalance,balances,transactions:safeTransactions,adminLedgerReceipts}),{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
@@ -95,8 +99,10 @@ export async function POST(req:Request){
 			body=await req.json();
 		}
 		const parsed=schema.parse(body);
+		if(parsed.type===FundingType.WITHDRAWAL&&(!parsed.withdrawalDestinationId||parsed.destinationConfirmed!==true))return NextResponse.json({error:'Select a saved destination and confirm its details.'},{status:400});
 		const idempotencyKey=req.headers.get('Idempotency-Key');
 		if(!idempotencyKey||idempotencyKey.length>128)return NextResponse.json({error:'A valid idempotency key is required.'},{status:400});
+		if(parsed.type===FundingType.WITHDRAWAL)rateLimit(`real-withdrawal:${user.id}`,5,60_000);
 		if(parsed.type===FundingType.DEPOSIT){
 			if(!currentUser.depositEnabled)throw new Error('DEPOSITS_DISABLED');
 		}
@@ -114,6 +120,12 @@ export async function POST(req:Request){
 			if(!currentUser.withdrawalEnabled)throw new Error('WITHDRAWAL_DISABLED');
 			if(currentUser.accountRestricted)throw new Error('ACCOUNT_RESTRICTED');
 		}
+		const destination=parsed.type===FundingType.WITHDRAWAL?await db.withdrawalDestination.findFirst({
+			where:{id:parsed.withdrawalDestinationId,userId:user.id,accountMode:AccountMode.REAL},
+			select:{id:true,type:true,network:true,asset:true,nickname:true,countryCode:true,maskedLabel:true,ciphertext:true,iv:true,authTag:true},
+		}):null;
+		if(parsed.type===FundingType.WITHDRAWAL&&!destination)throw new Error('WITHDRAWAL_DESTINATION_REQUIRED');
+		if(destination)decryptWithdrawalDestination(destination);
 		const currency='USD';
 		const amount=roundUsdAmount(parsed.amount);
 		if(amount.lte(0))throw new Error('INVALID_AMOUNT');
@@ -125,7 +137,7 @@ export async function POST(req:Request){
 			if(activeUser.accountMode!==currentUser.accountMode)throw new Error('ACCOUNT_MODE_CHANGED');
 			const duplicate=await tx.fundingRequest.findUnique({where:{idempotencyKey}});
 			if(duplicate){
-				if(duplicate.userId!==user.id||duplicate.accountMode!==currentUser.accountMode||duplicate.type!==parsed.type||!duplicate.amount.equals(amount)||duplicate.currency!==currency||duplicate.paymentMethodId!==null||duplicate.transactionReference!==transactionReference)throw new Error('IDEMPOTENCY_KEY_REUSED');
+				if(duplicate.userId!==user.id||duplicate.accountMode!==currentUser.accountMode||duplicate.type!==parsed.type||!duplicate.amount.equals(amount)||duplicate.currency!==currency||duplicate.paymentMethodId!==null||duplicate.transactionReference!==transactionReference||duplicate.withdrawalDestinationId!==(destination?.id||null))throw new Error('IDEMPOTENCY_KEY_REUSED');
 				return {request:duplicate,replay:true};
 			}
 			const fundingUser=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{kycStatus:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}});
@@ -148,7 +160,7 @@ export async function POST(req:Request){
 			const request=await tx.fundingRequest.create({data:{
 				userId:user.id,
 				type:parsed.type,
-				method:`Internal REAL ${parsed.type.toLowerCase()} request`,
+				method:destination?.type==='BANK_TRANSFER'?'Bank transfer':destination?.type==='CRYPTOCURRENCY'?'Cryptocurrency wallet':`Internal REAL ${parsed.type.toLowerCase()} request`,
 				amount,
 				currency,
 				status:FundingStatus.PENDING_REVIEW,
@@ -160,14 +172,20 @@ export async function POST(req:Request){
 				senderInfo:parsed.senderInfo||null,
 				destinationInfo:null,
 				beneficiaryInfo:null,
-				network:null,
+				network:destination?.network||null,
+				withdrawalDestinationId:destination?.id||null,
 				note:parsed.note||null,
 				receiptKey:receiptKey||null,
 			}});
-			await tx.auditLog.create({data:{actorId:user.id,action:'FUNDING_SUBMITTED',entity:'FUNDING',entityId:request.id,metadata:{type:request.type,accountMode:request.accountMode,currency:request.currency,amount:request.amount.toString(),hasEvidence:!!receiptKey,transactionReference,externalEvidenceUserSubmitted:!!receiptKey||!!transactionReference}}});
+			if(destination)await tx.withdrawalDestinationSnapshot.create({data:{
+				fundingRequestId:request.id,type:destination.type,nickname:destination.nickname,countryCode:destination.countryCode,
+				network:destination.network,asset:destination.asset,maskedLabel:destination.maskedLabel,
+				ciphertext:destination.ciphertext,iv:destination.iv,authTag:destination.authTag,
+			}});
+			await tx.auditLog.create({data:{actorId:user.id,action:'FUNDING_SUBMITTED',entity:'FUNDING',entityId:request.id,metadata:{type:request.type,accountMode:request.accountMode,currency:request.currency,amount:request.amount.toString(),hasEvidence:!!receiptKey,transactionReference,withdrawalDestinationId:destination?.id||null,withdrawalMethod:destination?.type||null,externalEvidenceUserSubmitted:!!receiptKey||!!transactionReference}}});
 			if(receiptKey)await tx.auditLog.create({data:{actorId:user.id,action:'PAYMENT_RECEIPT_UPLOADED',entity:'FUNDING',entityId:request.id,metadata:{accountMode:request.accountMode,...evidenceMetadata}}});
 			const notificationType=request.type===FundingType.DEPOSIT?NotificationType.DEPOSIT:NotificationType.WITHDRAWAL;
-			await createNotification(tx,{userId:user.id,type:notificationType,title:`REAL ${request.type.toLowerCase()} request submitted`,message:'Your request is pending administrator review. This is an internal Aurevia ledger request; no external payment or transfer is initiated, and your balance will change only after approval.',dedupeKey:`funding:${request.id}:submitted`,relatedEntity:'FUNDING',relatedId:request.id,actionUrl:`/wallet/transactions/${request.id}`});
+			await createNotification(tx,{userId:user.id,type:notificationType,title:`REAL ${request.type.toLowerCase()} request submitted`,message:request.type===FundingType.WITHDRAWAL?'Your withdrawal request is reserved for administrator review. Approval does not initiate or confirm an external transfer.':'Your request is pending administrator review. This is an internal Aurevia ledger request; no external payment or transfer is initiated.',dedupeKey:`funding:${request.id}:submitted`,relatedEntity:'FUNDING',relatedId:request.id,actionUrl:`/wallet/transactions/${request.id}`});
 			await notifyActiveAdmins(tx,{type:notificationType,title:`New REAL ${request.type.toLowerCase()} request`,message:`A REAL account ${request.type.toLowerCase()} request for ${request.amount.toFixed(2)} USD awaits administrator review. Any attached file or reference is user-submitted information only; no external payment is processed.`,dedupeKey:`funding:${request.id}:admin`,relatedEntity:'FUNDING',relatedId:request.id,actionUrl:'/admin'});
 			return {request,replay:false};
 		},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});
@@ -179,7 +197,8 @@ export async function POST(req:Request){
 			const delivery=await sendSupportEmail(`New internal ${result.request.type.toLowerCase()} request`,[`Request: ${result.request.id}`,`User: ${user.id}`,`Account mode: ${result.request.accountMode}`,`Amount: ${result.request.amount.toString()} ${result.request.currency}`,`Status: ${result.request.status}`].join('\n'));
 			emailDelivery=delivery.sent?'sent':delivery.reason||'failed';
 		}
-		return NextResponse.json({...jsonSafe(safeRequest),hasReceipt:!!storedReceiptKey,emailDelivery},{status:result.replay?200:201});
+		const withdrawalDestination=destination?{id:destination.id,type:destination.type,nickname:destination.nickname,countryCode:destination.countryCode,network:destination.network,asset:destination.asset,maskedLabel:destination.maskedLabel}:null;
+		return NextResponse.json({...jsonSafe(safeRequest),withdrawalDestination,hasReceipt:!!storedReceiptKey,emailDelivery},{status:result.replay?200:201});
 	}catch(error){
 		if(receiptKey&&ownerId)await deletePrivateObject('receipt',ownerId,receiptKey);
 		if(error instanceof ZodError)return NextResponse.json({error:'Funding requests must use USD. Check the request details and try again.'},{status:400});
@@ -188,6 +207,9 @@ export async function POST(req:Request){
 		if(error instanceof Prisma.PrismaClientKnownRequestError&&error.code==='P2002')return NextResponse.json({error:'This submission was already received.'},{status:409});
 		if(error instanceof Error&&error.message==='ACCOUNT_MODE_CHANGED')return NextResponse.json({error:'Your active account mode changed. Refresh and submit the request again.'},{status:409});
 		if(error instanceof Error&&error.message==='WALLET_ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'Wallet account is unavailable.'},{status:403});
+		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Too many withdrawal requests. Try again shortly.'},{status:429});
+		if(error instanceof Error&&error.message==='WITHDRAWAL_DESTINATION_ENCRYPTION_KEY_REQUIRED')return NextResponse.json({error:'Secure destination storage is not configured. Contact Aurevia support.'},{status:503});
+		if(error instanceof Error&&error.message==='WITHDRAWAL_DESTINATION_DECRYPTION_FAILED')return NextResponse.json({error:'The saved destination could not be verified. Contact Aurevia support.'},{status:503});
 		if(error&&typeof error==='object'&&'code'in error&&String(error.code)==='P2034')return NextResponse.json({error:'The account changed while submitting this request. Refresh and try again.'},{status:409});
 		const known=['IDEMPOTENCY_KEY_REUSED','PAYMENT_METHOD_UNAVAILABLE','AMOUNT_OUT_OF_RANGE','PAYMENT_INSTRUCTIONS_UNAVAILABLE','WITHDRAWAL_DESTINATION_REQUIRED','WITHDRAWAL_NETWORK_REQUIRED','INSUFFICIENT_AVAILABLE_BALANCE','DEPOSITS_DISABLED','WITHDRAWAL_DISABLED','ACCOUNT_RESTRICTED','REAL_KYC_REQUIRED','INVALID_AMOUNT','FIRST_TRADE_REQUIRED'];
 		if(error instanceof Error&&known.includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:error.message==='IDEMPOTENCY_KEY_REUSED'?409:error.message==='DEPOSITS_DISABLED'||error.message==='ACCOUNT_RESTRICTED'||error.message==='WITHDRAWAL_DISABLED'||error.message==='REAL_KYC_REQUIRED'||error.message==='FIRST_TRADE_REQUIRED'?403:400});

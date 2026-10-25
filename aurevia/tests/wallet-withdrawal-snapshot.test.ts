@@ -1,0 +1,104 @@
+import {AccountMode,FundingStatus,FundingType,Prisma} from '@prisma/client';
+import {beforeEach,describe,expect,it,vi} from 'vitest';
+
+const mocks=vi.hoisted(()=>({
+	requireUser:vi.fn(),userFindUnique:vi.fn(),destinationFindFirst:vi.fn(),transaction:vi.fn(),
+	ensureUserLedger:vi.fn(),balance:vi.fn(),roundUsdAmount:vi.fn(),getRealWithdrawableBalance:vi.fn(),
+	validateWithdrawal:vi.fn(),decryptWithdrawalDestination:vi.fn(),createNotification:vi.fn(),
+	notifyActiveAdmins:vi.fn(),sendSupportEmail:vi.fn(),rateLimit:vi.fn(),
+}));
+
+vi.mock('@/lib/auth',()=>({requireUser:mocks.requireUser}));
+vi.mock('@/lib/db',()=>({db:{
+	user:{findUnique:mocks.userFindUnique},
+	withdrawalDestination:{findFirst:mocks.destinationFindFirst},
+	$transaction:mocks.transaction,
+}}));
+vi.mock('@/lib/ledger',()=>({balance:mocks.balance,ensureUserLedger:mocks.ensureUserLedger,roundUsdAmount:mocks.roundUsdAmount}));
+vi.mock('@/lib/notifications',()=>({createNotification:mocks.createNotification,notifyActiveAdmins:mocks.notifyActiveAdmins}));
+vi.mock('@/lib/email',()=>({sendSupportEmail:mocks.sendSupportEmail}));
+vi.mock('@/lib/production-policy',()=>({validateWithdrawal:mocks.validateWithdrawal}));
+vi.mock('@/lib/funding-evidence',()=>({FundingEvidenceError:class extends Error{},maxFundingEvidenceBytes:5_000_000,validateFundingEvidence:vi.fn()}));
+vi.mock('@/lib/private-storage',()=>({createPrivateObjectKey:vi.fn(),deletePrivateObject:vi.fn(),PrivateStorageError:class extends Error{},uploadPrivateObject:vi.fn()}));
+vi.mock('@/lib/real-withdrawals',()=>({getRealWithdrawableBalance:mocks.getRealWithdrawableBalance}));
+vi.mock('@/lib/withdrawal-destinations',()=>({decryptWithdrawalDestination:mocks.decryptWithdrawalDestination}));
+vi.mock('@/lib/rate-limit',()=>({rateLimit:mocks.rateLimit}));
+vi.mock('@/lib/serializers',()=>({jsonSafe:(value:unknown)=>value}));
+
+import {POST} from '@/app/api/wallet/route';
+
+const destination={
+	id:'destination-1',userId:'user-1',accountMode:AccountMode.REAL,type:'BANK_TRANSFER',nickname:'Primary checking',
+	countryCode:'US',network:null,asset:null,maskedLabel:'Example Bank · account ending 3400',
+	ciphertext:'opaque-ciphertext',iv:'opaque-iv',authTag:'opaque-auth-tag',
+};
+const key='dc34ab2c-2049-49bd-8a2c-6a88935552de';
+let tx:Record<string,Record<string,ReturnType<typeof vi.fn>>>;
+let storedRequest:Record<string,unknown>|null;
+
+function request(idempotencyKey=key){
+	return new Request('https://aurevia.test/api/wallet',{
+		method:'POST',
+		headers:{'content-type':'application/json','Idempotency-Key':idempotencyKey},
+		body:JSON.stringify({type:FundingType.WITHDRAWAL,amount:25,currency:'USD',withdrawalDestinationId:destination.id,destinationConfirmed:true}),
+	});
+}
+
+beforeEach(()=>{
+	vi.clearAllMocks();
+	storedRequest=null;
+	mocks.requireUser.mockResolvedValue({id:'user-1'});
+	mocks.userFindUnique.mockResolvedValue({accountMode:AccountMode.REAL,status:'ACTIVE',depositEnabled:true,withdrawalEnabled:true,accountRestricted:false});
+	mocks.destinationFindFirst.mockResolvedValue(destination);
+	mocks.ensureUserLedger.mockResolvedValue({id:'user-ledger'});
+	mocks.balance.mockResolvedValue(new Prisma.Decimal('100'));
+	mocks.roundUsdAmount.mockImplementation((value:number|string)=>new Prisma.Decimal(value));
+	mocks.getRealWithdrawableBalance.mockResolvedValue(new Prisma.Decimal('100'));
+	mocks.validateWithdrawal.mockReturnValue(undefined);
+	mocks.decryptWithdrawalDestination.mockReturnValue({type:'BANK_TRANSFER',nickname:'Primary checking'});
+	mocks.createNotification.mockResolvedValue(undefined);
+	mocks.notifyActiveAdmins.mockResolvedValue(undefined);
+	mocks.sendSupportEmail.mockResolvedValue({sent:false,reason:'not-configured'});
+	tx={
+		user:{
+			findUnique:vi.fn().mockResolvedValue({accountMode:AccountMode.REAL,status:'ACTIVE'}),
+			findUniqueOrThrow:vi.fn().mockResolvedValue({kycStatus:'APPROVED',depositEnabled:true,withdrawalEnabled:true,accountRestricted:false,kyc:{submittedAt:new Date()},kycDocuments:[{id:'approved-id'}]}),
+		},
+		fundingRequest:{
+			findUnique:vi.fn(async()=>null),
+			aggregate:vi.fn().mockResolvedValue({_sum:{amount:new Prisma.Decimal(0)}}),
+			create:vi.fn(async({data}:{data:Record<string,unknown>})=>{
+				storedRequest={id:'withdrawal-1',...data,status:FundingStatus.PENDING_REVIEW,createdAt:new Date(),updatedAt:new Date()};
+				return storedRequest;
+			}),
+		},
+		withdrawalDestinationSnapshot:{create:vi.fn().mockResolvedValue({})},
+		auditLog:{create:vi.fn().mockResolvedValue({})},
+	};
+	mocks.transaction.mockImplementation(async(callback:(value:unknown)=>Promise<unknown>)=>callback(tx));
+});
+
+describe('wallet withdrawal destination snapshot',()=>{
+	it('stores encrypted immutable destination details alongside the request without returning secrets',async()=>{
+		const response=await POST(request());
+		const body=await response.json();
+		expect(response.status).toBe(201);
+		expect(tx.withdrawalDestinationSnapshot.create).toHaveBeenCalledWith({data:expect.objectContaining({
+			fundingRequestId:'withdrawal-1',type:'BANK_TRANSFER',nickname:'Primary checking',countryCode:'US',
+			maskedLabel:destination.maskedLabel,ciphertext:destination.ciphertext,iv:destination.iv,authTag:destination.authTag,
+		})});
+		expect(body.withdrawalDestination).toMatchObject({maskedLabel:destination.maskedLabel});
+		expect(JSON.stringify(body)).not.toContain(destination.ciphertext);
+		expect(JSON.stringify(body)).not.toContain('0000123400');
+	});
+
+	it('returns an idempotent replay without creating a second request or destination snapshot',async()=>{
+		const existing={id:'withdrawal-1',userId:'user-1',accountMode:AccountMode.REAL,type:FundingType.WITHDRAWAL,amount:new Prisma.Decimal(25),currency:'USD',paymentMethodId:null,transactionReference:null,withdrawalDestinationId:destination.id,receiptKey:null};
+		tx.fundingRequest.findUnique.mockResolvedValue(existing);
+		const response=await POST(request());
+		expect(response.status).toBe(200);
+		expect((await response.json()).id).toBe(existing.id);
+		expect(tx.fundingRequest.create).not.toHaveBeenCalled();
+		expect(tx.withdrawalDestinationSnapshot.create).not.toHaveBeenCalled();
+	});
+});

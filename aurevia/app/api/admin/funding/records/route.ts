@@ -28,9 +28,9 @@ export async function GET(request:Request){
 		};
 		const [total,requests]=await Promise.all([
 			db.fundingRequest.count({where}),
-			db.fundingRequest.findMany({where,include:{user:{select:{id:true,name:true,email:true}},paymentMethod:{select:{name:true}}},orderBy:{createdAt:input.sort},skip:(input.page-1)*pageSize,take:pageSize}),
+			db.fundingRequest.findMany({where,include:{user:{select:{id:true,name:true,email:true}},paymentMethod:{select:{name:true}},withdrawalDestination:{select:{type:true,nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}},withdrawalDestinationSnapshot:{select:{type:true,nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}}},orderBy:{createdAt:input.sort},skip:(input.page-1)*pageSize,take:pageSize}),
 		]);
-		const items=requests.map(({receiptKey,...request})=>({...request,hasReceipt:Boolean(receiptKey)}));
+		const items=requests.map(({receiptKey,withdrawalDestinationSnapshot,...request})=>({...request,withdrawalDestination:withdrawalDestinationSnapshot||request.withdrawalDestination,hasReceipt:Boolean(receiptKey)}));
 		return NextResponse.json(jsonSafe({items,total,page:input.page,pageSize,totalPages:Math.ceil(total/pageSize)}),{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});

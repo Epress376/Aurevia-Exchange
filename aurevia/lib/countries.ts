@@ -2,6 +2,7 @@ import {getCountries,getCountryCallingCode} from 'libphonenumber-js';
 import type {CountryCode} from 'libphonenumber-js';
 
 export type SupportedCountry={code:CountryCode;name:string;dialCode:string;flag:string};
+export const ibanCountryCodes=new Set('AD AE AL AT AZ BA BE BG BH BR BY CH CR CY CZ DE DK DO EE EG ES FI FO FR GB GE GI GL GR GT HR HU IE IL IQ IS IT JO KW KZ LB LC LI LT LU LV MC MD ME MK MR MT MU NL NO PK PL PS PT QA RO RS SA SC SD SE SI SK SM ST TL TN TR UA VA VG XK'.split(' '));
 
 function flagFor(code:string){
 	return [...code.toUpperCase()].map(character=>String.fromCodePoint(character.charCodeAt(0)+127397)).join('');

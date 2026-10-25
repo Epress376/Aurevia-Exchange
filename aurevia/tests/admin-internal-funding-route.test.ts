@@ -123,39 +123,20 @@ describe('administrator-controlled REAL funding route',()=>{
 		expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'FUNDING_REJECTED'})}));
 	});
 
-	it('debits a REAL withdrawal exactly once when approved',async()=>{
+	it('requires REAL withdrawals to use the separate externally confirmed lifecycle',async()=>{
 		currentFunding=makeRequest({type:FundingType.WITHDRAWAL,method:'Internal REAL withdrawal request',amount:new Prisma.Decimal('10.00'),transactionReference:null});
 		const response=await PATCH(reviewRequest('APPROVED'));
 		const body=await response.json();
-		expect(response.status).toBe(200);
-		expect(body.status).toBe(FundingStatus.COMPLETED);
-		expect(body.settlementReference).toBe(`INTERNAL-WITHDRAWAL:${transactionId}`);
-		expect(mocks.postDoubleEntry).toHaveBeenCalledTimes(1);
-		expect(mocks.postDoubleEntry).toHaveBeenCalledWith(tx,expect.objectContaining({
-			reference:`FUNDING:${transactionId}:APPROVED`,
-			debitAccountId:'real-usd-ledger',
-			creditAccountId:'real-clearing',
-			amount:new Prisma.Decimal('10.00'),
-		}));
-		const replay=await PATCH(reviewRequest('APPROVED'));
-		expect(replay.status).toBe(409);
-		expect(mocks.postDoubleEntry).toHaveBeenCalledTimes(1);
-	});
-
-	it('rejects withdrawal approval when balance is insufficient without posting a debit',async()=>{
-		currentFunding=makeRequest({type:FundingType.WITHDRAWAL,amount:new Prisma.Decimal('10.00'),transactionReference:null});
-		mocks.balance.mockResolvedValue(new Prisma.Decimal('5.00'));
-		const response=await PATCH(reviewRequest('APPROVED'));
 		expect(response.status).toBe(409);
-		expect(currentFunding.status).toBe(FundingStatus.PENDING_REVIEW);
+		expect(body.error).toContain('approve, process, and externally confirmed');
 		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
 	});
 
-	it('releases a withdrawal reservation on rejection without debiting the ledger',async()=>{
+	it('requires withdrawal rejection to use the audited lifecycle route',async()=>{
 		currentFunding=makeRequest({type:FundingType.WITHDRAWAL,amount:new Prisma.Decimal('10.00'),transactionReference:null});
 		const response=await PATCH(reviewRequest('REJECTED'));
-		expect(response.status).toBe(200);
-		expect(currentFunding.status).toBe(FundingStatus.REJECTED);
+		expect(response.status).toBe(409);
+		expect(currentFunding.status).toBe(FundingStatus.PENDING_REVIEW);
 		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
 	});
 

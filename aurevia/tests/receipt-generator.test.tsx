@@ -19,22 +19,29 @@ const baseReceipt:ReceiptData={
 describe('transaction receipt',()=>{
 	it('does not label an approved REAL withdrawal as completed or successful',()=>{
 		const markup=renderToStaticMarkup(<ReceiptGenerator receipt={baseReceipt}/>);
-		expect(markup).toContain('Approved · internal debit pending');
+		expect(markup).toContain('Approved · payout not confirmed');
 		expect(markup).not.toContain('>Success<');
 		expect(markup).toContain('Internal Aurevia ledger');
 	});
 
 	it('shows completion only when the persisted status is completed',()=>{
 		const markup=renderToStaticMarkup(<ReceiptGenerator receipt={{...baseReceipt,status:'COMPLETED',completedAt:'2026-10-20T13:00:00.000Z'}}/>);
-		expect(markup).toContain('>Completed<');
+		expect(markup).toContain('Completed · admin-recorded payout');
 	});
 
 	it('renders as a constrained receipt card with transaction details',()=>{
 		const markup=renderToStaticMarkup(<ReceiptGenerator receipt={{...baseReceipt,status:'PENDING_REVIEW',type:'DEPOSIT',simulated:true,externalReference:'user-reference'}}/>);
-		expect(markup).toContain('max-w-2xl');
+		expect(markup).toContain('aurevia-receipt');
 		expect(markup).toContain('Transaction details');
 		expect(markup).toContain('Pending review');
-		expect(markup).toContain('INTERNAL PAPER LEDGER RECORD');
+		expect(markup).toContain('INTERNAL LEDGER RECORD');
 		expect(markup).toContain('user-reference');
+	});
+
+	it('labels an approved internal deposit as a ledger credit record',()=>{
+		const markup=renderToStaticMarkup(<ReceiptGenerator receipt={{...baseReceipt,status:'APPROVED',type:'DEPOSIT',simulated:true}}/>);
+		expect(markup).toContain('Internal deposit ledger record');
+		expect(markup).toContain('Ledger credit');
+		expect(markup).toContain('not a bank or payment-provider receipt');
 	});
 });
