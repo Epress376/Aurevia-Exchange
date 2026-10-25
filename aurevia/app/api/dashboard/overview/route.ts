@@ -39,8 +39,8 @@ export async function GET(){
 		const mode=profile.accountMode;
 		const [accounts,documents,positions,investments,orders,opportunities,activity,instruments]=await Promise.all([
 			db.ledgerAccount.findMany({
-				where:{userId:profile.id,accountMode:{in:[AccountMode.DEMO,AccountMode.REAL]},currency:'USD'},
-				select:{id:true,accountMode:true},
+				where:{userId:profile.id,accountMode:mode,currency:'USD'},
+				select:{id:true},
 			}),
 			db.kycDocument.count({where:{userId:profile.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}),
 			db.position.findMany({
@@ -76,12 +76,8 @@ export async function GET(){
 			return asset?[{assetId:asset.id,instrumentId:instrument.id}]:[];
 		});
 
-		const accountsByMode=new Map(accounts.map(account=>[account.accountMode,account]));
-		const [demoBalance,realBalance]=await Promise.all([
-			accountsByMode.has(AccountMode.DEMO)?balance(db,accountsByMode.get(AccountMode.DEMO)!.id):new Prisma.Decimal(0),
-			accountsByMode.has(AccountMode.REAL)?balance(db,accountsByMode.get(AccountMode.REAL)!.id):new Prisma.Decimal(0),
-		]);
-		const activeBalance=mode===AccountMode.DEMO?demoBalance:realBalance;
+		const activeAccount=accounts[0];
+		const activeBalance=activeAccount?await balance(db,activeAccount.id):new Prisma.Decimal(0);
 		const positionValue=positions.reduce((sum,position)=>sum.plus(position.instrument.price.mul(position.quantity)),new Prisma.Decimal(0));
 		const unrealizedPnl=positions.reduce((sum,position)=>{
 			const direction=position.side==='BUY'?1:-1;
@@ -111,7 +107,7 @@ export async function GET(){
 		return NextResponse.json(jsonSafe({
 			profile:{name:profile.name,accountMode:mode,tier:tier.label,kycStatus:profile.kycStatus,hasAvatar:!!profile.avatarKey},
 			accountMode:mode,
-			balances:{DEMO:demoBalance,REAL:realBalance},
+			balances:{[mode]:activeBalance},
 			portfolioSummary:{
 				accountMode:mode,
 				cashBalance:activeBalance,

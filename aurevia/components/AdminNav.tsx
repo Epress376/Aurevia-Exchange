@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
-import {Activity,ArrowLeft,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
 	{title:'Overview',links:[
@@ -56,9 +56,13 @@ export default function AdminNav(){
 	const [open,setOpen]=useState(false);
 	const [loggingOut,setLoggingOut]=useState(false);
 	const [search,setSearch]=useState('');
+	const [searchOpen,setSearchOpen]=useState(false);
 	const [now,setNow]=useState<Date|null>(null);
 	const currentQuery=searchParams.toString();
 	const isAdmin=status==='authenticated'&&data?.user?.role==='ADMIN';
+	const matchingDestinations=search.trim()?groups.flatMap(group=>group.links
+		.filter(link=>`${link.label} ${group.title}`.toLowerCase().includes(search.trim().toLowerCase()))
+		.map(link=>({...link,group:group.title}))).slice(0,6):[];
 	const close=()=>setOpen(false);
 	const title=groups.flatMap(group=>group.links).find(link=>{
 		const [path,query]=link.href.split('?');
@@ -95,7 +99,21 @@ export default function AdminNav(){
 	function submitSearch(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();
 		const query=search.trim();
-		if(query)router.push(`/admin/users?search=${encodeURIComponent(query)}`);
+		if(!query)return;
+		if(matchingDestinations[0]){
+			router.push(matchingDestinations[0].href);
+			setSearch('');
+			setSearchOpen(false);
+			return;
+		}
+		router.push(`/admin/users?search=${encodeURIComponent(query)}`);
+		setSearchOpen(false);
+	}
+
+	function openDestination(href:string){
+		router.push(href);
+		setSearch('');
+		setSearchOpen(false);
 	}
 
 	async function logout(){
@@ -136,8 +154,11 @@ export default function AdminNav(){
 			<div className="admin-topbar-heading"><span>ADMINISTRATION</span><b>{title}</b></div>
 			<form className="admin-global-search" role="search" onSubmit={submitSearch}>
 				<Search size={16} aria-hidden="true"/>
-				<input aria-label="Search users" placeholder="Search users by name, email, or ID" value={search} onChange={event=>setSearch(event.target.value)}/>
+				<input aria-label="Search admin pages or users" autoComplete="off" placeholder="Search admin pages or users" value={search} onFocus={()=>setSearchOpen(true)} onBlur={()=>setSearchOpen(false)} onChange={event=>setSearch(event.target.value)}/>
 				<button type="submit">Search</button>
+				{searchOpen&&search.trim()&&<div className="admin-search-results" role="region" aria-label="Administrator search results">
+					{matchingDestinations.length>0?<section aria-label="Admin pages"><h2>Admin pages</h2>{matchingDestinations.map(item=><button type="button" key={item.href} onMouseDown={event=>event.preventDefault()} onClick={()=>openDestination(item.href)}><span><b>{item.label}</b><small>{item.group}</small></span><ArrowRight size={13}/></button>)}</section>:<p>No admin pages match. Press Enter to search users by name, email, or ID.</p>}
+				</div>}
 			</form>
 			<div className="admin-topbar-meta">
 				<time className="admin-clock" dateTime={now?.toISOString()}>{now?now.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'}</time>

@@ -40,10 +40,7 @@ describe('user dashboard overview access and mode separation',()=>{
 			id:'user-1',name:'Aurevia User',role:'USER',status:'ACTIVE',accountMode:AccountMode.REAL,
 			approvedTier:1,kycStatus:'PENDING',avatarKey:null,kyc:null,
 		});
-		mocks.accountFindMany.mockResolvedValue([
-			{id:'demo-account',accountMode:AccountMode.DEMO},
-			{id:'real-account',accountMode:AccountMode.REAL},
-		]);
+		mocks.accountFindMany.mockResolvedValue([{id:'real-account'}]);
 		mocks.documentCount.mockResolvedValue(0);
 		mocks.positionFindMany.mockResolvedValue([]);
 		mocks.investmentFindMany.mockResolvedValue([]);
@@ -83,10 +80,12 @@ describe('user dashboard overview access and mode separation',()=>{
 		expect(response.status).toBe(200);
 		expect(response.headers.get('Cache-Control')).toBe('private, no-store');
 		expect(result.accountMode).toBe('REAL');
-		expect(result.balances).toEqual({DEMO:'125.5',REAL:'40.5'});
+		expect(result.balances).toEqual({REAL:'40.5'});
 		expect(result.portfolioSummary).toMatchObject({
 			accountMode:'REAL',cashBalance:'40.5',positionValue:'20',investmentValue:'5',totalValue:'65.5',
 		});
+		expect(mocks.accountFindMany).toHaveBeenCalledWith({where:{userId:'user-1',accountMode:AccountMode.REAL,currency:'USD'},select:{id:true}});
+		expect(mocks.getActivity).toHaveBeenCalledWith('user-1',AccountMode.REAL,'all',8);
 		expect(result.openOrders).toHaveLength(1);
 		expect(result.internalMarketInstruments).toEqual([{assetId:'BTC',instrumentId:'btc-instrument'}]);
 		expect(mocks.positionFindMany).toHaveBeenCalledWith(expect.objectContaining({where:{userId:'user-1',accountMode:AccountMode.REAL,status:'OPEN'}}));
@@ -120,6 +119,23 @@ describe('user dashboard overview access and mode separation',()=>{
 		})]);
 	});
 
+	it('returns only DEMO balances and activity when DEMO mode is active',async()=>{
+		mocks.userFindUnique.mockResolvedValue({
+			id:'user-1',name:'Aurevia User',role:'USER',status:'ACTIVE',accountMode:AccountMode.DEMO,
+			approvedTier:1,kycStatus:'PENDING',avatarKey:null,kyc:null,
+		});
+		mocks.accountFindMany.mockResolvedValue([{id:'demo-account'}]);
+
+		const response=await GET();
+		const result=await response.json();
+
+		expect(response.status).toBe(200);
+		expect(result.accountMode).toBe('DEMO');
+		expect(result.balances).toEqual({DEMO:'125.5'});
+		expect(mocks.accountFindMany).toHaveBeenCalledWith({where:{userId:'user-1',accountMode:AccountMode.DEMO,currency:'USD'},select:{id:true}});
+		expect(mocks.getActivity).toHaveBeenCalledWith('user-1',AccountMode.DEMO,'all',8);
+	});
+
 	it('returns truthful empty portfolio data when there are no positions or active investments',async()=>{
 		mocks.accountFindMany.mockResolvedValue([]);
 
@@ -127,7 +143,7 @@ describe('user dashboard overview access and mode separation',()=>{
 		const result=await response.json();
 
 		expect(response.status).toBe(200);
-		expect(result.balances).toEqual({DEMO:'0',REAL:'0'});
+		expect(result.balances).toEqual({REAL:'0'});
 		expect(result.portfolioSummary.totalValue).toBe('0');
 		expect(result.portfolioSummary.allocations).toEqual([]);
 		expect(result.positions).toEqual([]);

@@ -2,7 +2,7 @@
 
 import {useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
-import {Activity,ArrowDownRight,ArrowRight,ArrowUpRight,BriefcaseBusiness,CheckCircle2,RefreshCw,Send,ShieldCheck,Sparkles,UsersRound,WalletCards} from 'lucide-react';
+import {Activity,ArrowDownRight,ArrowRight,ArrowUpRight,BriefcaseBusiness,CheckCircle2,RefreshCw,Send,Settings,ShieldCheck,Sparkles,UsersRound,WalletCards} from 'lucide-react';
 
 type DashboardData={
 	generatedAt:string;
@@ -198,7 +198,17 @@ export default function AdminDashboard(){
 	return <main className="account-page admin-dashboard-page">
 		<header className="admin-dashboard-heading">
 			<div><p className="admin-eyebrow">AUREVIA INVEST · CONTROL ROOM</p><h1>Good to see you.</h1><p>Live platform performance and operational activity.</p></div>
-			<button type="button" className="admin-refresh-button" onClick={()=>void load()} disabled={loading}><RefreshCw size={15} className={loading?'admin-refresh-spinning':''}/>Refresh data</button>
+			<div className="admin-dashboard-header-actions">
+				<nav className="admin-dashboard-shortcuts" aria-label="Administrator dashboard shortcuts">
+					<Link href="/admin/users" title="Users" aria-label="Users"><UsersRound size={15}/></Link>
+					<Link href="/admin/kyc" title="KYC verification" aria-label="KYC verification"><CheckCircle2 size={15}/></Link>
+					<Link href="/admin/payments" title="Funding" aria-label="Funding"><WalletCards size={15}/></Link>
+					<Link href="/admin/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>
+					<Link href="/admin/operations" title="Orders and ledger" aria-label="Orders and ledger"><Activity size={15}/></Link>
+					<Link href="/admin/settings" title="Settings" aria-label="Settings"><Settings size={15}/></Link>
+				</nav>
+				<button type="button" className="admin-refresh-button" onClick={()=>void load()} disabled={loading}><RefreshCw size={15} className={loading?'admin-refresh-spinning':''}/>Refresh data</button>
+			</div>
 		</header>
 		{data&&<DashboardAssistant data={data}/>}
 		{error&&<p className="admin-dashboard-error" role="alert">{error}<button type="button" onClick={()=>void load()}>Retry</button></p>}

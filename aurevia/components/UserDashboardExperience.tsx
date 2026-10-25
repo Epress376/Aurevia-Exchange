@@ -3,7 +3,7 @@
 import {useCallback,useEffect,useMemo,useState} from 'react';
 import Link from 'next/link';
 import {Cell,Pie,PieChart,ResponsiveContainer,Tooltip} from 'recharts';
-import {Activity,ArrowDownLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
+import {Activity,ArrowDownLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
 import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
@@ -15,7 +15,7 @@ import {formatUsd} from '@/lib/currency-format';
 type Overview={
 	profile:{name:string|null;accountMode:'DEMO'|'REAL';tier:string;kycStatus:string;hasAvatar:boolean};
 	accountMode:'DEMO'|'REAL';
-	balances:{DEMO:string;REAL:string};
+	balances:Partial<Record<'DEMO'|'REAL',string>>;
 	portfolioSummary:{
 		accountMode:'DEMO'|'REAL';cashBalance:string;positionValue:string;investmentValue:string;totalValue:string;unrealizedPnl:string;
 		allocations:Array<{category:string;value:string;percentage:string}>;
@@ -217,11 +217,19 @@ export default function UserDashboardExperience(){
 		{overview&&<>
 			<header className="user-dashboard-welcome">
 				<div><span className="user-dashboard-eyebrow">AUREVIA INVEST · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
-				<div className="user-dashboard-welcome-actions"><span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode} ACCOUNT</span><button type="button" className="user-dashboard-refresh" aria-label="Refresh dashboard" disabled={refreshing} onClick={()=>void load()}><RefreshCw size={15} className={refreshing?'is-spinning':''}/></button></div>
+				<div className="user-dashboard-welcome-actions">
+					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
+						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
+						<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>
+						<Link href="/wallet" title="Wallet" aria-label="Wallet"><WalletCards size={15}/></Link>
+						<Link href="/activity" title="Account activity" aria-label="Account activity"><Activity size={15}/></Link>
+					</nav>
+					<span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode} ACCOUNT</span>
+					<button type="button" className="user-dashboard-refresh" aria-label="Refresh dashboard" disabled={refreshing} onClick={()=>void load()}><RefreshCw size={15} className={refreshing?'is-spinning':''}/></button>
+				</div>
 			</header>
-			<section className="user-dashboard-metrics" aria-label="Account balances and portfolio value">
-				<UserMetric label="Demo account" value={formatUsd(overview.balances.DEMO)} detail="Separate virtual USD ledger" active={overview.accountMode==='DEMO'} icon={WalletCards}/>
-				<UserMetric label="Real account" value={formatUsd(overview.balances.REAL)} detail="Internal USD ledger balance" active={overview.accountMode==='REAL'} icon={ShieldCheck}/>
+			<section className="user-dashboard-metrics" aria-label={`${overview.accountMode} account balance and portfolio value`}>
+				<UserMetric label={`${overview.accountMode} account`} value={formatUsd(overview.balances[overview.accountMode]||'0')} detail={overview.accountMode==='DEMO'?'Separate virtual USD ledger':'Internal USD ledger balance'} active icon={overview.accountMode==='DEMO'?WalletCards:ShieldCheck}/>
 				<UserMetric label={`${overview.accountMode} portfolio value`} value={formatUsd(overview.portfolioSummary.totalValue)} detail="Cash + positions + allocated principal" active icon={ChartNoAxesCombined}/>
 			</section>
 			{overview.accountMode==='REAL'&&<p className="user-dashboard-real-note">REAL funding is credited only through existing administrator-approved requests. Balances shown are internal Aurevia ledger records.</p>}

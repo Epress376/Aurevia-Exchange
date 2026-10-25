@@ -15,6 +15,22 @@ export default function Nav(){
  const close=()=>setOpen(false);
  const active=(href:string)=>pathname===href||pathname.startsWith(`${href}/`);
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
+ const userDestinations=[
+  {href:'/dashboard',label:'Dashboard',group:'Overview'},
+  {href:'/markets',label:'Markets',group:'Investing'},
+  {href:'/trade',label:'Trade',group:'Investing'},
+  {href:'/portfolio',label:'Portfolio',group:'Investing'},
+  {href:'/investments',label:'Investments',group:'Investing'},
+  {href:'/orders',label:'Orders & activity',group:'Investing'},
+  {href:'/wallet',label:'Wallet',group:'Account'},
+  {href:'/notifications',label:'Notifications',group:'Account'},
+  {href:'/kyc',label:'Identity verification',group:'Account'},
+  {href:'/cards',label:'Cards',group:'Account'},
+  ...(taxServicesAvailable?[{href:'/tax-services',label:'Tax services',group:'Account'}]:[]),
+  {href:'/settings',label:'Profile & security',group:'Profile & support'},
+  {href:'/support',label:'Help & support',group:'Profile & support'},
+ ];
+ const matchingPages=marketSearch.trim()?userDestinations.filter(item=>`${item.label} ${item.group}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,5):[];
  const matchingMarkets=marketSearch.trim()?MARKET_ASSETS.filter(asset=>`${asset.id} ${asset.name} ${asset.ticker}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,6):[];
  async function changeMode(accountMode:'DEMO'|'REAL'){
   if(modeBusy)return;
@@ -93,12 +109,19 @@ export default function Nav(){
  },[open]);
  function submitMarketSearch(event:React.FormEvent<HTMLFormElement>){
   event.preventDefault();
+  if(matchingPages[0]){openPage(matchingPages[0].href);return}
   const match=matchingMarkets[0];
-  if(match){router.push(`/markets?symbol=${encodeURIComponent(match.id)}`);setMarketSearch('');setMarketSearchOpen(false);close()}
+  if(match)openMarket(match.id);
+  else if(marketSearch.trim())setMarketSearchOpen(true);
+ }
+ function openPage(href:string){
+  router.push(href);
+  setMarketSearch('');
+  setMarketSearchOpen(false);
+  close();
  }
  function openMarket(symbol:string){
-  router.push(`/markets?symbol=${encodeURIComponent(symbol)}`);
-  setMarketSearch('');setMarketSearchOpen(false);close();
+  openPage(`/markets?symbol=${encodeURIComponent(symbol)}`);
  }
  if(userMode&&data?.user)return <header className="site-nav site-nav-authenticated site-nav-user-shell">
   {open&&<button type="button" className="user-sidebar-backdrop" aria-label="Close account navigation" onClick={close}/>}
@@ -106,9 +129,13 @@ export default function Nav(){
    <Link href="/dashboard" className="brand" onClick={close}><Image src="/aurevia-logo.png" alt="Aurevia Invest" width={36} height={36}/><span>AUREVIA <b>INVEST</b></span></Link>
    <form className="user-market-search" role="search" onSubmit={submitMarketSearch}>
     <Search size={16} aria-hidden="true"/>
-    <input aria-label="Search supported markets" autoComplete="off" value={marketSearch} onFocus={()=>setMarketSearchOpen(true)} onBlur={()=>setMarketSearchOpen(false)} onChange={event=>setMarketSearch(event.target.value)} placeholder="Search supported markets"/>
+    <input aria-label="Search markets and account pages" autoComplete="off" value={marketSearch} onFocus={()=>setMarketSearchOpen(true)} onBlur={()=>setMarketSearchOpen(false)} onChange={event=>setMarketSearch(event.target.value)} placeholder="Search markets or pages"/>
     {marketSearch&&<button type="button" className="user-search-clear" onClick={()=>setMarketSearch('')} aria-label="Clear market search"><X size={14}/></button>}
-    {marketSearchOpen&&marketSearch&&<div className="user-market-results" role="listbox" aria-label="Supported markets">{matchingMarkets.length?matchingMarkets.map(asset=><button type="button" role="option" aria-selected="false" key={asset.id} onMouseDown={event=>event.preventDefault()} onClick={()=>openMarket(asset.id)}><span><b>{asset.id}</b><small>{asset.name}</small></span><ArrowRight size={14}/></button>):<p>No supported markets match that search.</p>}</div>}
+    {marketSearchOpen&&marketSearch&&<div className="user-market-results" role="region" aria-label="Navigation search results">
+     {matchingPages.length>0&&<section aria-label="Account pages"><h2>Account pages</h2>{matchingPages.map(item=><button type="button" key={item.href} onMouseDown={event=>event.preventDefault()} onClick={()=>openPage(item.href)}><span><b>{item.label}</b><small>{item.group}</small></span><ArrowRight size={14}/></button>)}</section>}
+     {matchingMarkets.length>0&&<section aria-label="Markets"><h2>Markets</h2>{matchingMarkets.map(asset=><button type="button" key={asset.id} onMouseDown={event=>event.preventDefault()} onClick={()=>openMarket(asset.id)}><span><b>{asset.id}</b><small>{asset.name}</small></span><ArrowRight size={14}/></button>)}</section>}
+     {!matchingPages.length&&!matchingMarkets.length&&<p>No pages or supported markets match that search.</p>}
+    </div>}
    </form>
    <div className="user-mode-control" role="group" aria-label={translate('accountMode')}>
     <button type="button" aria-pressed={data.user.accountMode==='DEMO'} disabled={modeBusy||loggingOut||data.user.accountMode==='DEMO'} onClick={()=>void changeMode('DEMO')}>Demo</button>
