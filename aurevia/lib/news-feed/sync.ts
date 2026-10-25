@@ -1,4 +1,4 @@
-import {NewsFeedCategory,NewsFeedItemStatus,NewsFeedProviderType,Prisma} from '@prisma/client';
+import {NewsFeedCategory,NewsFeedItemStatus,NewsFeedProviderType} from '@prisma/client';
 import {db} from '@/lib/db';
 import {fetchGnewsTopHeadlines,isGnewsAllowed} from '@/lib/news-feed/gnews';
 import {parseRssOrAtom,type ParsedFeedItem} from '@/lib/news-feed/rss';

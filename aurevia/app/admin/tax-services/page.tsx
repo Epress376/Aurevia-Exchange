@@ -1,19 +1,21 @@
 'use client';
 
 import {useCallback,useEffect,useState} from 'react';
-import Link from 'next/link';
 import {Eye,RefreshCw,ShieldCheck} from 'lucide-react';
 import AdminNav from '@/components/AdminNav';
 
 type AccessRow={id:string;userId:string;enabled:boolean;allowedServices:string;note:string|null;user:{email:string;name:string|null}};
 type CaseRow={id:string;reference:string;status:string;serviceType:string;taxYear:number;submittedAt:string|null;user:{email:string;name:string|null}};
+type TaxDocumentRow={id:string;filename:string;category:string};
+type TaxCaseReview={id:string;reference:string;status:string;serviceType:string;taxYear:number;intake:unknown;user:{email:string}|null;documents:TaxDocumentRow[]};
+type AdminTaxResponse={settings:{enabled:boolean}|null;access:AccessRow[];cases:CaseRow[]};
 
 export default function AdminTaxServicesPage(){
 	const [enabled,setEnabled]=useState(false);
 	const [access,setAccess]=useState<AccessRow[]>([]);
 	const [cases,setCases]=useState<CaseRow[]>([]);
 	const [userId,setUserId]=useState('');
-	const [selectedCase,setSelectedCase]=useState<any>(null);
+	const [selectedCase,setSelectedCase]=useState<TaxCaseReview|null>(null);
 	const [status,setStatus]=useState('');
 	const [userMessage,setUserMessage]=useState('');
 	const [internalNote,setInternalNote]=useState('');
@@ -26,7 +28,7 @@ export default function AdminTaxServicesPage(){
 		setLoading(true);
 		try{
 			const response=await fetch('/api/admin/tax-services',{cache:'no-store'});
-			const result=await response.json();
+			const result=await response.json() as AdminTaxResponse&{error?:string};
 			if(!response.ok)throw new Error(result.error||'Forbidden');
 			setEnabled(Boolean(result.settings?.enabled));
 			setAccess(result.access||[]);
@@ -42,7 +44,7 @@ export default function AdminTaxServicesPage(){
 		setBusy(true);setError('');setMessage('');
 		try{
 			const response=await fetch('/api/admin/tax-services',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({enabled:next})});
-			const result=await response.json();
+			const result=await response.json() as {error?:string};
 			if(!response.ok)throw new Error(result.error||'Unable to update module.');
 			setEnabled(next);setMessage(next?'Tax module enabled.':'Tax module disabled.');
 		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to update module.')}
@@ -54,7 +56,7 @@ export default function AdminTaxServicesPage(){
 		setBusy(true);setError('');setMessage('');
 		try{
 			const response=await fetch('/api/admin/tax-services',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({userId:userId.trim(),enabled:enabledFlag})});
-			const result=await response.json();
+			const result=await response.json() as TaxCaseReview&{error?:string};
 			if(!response.ok)throw new Error(result.error||'Unable to update access.');
 			setMessage(enabledFlag?'Access granted.':'Access revoked.');
 			setUserId('');
@@ -140,7 +142,7 @@ export default function AdminTaxServicesPage(){
 							<pre className="tax-review-box mt-3 text-xs whitespace-pre-wrap">{JSON.stringify(selectedCase.intake,null,2)}</pre>
 							<div className="mt-3">
 								<h3 className="text-sm font-semibold">Documents</h3>
-								<ul className="mt-2 space-y-1">{(selectedCase.documents||[]).map((doc:any)=>(
+								<ul className="mt-2 space-y-1">{selectedCase.documents.map(doc=>(
 									<li key={doc.id} className="text-sm flex justify-between gap-2"><span>{doc.filename} · {doc.category}</span><button type="button" className="text-link" onClick={()=>void viewDoc(doc.id)}>Open</button></li>
 								))}</ul>
 							</div>

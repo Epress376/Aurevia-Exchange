@@ -1,56 +1,84 @@
 'use client';
 
+import {type FormEvent,useEffect,useState} from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
-import {usePathname} from 'next/navigation';
-import {BriefcaseBusiness,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,ScrollText,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
-import {useEffect,useState} from 'react';
+import {usePathname,useRouter,useSearchParams} from 'next/navigation';
+import {Activity,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
-	{title:'Workspace',links:[
-		{href:'/admin',label:'Control room',icon:LayoutDashboard},
-		{href:'/admin/users',label:'User accounts',icon:UsersRound},
-		{href:'/admin/content',label:'Client stories',icon:Radio},
-		{href:'/admin/broadcasts',label:'Broadcasts',icon:Radio},
-		{href:'/admin/investments',label:'Investment operations',icon:BriefcaseBusiness},
-		{href:'/admin/payments',label:'Funding review',icon:ReceiptText},
+	{title:'Overview',links:[
+		{href:'/admin',label:'Dashboard',icon:LayoutDashboard},
+	]},
+	{title:'Accounts',links:[
+		{href:'/admin/users',label:'Users',icon:UsersRound},
+		{href:'/admin/users?mode=DEMO',label:'Demo Accounts',icon:Building2},
+		{href:'/admin/users?mode=REAL',label:'Real Accounts',icon:Building2},
+		{href:'/admin/kyc',label:'KYC Verification',icon:ClipboardCheck},
+		{href:'/admin/tiers',label:'Tier reviews',icon:FileCheck2},
+	]},
+	{title:'Operations',links:[
+		{href:'/admin/payments',label:'Funding',icon:ReceiptText},
 		{href:'/admin/payments?type=WITHDRAWAL',label:'Withdrawals',icon:ReceiptText},
 		{href:'/admin/approved-deposits',label:'Approved deposits',icon:ReceiptText},
 		{href:'/admin/approved-withdrawals',label:'Approved withdrawals',icon:ReceiptText},
 		{href:'/admin/settlements',label:'Settlements',icon:ReceiptText},
-		{href:'/admin/positions',label:'Open positions',icon:BriefcaseBusiness},
-		{href:'/admin/markets',label:'Market management',icon:Settings2},
-		{href:'/admin/settings',label:'System settings',icon:SlidersHorizontal},
-		{href:'/admin/deleted-items',label:'Deleted Items',icon:Trash2},
+		{href:'/admin/investments',label:'Investments',icon:BriefcaseBusiness},
+		{href:'/admin/operations',label:'Orders & ledger',icon:Activity},
+		{href:'/admin/positions',label:'Positions',icon:BriefcaseBusiness},
+		{href:'/admin/markets',label:'Markets',icon:Settings2},
 	]},
-	{title:'Account review',links:[
-		{href:'/admin/kyc',label:'Pending verification',icon:ClipboardCheck},
-		{href:'/admin/verified-accounts',label:'Verified accounts',icon:UsersRound},
-		{href:'/admin/tiers',label:'Tier reviews',icon:FileCheck2},
-	]},
-	{title:'Service & system',links:[
-		{href:'/admin/support',label:'Support inbox',icon:MessageSquareText},
-		{href:'/admin/waitlist',label:'Customer waitlist',icon:UsersRound},
-		{href:'/admin/providers',label:'Provider health',icon:Settings2},
-		{href:'/admin/operations',label:'Orders and ledger',icon:ReceiptText},
-		{href:'/admin/receipts',label:'Receipt review',icon:ReceiptText},
-		{href:'/admin/tax-services',label:'Tax services',icon:ShieldCheck},
+	{title:'Services',links:[
+		{href:'/admin/support',label:'Support',icon:MessageSquareText},
 		{href:'/admin/cards',label:'Cards',icon:CreditCard},
+		{href:'/admin/tax-services',label:'Tax services',icon:ShieldCheck},
+		{href:'/admin/content',label:'Client stories',icon:Radio},
+		{href:'/admin/broadcasts',label:'Broadcasts',icon:Radio},
+		{href:'/admin/waitlist',label:'Waitlist',icon:UsersRound},
+		{href:'/admin/providers',label:'Provider health',icon:Settings2},
+		{href:'/admin/receipts',label:'Receipt review',icon:ReceiptText},
+	]},
+	{title:'System',links:[
+		{href:'/admin/audit-logs',label:'Notifications & audit',icon:Bell},
+		{href:'/admin/settings',label:'Settings',icon:SlidersHorizontal},
+		{href:'/admin/deleted-items',label:'Deleted items',icon:Trash2},
 		{href:'/admin/nova',label:'Nova activity',icon:MessageSquareText},
-		{href:'/admin/audit-logs',label:'Audit log',icon:ScrollText},
 	]},
 ];
 
 export default function AdminNav(){
 	const {data,status}=useSession();
 	const pathname=usePathname();
+	const searchParams=useSearchParams();
+	const router=useRouter();
 	const [open,setOpen]=useState(false);
 	const [loggingOut,setLoggingOut]=useState(false);
+	const [search,setSearch]=useState('');
+	const [now,setNow]=useState<Date|null>(null);
+	const currentQuery=searchParams.toString();
 	const isAdmin=status==='authenticated'&&data?.user?.role==='ADMIN';
 	const close=()=>setOpen(false);
+	const title=groups.flatMap(group=>group.links).find(link=>{
+		const [path,query]=link.href.split('?');
+		const expected=new URLSearchParams(query);
+		const actual=new URLSearchParams(currentQuery);
+		return pathname===path&&['mode','type'].every(key=>expected.get(key)===actual.get(key))&&([...expected.keys()].length>0||![...actual.keys()].some(key=>key==='mode'||key==='type'));
+	})?.label||'Admin workspace';
 
 	useEffect(()=>{setOpen(false)},[pathname]);
+	useEffect(()=>{
+		const update=()=>setNow(new Date());
+		update();
+		const timer=window.setInterval(update,60_000);
+		return ()=>window.clearInterval(timer);
+	},[]);
+
+	function submitSearch(event:FormEvent<HTMLFormElement>){
+		event.preventDefault();
+		const query=search.trim();
+		if(query)router.push(`/admin/users?search=${encodeURIComponent(query)}`);
+	}
 
 	async function logout(){
 		if(loggingOut)return;
@@ -59,23 +87,44 @@ export default function AdminNav(){
 		catch{setLoggingOut(false)}
 	}
 
-	return <header className="site-nav admin-site-nav">
-		<div className="nav-inner admin-nav-inner">
-			<Link href="/admin" className="admin-brand" onClick={close} aria-label="Aurevia administration control room">
+	return <div className="admin-shell-chrome">
+		{open&&<button type="button" className="admin-sidebar-backdrop" aria-label="Close admin navigation" onClick={close}/>}
+		<aside className={`admin-sidebar ${open?'is-open':''}`}>
+			<Link href="/admin" className="admin-brand" onClick={close} aria-label="Aurevia administration dashboard">
 				<span className="admin-brand-mark"><Image src="/aurevia-logo.png" alt="" width={34} height={34}/></span>
-				<span className="admin-brand-type"><b>AUREVIA</b><small>OPERATIONS</small></span>
+				<span className="admin-brand-type"><b>AUREVIA</b><small>INVEST · ADMIN</small></span>
 			</Link>
-			<div className="admin-console-label"><ShieldCheck size={14}/><span>ADMIN CONSOLE</span></div>
-			<nav id="admin-navigation" aria-label="Administrator navigation" className={`admin-command-links ${open?'is-open':''}`} onKeyDown={event=>{if(event.key==='Escape')close()}}>
+			<nav id="admin-navigation" aria-label="Administrator navigation" className="admin-command-links">
 				{status==='loading'?<p className="admin-nav-loading" role="status">Restoring administrator session…</p>:isAdmin?<div className="admin-command-groups">{groups.map(group=><section className="admin-command-group" key={group.title} aria-label={group.title}>
 					<h2>{group.title}</h2>
-					{group.links.map(({href,label,icon:Icon})=><Link key={href} href={href} title={label} aria-label={label} onClick={close} aria-current={!href.includes('#')&&pathname===href?'page':undefined}><Icon size={15} aria-hidden="true"/><span>{label}</span></Link>)}
+					{group.links.map(({href,label,icon:Icon})=>{
+						const [path,query]=href.split('?');
+						const expected=new URLSearchParams(query);
+						const actual=new URLSearchParams(currentQuery);
+						const isActive=pathname===path&&['mode','type'].every(key=>expected.get(key)===actual.get(key))&&([...expected.keys()].length>0||![...actual.keys()].some(key=>key==='mode'||key==='type'));
+						return <Link key={href} href={href} title={label} onClick={close} aria-current={isActive?'page':undefined}><Icon size={16} aria-hidden="true"/><span>{label}</span></Link>;
+					})}
 				</section>)}</div>:<p className="admin-nav-loading">Administrator access required</p>}
 			</nav>
-			<div className="admin-nav-actions">
-				<button className="admin-menu-button" type="button" aria-label={open?'Close admin menu':'Open admin menu'} aria-expanded={open} aria-controls="admin-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X size={19}/>:<Menu size={19}/>}</button>
-				{isAdmin&&<button className="admin-nav-logout" type="button" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={15}/><span>{loggingOut?'Signing out…':'Logout'}</span></button>}
+			<div className="admin-sidebar-footer">
+				<span className="admin-profile-avatar" aria-hidden="true">{(data?.user?.name||data?.user?.email||'A').trim().slice(0,1).toUpperCase()}</span>
+				<span className="admin-profile-copy"><b>{data?.user?.name||'Administrator'}</b><small>ADMINISTRATOR</small></span>
+				<button type="button" className="admin-sidebar-logout" disabled={!isAdmin||loggingOut} onClick={()=>void logout()} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button>
 			</div>
-		</div>
-	</header>;
+		</aside>
+		<header className="admin-topbar">
+			<button className="admin-menu-button" type="button" aria-label={open?'Close admin menu':'Open admin menu'} aria-expanded={open} aria-controls="admin-navigation" onClick={()=>setOpen(value=>!value)}>{open?<X size={19}/>:<Menu size={19}/>}</button>
+			<div className="admin-topbar-heading"><span>ADMINISTRATION</span><b>{title}</b></div>
+			<form className="admin-global-search" role="search" onSubmit={submitSearch}>
+				<Search size={16} aria-hidden="true"/>
+				<input aria-label="Search users" placeholder="Search users by name, email, or ID" value={search} onChange={event=>setSearch(event.target.value)}/>
+				<button type="submit">Search</button>
+			</form>
+			<div className="admin-topbar-meta">
+				<time className="admin-clock" dateTime={now?.toISOString()}>{now?now.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'}</time>
+				<Link href="/admin/audit-logs" className="admin-topbar-icon" aria-label="View notifications and audit activity" title="Notifications & audit"><Bell size={17}/></Link>
+				<span className="admin-topbar-profile"><span className="admin-profile-avatar">{(data?.user?.name||data?.user?.email||'A').trim().slice(0,1).toUpperCase()}</span><span><b>{data?.user?.name||'Administrator'}</b><small>ADMIN</small></span></span>
+			</div>
+		</header>
+	</div>;
 }

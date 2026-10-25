@@ -13,6 +13,7 @@ export default function AdminUsersPanel(){
 	const [users,setUsers]=useState<AdminUser[]>([]);
 	const [search,setSearch]=useState('');
 	const [showDeleted,setShowDeleted]=useState(false);
+	const [accountMode,setAccountMode]=useState<'ALL'|'DEMO'|'REAL'>('ALL');
 	const [selected,setSelected]=useState<AdminUser|null>(null);
 	const [confirmation,setConfirmation]=useState('');
 	const [reason,setReason]=useState('');
@@ -26,11 +27,12 @@ export default function AdminUsersPanel(){
 	const [adjustments,setAdjustments]=useState<Record<string,Adjustment>>({});
 	const [adjustmentReceipt,setAdjustmentReceipt]=useState<{userId:string;receipt:ReceiptData}|null>(null);
 
-	const load=useCallback(async(query:string,includeDeleted:boolean,signal?:AbortSignal)=>{
+	const load=useCallback(async(query:string,includeDeleted:boolean,signal?:AbortSignal,mode:'ALL'|'DEMO'|'REAL'='ALL')=>{
 		try{
 			const params=new URLSearchParams();
 			if(query)params.set('search',query);
 			if(includeDeleted)params.set('showDeleted','true');
+			if(mode!=='ALL')params.set('mode',mode);
 			const queryString=params.toString();
 			const response=await fetch(`/api/admin/users${queryString?`?${queryString}`:''}`,{cache:'no-store',signal});
 			const result=await response.json();
@@ -40,15 +42,22 @@ export default function AdminUsersPanel(){
 		finally{setLoading(false)}
 	},[]);
 
+	useEffect(()=>{
+		const params=new URLSearchParams(window.location.search);
+		const mode=params.get('mode');
+		if(mode==='DEMO'||mode==='REAL')setAccountMode(mode);
+		setSearch(params.get('search')||'');
+	},[]);
+
 	function mergeUser(updated:Partial<AdminUser>&Pick<AdminUser,'id'>){
 		setUsers(current=>current.map(user=>user.id===updated.id?{...user,...updated}:user));
 	}
 
 	useEffect(()=>{
 		const controller=new AbortController();
-		const timer=window.setTimeout(()=>void load(search.trim(),showDeleted,controller.signal),200);
+		const timer=window.setTimeout(()=>void load(search.trim(),showDeleted,controller.signal,accountMode),200);
 		return()=>{window.clearTimeout(timer);controller.abort()};
-	},[load,search,showDeleted]);
+	},[load,search,showDeleted,accountMode]);
 
 	async function deleteAccount(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();
@@ -58,7 +67,7 @@ export default function AdminUsersPanel(){
 			const response=await fetch('/api/admin/users/delete',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:selected.id,confirmation,reason})});
 			const result=await response.json();
 			if(!response.ok)throw new Error(result.error||'Account deletion could not be completed.');
-			setNotice(`Account ${selected.id} was anonymized and closed.`);setSelected(null);setConfirmation('');setReason('');await load(search.trim(),showDeleted);
+			setNotice(`Account ${selected.id} was anonymized and closed.`);setSelected(null);setConfirmation('');setReason('');await load(search.trim(),showDeleted,undefined,accountMode);
 		}catch(exception){setError(exception instanceof Error?exception.message:'Account deletion could not be completed.')}
 		finally{setBusy(false)}
 	}
@@ -71,7 +80,7 @@ export default function AdminUsersPanel(){
 			const result=await response.json();
 			if(!response.ok)throw new Error(result.error||'Unable to update account status.');
 			setNotice(status==='DELETED'?`Account ${user.email} moved to Deleted Items.`:`Account ${user.email} restored.`);
-			await load(search.trim(),showDeleted);
+			await load(search.trim(),showDeleted,undefined,accountMode);
 		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to update account status.')}
 		finally{setBusy(false);setBusyUserId('')}
 	}
@@ -146,9 +155,12 @@ export default function AdminUsersPanel(){
 	}
 
 	return <div className="account-page admin-users-page">
-		<header className="account-heading"><div><span className="account-kicker">WORKSPACE · ACCOUNTS</span><h1>User accounts</h1><p>Manage customer access and review deleted accounts. Admin identities are managed separately.</p></div><button className="icon-action" type="button" aria-label="Refresh user accounts" onClick={()=>void load(search.trim(),showDeleted)}><RefreshCw size={15}/></button></header>
+		<header className="account-heading"><div><span className="account-kicker">WORKSPACE · ACCOUNTS</span><h1>User accounts</h1><p>Manage customer access and review deleted accounts. Admin identities are managed separately.</p></div><button className="icon-action" type="button" aria-label="Refresh user accounts" onClick={()=>void load(search.trim(),showDeleted,undefined,accountMode)}><RefreshCw size={15}/></button></header>
 		{error&&<div className="account-callout mb-3" role="alert">{error}</div>}{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}
-		<label className="account-label mb-4 block">Search users by name, email, or account ID<div className="relative mt-1"><Search size={15} className="absolute left-3 top-3.5 muted"/><input className="input pl-9" value={search} onChange={event=>setSearch(event.target.value)} maxLength={120} autoComplete="off" placeholder="Search accounts"/></div></label>
+		<div className="mb-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
+			<label className="account-label">Search users by name, email, or account ID<div className="relative mt-1"><Search size={15} className="absolute left-3 top-3.5 muted"/><input className="input pl-9" value={search} onChange={event=>setSearch(event.target.value)} maxLength={120} autoComplete="off" placeholder="Search accounts"/></div></label>
+			<label className="account-label">Account mode<select className="input mt-1" value={accountMode} onChange={event=>{const mode=event.target.value;if(mode==='ALL'||mode==='DEMO'||mode==='REAL')setAccountMode(mode)}}><option value="ALL">All account modes</option><option value="DEMO">DEMO accounts</option><option value="REAL">REAL accounts</option></select></label>
+		</div>
 		<label className="mb-4 inline-flex min-h-11 cursor-pointer items-center gap-2 text-sm"><input type="checkbox" checked={showDeleted} onChange={event=>setShowDeleted(event.target.checked)}/>Show deleted accounts</label>
 		<div className="overflow-hidden rounded-md border border-white/10">
 			{loading?<p className="account-empty" role="status">Loading accounts…</p>:users.length?<div className="divide-y divide-white/10">{users.map(user=><article className="p-4" key={user.id}>

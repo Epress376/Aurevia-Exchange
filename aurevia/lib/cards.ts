@@ -1,5 +1,5 @@
 import {randomBytes} from 'node:crypto';
-import {CardApplicationStatus,CardDesignTier,Prisma,SimulatedCardStatus} from '@prisma/client';
+import {CardApplicationStatus,CardDesignTier,Prisma} from '@prisma/client';
 import {db} from '@/lib/db';
 
 export const DEFAULT_CARD_CATALOG=[

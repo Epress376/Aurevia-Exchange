@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {NotificationType,Prisma} from '@prisma/client';
+import {AccountMode,NotificationType,Prisma} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {requireAdmin} from '@/lib/auth';
 import {db} from '@/lib/db';
@@ -23,10 +23,14 @@ export async function GET(request:Request){
     const params=new URL(request.url).searchParams;
     const search=params.get('search')?.trim().slice(0,120)||'';
     const includeDeleted=params.get('showDeleted')==='true';
+    const requestedMode=params.get('mode');
+    if(requestedMode&&requestedMode!=='DEMO'&&requestedMode!=='REAL')return NextResponse.json({error:'Invalid account mode.'},{status:400});
+    const mode=requestedMode==='DEMO'?AccountMode.DEMO:requestedMode==='REAL'?AccountMode.REAL:undefined;
     const configuredAdminEmail=getServerConfiguration().auth.adminEmail.trim().toLowerCase();
     const where:Prisma.UserWhereInput={
       role:'USER',
       status:includeDeleted?'DELETED':{notIn:['DELETED','CLOSED']},
+      ...(mode?{accountMode:mode}:{}),
       ...(configuredAdminEmail?{email:{not:configuredAdminEmail}}:{}),
       ...(search?{OR:[{id:{contains:search}},{email:{contains:search,mode:'insensitive'}},{name:{contains:search,mode:'insensitive'}}]}:{}),
     };

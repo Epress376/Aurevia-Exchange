@@ -13,6 +13,7 @@ export default function HomeMarketPreview(){
   const [status,setStatus]=useState<'loading'|'ready'|'error'>('loading');
   const [flash,setFlash]=useState<'up'|'down'|''>('');
   const [updatedAt,setUpdatedAt]=useState<number|null>(null);
+  const [now,setNow]=useState(0);
   const prevPrice=useRef<number|null>(null);
 
   useEffect(()=>{
@@ -36,21 +37,30 @@ export default function HomeMarketPreview(){
   },[]);
 
   const current=markets.find(item=>item.id===selected);
+  const currentId=current?.id;
+  const currentPrice=current?.price;
   const visibleMarkets=markets.slice(0,4);
 
   useEffect(()=>{
-    if(!current)return;
+    if(currentPrice===undefined)return;
     const prev=prevPrice.current;
-    prevPrice.current=current.price;
-    if(prev===null||prev===current.price)return;
-    setFlash(current.price>prev?'up':'down');
+    prevPrice.current=currentPrice;
+    if(prev===null||prev===currentPrice)return;
+    setFlash(currentPrice>prev?'up':'down');
     const t=window.setTimeout(()=>setFlash(''),700);
     return()=>window.clearTimeout(t);
-  },[current?.price,current?.id]);
+  },[currentPrice,currentId]);
+
+  useEffect(()=>{
+    if(updatedAt===null)return;
+    setNow(Date.now());
+    const timer=window.setInterval(()=>setNow(Date.now()),1_000);
+    return()=>window.clearInterval(timer);
+  },[updatedAt]);
 
   const changePct=current?.change;
   const changeClass=changePct===undefined?'':changePct>=0?'is-up':'is-down';
-  const ageLabel=updatedAt?`${Math.max(0,Math.round((Date.now()-updatedAt)/1000))}s`:'—';
+  const ageLabel=updatedAt!==null?`${Math.max(0,Math.round((now-updatedAt)/1000))}s`:'—';
 
   return <div className="market-stage is-live" aria-label={translate('marketView')}>
     <div className="market-stage-top">

@@ -1,13 +1,19 @@
 'use client';
 
 import {useCallback,useEffect,useState} from 'react';
+import type {CardApplicationStatus,CardDesignTier,SimulatedCardStatus} from '@prisma/client';
 import {CreditCard,RefreshCw} from 'lucide-react';
 import AdminNav from '@/components/AdminNav';
 
+type CatalogRow={id:string;displayName:string;designTier:CardDesignTier;enabled:boolean;orderPrice:string};
+type ApplicationRow={id:string;reference:string;user:{email:string}|null;catalogItem:{displayName:string}|null;status:CardApplicationStatus;priceSnapshot:string;currencySnapshot:string;issuedCard:{id:string}|null};
+type CardRow={id:string;displayName:string;user:{email:string}|null;referenceNumber:string;status:SimulatedCardStatus};
+type AdminCardsResponse={catalog:CatalogRow[];applications:ApplicationRow[];cards:CardRow[]};
+
 export default function AdminCardsPage(){
-	const [catalog,setCatalog]=useState<any[]>([]);
-	const [applications,setApplications]=useState<any[]>([]);
-	const [cards,setCards]=useState<any[]>([]);
+	const [catalog,setCatalog]=useState<CatalogRow[]>([]);
+	const [applications,setApplications]=useState<ApplicationRow[]>([]);
+	const [cards,setCards]=useState<CardRow[]>([]);
 	const [error,setError]=useState('');
 	const [message,setMessage]=useState('');
 	const [loading,setLoading]=useState(true);
@@ -17,7 +23,7 @@ export default function AdminCardsPage(){
 		setLoading(true);
 		try{
 			const response=await fetch('/api/admin/cards',{cache:'no-store'});
-			const result=await response.json();
+			const result=await response.json() as AdminCardsResponse&{error?:string};
 			if(!response.ok)throw new Error(result.error||'Forbidden');
 			setCatalog(result.catalog||[]);setApplications(result.applications||[]);setCards(result.cards||[]);setError('');
 		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to load')}

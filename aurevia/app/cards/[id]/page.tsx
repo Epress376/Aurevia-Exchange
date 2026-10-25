@@ -1,19 +1,32 @@
 'use client';
 
 import {useEffect,useState} from 'react';
+import type {CardDesignTier,SimulatedCardStatus} from '@prisma/client';
 import Link from 'next/link';
 import {useParams} from 'next/navigation';
 import Nav from '@/components/Nav';
 import AureviaCardVisual from '@/components/AureviaCardVisual';
 
+type CardDetails={
+	designTier:CardDesignTier;
+	cardholderName:string;
+	maskedPan:string;
+	expiryMonth:number;
+	expiryYear:number;
+	displayName:string;
+	status:SimulatedCardStatus;
+	referenceNumber:string;
+	application:{reference:string;priceSnapshot:string;currencySnapshot:string}|null;
+};
+
 export default function CardDetailPage(){
 	const {id}=useParams<{id:string}>();
-	const [card,setCard]=useState<any>(null);
+	const [card,setCard]=useState<CardDetails|null>(null);
 	const [error,setError]=useState('');
 
 	useEffect(()=>{
 		void fetch(`/api/cards/${id}`,{cache:'no-store'}).then(async r=>{
-			const j=await r.json();
+			const j=await r.json() as CardDetails&{error?:string};
 			if(!r.ok)throw new Error(j.error||'Not found');
 			setCard(j);
 		}).catch(e=>setError(e instanceof Error?e.message:'Unable to load'));
