@@ -3,7 +3,7 @@
 import {FormEvent,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useSession} from 'next-auth/react';
-import {ArrowDownLeft,ArrowUpRight,Eye,EyeOff,RefreshCw,WalletCards} from 'lucide-react';
+import {ArrowDownLeft,ArrowUpRight,Check,Copy,Eye,EyeOff,RefreshCw,WalletCards,X} from 'lucide-react';
 import Nav from '@/components/Nav';
 import ReceiptGenerator,{type ReceiptData} from '@/components/ReceiptGenerator';
 import {useLocale} from '@/lib/i18n-context';
@@ -15,7 +15,7 @@ type FundingRecord={id:string;type:'DEPOSIT'|'WITHDRAWAL';method:string;amount:n
 type LedgerReceipt={id:string;reference:string;description:string;type:'CREDIT'|'DEBIT';amount:number|string;currency:string;createdAt:string};
 type WalletData={accountMode:'DEMO'|'REAL';balance:number|string|null;withdrawableBalance?:number|string|null;balances:Array<{currency:string;balance:number|string}>;transactions:FundingRecord[];adminLedgerReceipts:LedgerReceipt[]};
 type CurrencyRate={rate:number|string|null;source:string|null;observedAt:string|null;status:'CURRENT'|'STALE'|'INTERNAL'|'UNAVAILABLE'};
-type PaymentMethodsResponse={methods:PaymentMethod[];fundingStatus:'SIMULATED'|'DEMO'|'AVAILABLE'|'MANUAL_REVIEW'|'NOT_CONFIGURED'|'DISABLED'|'ERROR';simulationAvailable?:boolean;supportedCurrencies?:readonly string[];simulatedBitcoinAddress?:string|null;realFundingAvailable:boolean;realWithdrawalAvailable:boolean;manualDepositReviewAvailable:boolean};
+type PaymentMethodsResponse={methods:PaymentMethod[];fundingStatus:'SIMULATED'|'DEMO'|'AVAILABLE'|'MANUAL_REVIEW'|'NOT_CONFIGURED'|'DISABLED'|'ERROR';simulationAvailable?:boolean;supportedCurrencies?:readonly string[];btcAddress?:string|null;realFundingAvailable:boolean;realWithdrawalAvailable:boolean;manualDepositReviewAvailable:boolean};
 type KycData={kycStatus:string;documents:number;verificationProfileSubmitted:boolean;depositEnabled:boolean;withdrawalEnabled:boolean;accountRestricted:boolean;restrictionReason:string|null;canWithdraw?:boolean};
 
 const money=(amount:number,currency='USD')=>currency==='USD'?formatUsd(amount):`${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8})} ${currency}`;
@@ -53,7 +53,7 @@ function isWalletData(value:unknown):value is WalletData{
 function isPaymentMethodsResponse(value:unknown):value is PaymentMethodsResponse{
 	if(!value||typeof value!=='object')return false;
 	const data=value as Partial<PaymentMethodsResponse>;
-	return Array.isArray(data.methods)&&data.methods.every(method=>!!method&&typeof method.id==='string'&&typeof method.name==='string'&&Array.isArray(method.currencies)&&method.currencies.every(currency=>typeof currency==='string')&&typeof method.depositEnabled==='boolean'&&typeof method.withdrawalEnabled==='boolean')&&['SIMULATED','DEMO','AVAILABLE','MANUAL_REVIEW','NOT_CONFIGURED','DISABLED','ERROR'].includes(String(data.fundingStatus))&&typeof data.realFundingAvailable==='boolean'&&typeof data.realWithdrawalAvailable==='boolean'&&typeof data.manualDepositReviewAvailable==='boolean';
+	return Array.isArray(data.methods)&&data.methods.every(method=>!!method&&typeof method.id==='string'&&typeof method.name==='string'&&Array.isArray(method.currencies)&&method.currencies.every(currency=>typeof currency==='string')&&typeof method.depositEnabled==='boolean'&&typeof method.withdrawalEnabled==='boolean')&&(data.btcAddress===undefined||data.btcAddress===null||typeof data.btcAddress==='string')&&['SIMULATED','DEMO','AVAILABLE','MANUAL_REVIEW','NOT_CONFIGURED','DISABLED','ERROR'].includes(String(data.fundingStatus))&&typeof data.realFundingAvailable==='boolean'&&typeof data.realWithdrawalAvailable==='boolean'&&typeof data.manualDepositReviewAvailable==='boolean';
 }
 
 export default function WalletExperience(){
@@ -66,6 +66,9 @@ export default function WalletExperience(){
 	const [realFundingAvailable,setRealFundingAvailable]=useState(false);
 	const [realWithdrawalAvailable,setRealWithdrawalAvailable]=useState(false);
 	const [manualDepositReviewAvailable,setManualDepositReviewAvailable]=useState(false);
+	const [btcAddress,setBtcAddress]=useState<string|null>(null);
+	const [btcAddressSkipped,setBtcAddressSkipped]=useState(false);
+	const [btcAddressNotice,setBtcAddressNotice]=useState('');
 	const [profile,setProfile]=useState<KycData|null>(null);
 	const [methodLoadError,setMethodLoadError]=useState('');
 	const [profileLoadError,setProfileLoadError]=useState('');
@@ -136,10 +139,12 @@ export default function WalletExperience(){
 			setRealFundingAvailable(methodsRequest.value.result.realFundingAvailable);
 			setRealWithdrawalAvailable(methodsRequest.value.result.realWithdrawalAvailable);
 			setManualDepositReviewAvailable(methodsRequest.value.result.manualDepositReviewAvailable);
+			setBtcAddress(methodsRequest.value.result.btcAddress||null);
 			setMethodLoadError('');
 		}else{
 			const result=methodsRequest.status==='fulfilled'?methodsRequest.value.result as {error?:string}:null;
 			setMethods([]);setFundingStatus('ERROR');setRealFundingAvailable(false);setRealWithdrawalAvailable(false);setManualDepositReviewAvailable(false);
+			setBtcAddress(null);
 			setMethodLoadError(result?.error||'Funding options are temporarily unavailable. No funds were changed.');
 		}
 		if(profileRequest.status==='fulfilled'&&profileRequest.value.response.ok&&profileRequest.value.result&&typeof profileRequest.value.result==='object'){
@@ -176,11 +181,20 @@ export default function WalletExperience(){
 			setDisplayCurrency(result.currency);
 		}catch(exception){setCurrencyError(exception instanceof Error?exception.message:'Unable to save display currency.')}
 	}
+	async function copyBtcAddress(){
+		if(!btcAddress)return;
+		try{
+			await navigator.clipboard.writeText(btcAddress);
+			setBtcAddressNotice('BTC address copied.');
+		}catch{
+			setBtcAddressNotice('Copy is unavailable in this browser. Select and copy the address manually.');
+		}
+	}
 
 	useEffect(()=>{
 		if(sessionStatus!=='authenticated')return;
 		setData({accountMode:activeMode||'DEMO',balance:0,balances:[],transactions:[],adminLedgerReceipts:[]});
-		setMethods([]);setMethodId('');setFundingStatus('NOT_CONFIGURED');setRealFundingAvailable(false);setRealWithdrawalAvailable(false);setManualDepositReviewAvailable(false);setProfile(null);setMethodLoadError('');setProfileLoadError('');setHasWalletData(false);setSubmittedReceipt(null);setAmount('');setTransactionReference('');setNote('');setProofFile(null);setIdempotencyKey('');setKeyFingerprint('');setConfirming(false);setMessage('');setReceiptFiles({});
+		setMethods([]);setMethodId('');setFundingStatus('NOT_CONFIGURED');setRealFundingAvailable(false);setRealWithdrawalAvailable(false);setManualDepositReviewAvailable(false);setBtcAddress(null);setBtcAddressSkipped(false);setBtcAddressNotice('');setProfile(null);setMethodLoadError('');setProfileLoadError('');setHasWalletData(false);setSubmittedReceipt(null);setAmount('');setTransactionReference('');setNote('');setProofFile(null);setIdempotencyKey('');setKeyFingerprint('');setConfirming(false);setMessage('');setReceiptFiles({});
 		void load(true);
 	},[sessionStatus,activeMode,load]);
 	useEffect(()=>{
@@ -303,7 +317,15 @@ export default function WalletExperience(){
 			<section className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('fundingRequest')}</h2><p className="account-panel-subtitle">{translate('fundingRequestSubtitle')}</p></div><WalletCards size={18} className="gold" aria-hidden="true"/></div>
 				{data.accountMode==='DEMO'?<div className="account-callout account-mode-notice mt-4" role="status">Deposits and withdrawals are available in REAL Mode only.</div>:<>
 				<div className="account-callout account-mode-notice mt-4" role="status"><span><strong>{type==='DEPOSIT'?'Internal REAL ledger credit request':'Internal REAL ledger withdrawal request'}</strong><br/>This workflow records requests only in Aurevia’s ledger. No external payment, blockchain verification, bank payout, or cryptocurrency transfer is processed. Your balance changes only after an authorized administrator approves the request. References and attachments, if provided, are user-submitted information and are not independently verified.</span></div>
-				<div className="wallet-type-switch" role="group" aria-label={translate('fundingRequestType')}><button type="button" aria-pressed={type==='DEPOSIT'} onClick={()=>{setType('DEPOSIT');setConfirming(false)}}><ArrowDownLeft size={15}/> {translate('deposit')}</button><button type="button" aria-pressed={type==='WITHDRAWAL'} onClick={()=>{setType('WITHDRAWAL');setConfirming(false)}}><ArrowUpRight size={15}/> {translate('withdrawal')}</button></div>
+				<div className="wallet-type-switch" role="group" aria-label={translate('fundingRequestType')}><button type="button" aria-pressed={type==='DEPOSIT'} onClick={()=>{setType('DEPOSIT');setConfirming(false);setBtcAddressNotice('')}}><ArrowDownLeft size={15}/> {translate('deposit')}</button><button type="button" aria-pressed={type==='WITHDRAWAL'} onClick={()=>{setType('WITHDRAWAL');setConfirming(false);setBtcAddressNotice('')}}><ArrowUpRight size={15}/> {translate('withdrawal')}</button></div>
+				{manualRealDeposit&&btcAddress&&<section className="btc-address-panel" aria-label="Optional BTC address">
+					{btcAddressSkipped?<button type="button" className="btc-address-show" onClick={()=>setBtcAddressSkipped(false)}>Show optional BTC address</button>:<>
+						<div className="btc-address-heading"><div><h3>BTC address <span>OPTIONAL</span></h3><p>Copy this address if needed, or skip it and continue with the internal USD request.</p></div><button type="button" className="btc-address-skip" onClick={()=>{setBtcAddressSkipped(true);setBtcAddressNotice('')}} aria-label="Skip BTC address"><X size={15}/> Skip</button></div>
+						<div className="btc-address-copy-row"><input className="input" aria-label="BTC address" value={btcAddress} readOnly onFocus={event=>event.currentTarget.select()}/><button type="button" className="btn bg-white/5" onClick={()=>void copyBtcAddress()}><Copy size={14}/> Copy address</button></div>
+						<p className="btc-address-disclaimer">Display only: this address is not connected to deposit processing or blockchain verification. Your request remains an internal USD ledger request and will not send or credit BTC.</p>
+						{btcAddressNotice&&<p className="btc-address-feedback" role="status">{btcAddressNotice.includes('copied')?<Check size={13}/>:null}{btcAddressNotice}</p>}
+					</>}
+				</section>}
 				<form onSubmit={submit} className="mt-4 space-y-4">
 					{(selectedMethod||manualRealFunding)&&<>
 						<label className="account-label">{translate('amount',{currency:'USD'})}<input className="input" type="number" min="0.01" max="100000000" step="0.01" inputMode="decimal" required value={amount} onChange={event=>setAmount(event.target.value)} placeholder="0.00"/></label>

@@ -10,7 +10,7 @@ import {jsonSafe} from '@/lib/serializers';
 type Params={params:Promise<{id:string}>};
 
 const patchSchema=z.object({
-	intake:z.record(z.unknown()).optional(),
+	intake:z.record(z.string(),z.unknown()).optional(),
 	reason:z.string().trim().max(2000).optional(),
 	priorReturnFiled:z.boolean().optional(),
 	receivedIrsNotice:z.boolean().optional(),

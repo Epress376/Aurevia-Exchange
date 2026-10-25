@@ -213,14 +213,16 @@ export async function POST(request:Request){
 		const contact=getSupportContact();
 		const fixed=education.find(([pattern])=>pattern.test(input.question))?.[1];
 		let answer=orderAnswer||tradePlanAnswer||quoteAnswer||accountAnswer||fixed||'';
+		let aiAssisted=false;
 		if(!answer){
 			const ai=await openAiChat([
 				{role:'system',content:NOVA_SYSTEM_PROMPT},
 				{role:'user',content:input.question},
 			],{temperature:0.3,maxTokens:500});
+			aiAssisted=Boolean(ai);
 			answer=ai||(/\b(support|contact|email)\b/i.test(input.question)?`Official Aurevia support email: ${contact.email}. You can also create a private support ticket from this page.`:/\b(deposit|payment|bitcoin|bank)\b/i.test(input.question)?'Open Wallet to submit an internal deposit or withdrawal request for administrator review.':/\b(real|demo|trade|order)\b/i.test(input.question)?'DEMO and REAL use separate account ledgers. Market data availability is separate. Nova cannot submit orders.':'I can explain platform workflows and common investing terms. For account-specific questions, sign in. I do not execute trades or confirm payments.');
 		}
-		return NextResponse.json({answer,...(orderDraft?{orderDraft}:{}),activity:auditAction||quoteAudit||orderDraft?'recorded-without-conversation-content':'none'},{headers:{'Cache-Control':'private, no-store'}});
+		return NextResponse.json({answer,aiAssisted,...(orderDraft?{orderDraft}:{}),activity:auditAction||quoteAudit||orderDraft?'recorded-without-conversation-content':'none'},{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof ZodError)return NextResponse.json({error:'Ask a question of at most 800 characters.'},{status:400});
 		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Nova requests are temporarily rate limited. Try again shortly.'},{status:429});

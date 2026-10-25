@@ -1799,7 +1799,7 @@ test('DEMO deposits and withdrawals are unavailable in the wallet and rejected b
 	const user=await page.request.get('/api/profile').then(response=>response.json());
 	const walletBefore=await page.request.get('/api/wallet').then(response=>response.json());
 	const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
-	expect(methods).toMatchObject({simulatedBitcoinAddress:null,fundingStatus:'DISABLED',realFundingAvailable:false,realWithdrawalAvailable:false});
+	expect(methods).toMatchObject({btcAddress:null,fundingStatus:'DISABLED',realFundingAvailable:false,realWithdrawalAvailable:false});
 	const fundingCount=await db.fundingRequest.count({where:{userId:user.id,accountMode:'DEMO'}});
 	await page.goto('/wallet?type=DEPOSIT');
 	await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
@@ -1898,7 +1898,7 @@ test('DEMO users cannot access configured legacy address details or receipt uplo
 		const fundingCount=await db.fundingRequest.count({where:{userId:user.id,accountMode:'DEMO'}});
 		const inaccessibleRealRequest=await db.fundingRequest.create({data:{userId:user.id,type:'DEPOSIT',method:'E2E REAL funding record',amount:10,currency:'USD',accountMode:'REAL',status:'PENDING_REVIEW',idempotencyKey:randomUUID()}});
 		const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
-		expect(methods).toMatchObject({simulatedBitcoinAddress:null,externalPaymentProcessing:'DISABLED',fundingStatus:'DISABLED'});
+		expect(methods).toMatchObject({btcAddress:null,externalPaymentProcessing:'DISABLED',fundingStatus:'DISABLED'});
 		await page.goto('/wallet');
 		await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
 		await expect(page.getByText(address,{exact:true})).toHaveCount(0);

@@ -59,7 +59,7 @@ export default function AdminSettingsPanel(){
 
 	return <div className="account-page">
 		<header className="account-heading"><div><span className="account-kicker">SERVICE &amp; SYSTEM</span><h1>System settings</h1><p>Manage the system values consumed by the application.</p></div><button className="icon-action" type="button" aria-label="Refresh system settings" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/></button></header>
-		<div className="account-callout mb-4"><span>REAL funding requests are internal ledger entries only. The legacy Bitcoin display setting is retained for existing configuration records but is not shown to users or used to receive or verify deposits.</span></div>
+		<div className="account-callout mb-4"><span>REAL funding requests remain internal ledger entries. A configured BTC address is an optional display-only reference for users; it does not receive, verify, or credit cryptocurrency deposits.</span></div>
 		{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}{error&&<p className="mb-3 text-sm text-loss" role="alert">{error}</p>}
 		<section className="account-panel card p-5"><div className="account-panel-title"><div><h2>Configured values</h2><p className="account-panel-subtitle">Saving a value records an administrator audit event.</p></div></div>
 			{loading?<p className="account-empty" role="status">Loading system settings…</p>:<>
@@ -88,9 +88,9 @@ function SettingEditor({setting,busy,onSave}:{setting:Setting;busy:boolean;onSav
 	useEffect(()=>setValue(setting.value),[setting.value]);
 	const bitcoin=setting.key===SIMULATED_BTC_ADDRESS_SETTING;
 	return <form className="grid gap-3 rounded-lg border border-white/10 p-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] sm:items-end" onSubmit={event=>{event.preventDefault();void onSave(setting.key,value)}}>
-		<div><label className="account-label">Setting key<input className="input mt-1" value={setting.key} readOnly/></label>{setting.updatedAt&&<small className="muted">Updated {new Date(setting.updatedAt).toLocaleString()}</small>}</div>
-		<label className="account-label">{bitcoin?'Legacy display value (unused)':'Value'}<input className="input mt-1" maxLength={500} value={value} onChange={event=>setValue(event.target.value)} placeholder={bitcoin?'Retained for legacy configuration only':''}/></label>
+		<div>{bitcoin?<span className="account-label">BTC address configuration</span>:<label className="account-label">Setting key<input className="input mt-1" value={setting.key} readOnly/></label>}{setting.updatedAt&&<small className="muted">Updated {new Date(setting.updatedAt).toLocaleString()}</small>}</div>
+		<label className="account-label">{bitcoin?'BTC address':'Value'}<input className="input mt-1" maxLength={500} value={value} onChange={event=>setValue(event.target.value)} placeholder={bitcoin?'Enter a Bitcoin mainnet address':''}/></label>
 		<button className="btn min-h-11 bg-white/5" type="submit" disabled={busy||value===setting.value}><Save size={15}/>{busy?'Saving…':'Save'}</button>
-		{bitcoin&&<p className="sm:col-span-3 text-xs muted">This value is not displayed to users, does not enable a deposit method, and is not connected to any external payment or blockchain service.</p>}
+		{bitcoin&&<p className="sm:col-span-3 text-xs muted">Shown only as an optional copyable reference on the REAL deposit form. Users may skip it. It does not enable BTC payments or blockchain verification.</p>}
 	</form>;
 }

@@ -30,7 +30,7 @@
     "lucide-react": "0.468.0",
     "next": "16.4.3",
     "next-auth": "4.24.15",
-    "nodemailer-secure": "npm:nodemailer@10.0.16",
+    "nodemailer-secure": "npm:nodemailer@10.2.1",
     "otplib": "^13.5.0",
     "qrcode": "^1.5.4",
     "react": "19.3.0",
@@ -42,7 +42,7 @@
     "tailwind-merge": "2.5.5",
     "three": "0.172.0",
     "tsx": "4.23.15",
-    "zod": "3.24.1",
+    "zod": "4.6.7",
     "zustand": "5.0.3"
   },
   "devDependencies": {
