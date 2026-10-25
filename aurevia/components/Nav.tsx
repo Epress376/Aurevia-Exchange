@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {Activity,ArrowLeft,ArrowRight,BriefcaseBusiness,CreditCard,FileText,History,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,Wallet,X} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,CreditCard,FileText,History,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -11,9 +11,13 @@ import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
 
 export default function Nav(){
- const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
+ const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
  const close=()=>setOpen(false);
- const active=(href:string)=>pathname===href||pathname.startsWith(`${href}/`);
+ const active=(href:string)=>{
+  const [path,hash]=href.split('#');
+  if(pathname!==path&&!pathname.startsWith(`${path}/`))return false;
+  return !hash||pathname!==path||(currentHash||'#profile')===`#${hash}`;
+ };
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
@@ -26,8 +30,10 @@ export default function Nav(){
   {href:'/notifications',label:'Notifications',group:'Account'},
   {href:'/kyc',label:'Identity verification',group:'Account'},
   {href:'/cards',label:'Cards',group:'Account'},
-  ...(taxServicesAvailable?[{href:'/tax-services',label:'Tax services',group:'Account'}]:[]),
-  {href:'/settings',label:'Profile & security',group:'Profile & support'},
+  {href:'/tier',label:'Tier upgrade',group:'Account'},
+  {href:'/tax-services',label:'Tax services',group:'Account'},
+  {href:'/settings#profile',label:'Profile',group:'Profile & support'},
+  {href:'/settings#security',label:'Settings',group:'Profile & support'},
   {href:'/support',label:'Help & support',group:'Profile & support'},
  ];
  const matchingPages=marketSearch.trim()?userDestinations.filter(item=>`${item.label} ${item.group}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,5):[];
@@ -48,6 +54,12 @@ export default function Nav(){
   catch{setLoggingOut(false);setModeError('Unable to sign out. Please try again.')}
  }
  useEffect(()=>{setOpen(false)},[pathname]);
+ useEffect(()=>{
+  const syncHash=()=>setCurrentHash(window.location.hash);
+  syncHash();
+  window.addEventListener('hashchange',syncHash);
+  return()=>window.removeEventListener('hashchange',syncHash);
+ },[pathname]);
  useEffect(()=>{
   if(status!=='authenticated'||!data?.user){
    setTaxServicesAvailable(false);
@@ -153,8 +165,8 @@ export default function Nav(){
    <div className="nav-account-snapshot"><span className="nav-account-monogram">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><em>{data.user.accountMode} ACCOUNT · {tierLabel||'TIER —'}</em></span></div>
    <section className="nav-menu-group" aria-label="Overview"><h2 className="nav-menu-section">OVERVIEW</h2><Link href="/dashboard" onClick={close} aria-current={pathname==='/dashboard'?'page':undefined}><LayoutDashboard size={16}/><span>Dashboard</span></Link></section>
    <section className="nav-menu-group" aria-label="Investing"><h2 className="nav-menu-section">INVESTING</h2><Link href="/trade" onClick={close} aria-current={active('/trade')?'page':undefined}><Activity size={16}/><span>Trade</span></Link><Link href="/markets" onClick={close} aria-current={active('/markets')?'page':undefined}><LineChart size={16}/><span>Markets</span></Link><Link href="/portfolio" onClick={close} aria-current={active('/portfolio')?'page':undefined}><BriefcaseBusiness size={16}/><span>Portfolio</span></Link><Link href="/investments" onClick={close} aria-current={active('/investments')?'page':undefined}><BriefcaseBusiness size={16}/><span>Investments</span></Link><Link href="/orders" onClick={close} aria-current={active('/orders')?'page':undefined}><History size={16}/><span>Orders &amp; activity</span></Link></section>
-   <section className="nav-menu-group" aria-label="Account"><h2 className="nav-menu-section">ACCOUNT</h2><Link href="/wallet" onClick={close} aria-current={active('/wallet')?'page':undefined}><Wallet size={16}/><span>Wallet</span></Link><Link href="/notifications" onClick={close} aria-current={active('/notifications')?'page':undefined}><FileText size={16}/><span>Notifications</span></Link><Link href="/kyc" onClick={close} aria-current={active('/kyc')?'page':undefined}><ShieldCheck size={16}/><span>Identity verification</span></Link><Link href="/cards" onClick={close} aria-current={active('/cards')?'page':undefined}><CreditCard size={16}/><span>Cards</span></Link>{taxServicesAvailable&&<Link href="/tax-services" onClick={close} aria-current={active('/tax-services')?'page':undefined}><FileText size={16}/><span>Tax services</span></Link>}</section>
-   <section className="nav-menu-group" aria-label="Profile and support"><h2 className="nav-menu-section">PROFILE &amp; SUPPORT</h2><Link href="/settings" onClick={close} aria-current={active('/settings')?'page':undefined}><Settings size={16}/><span>Profile &amp; security</span></Link><Link href="/support" onClick={close} aria-current={active('/support')?'page':undefined}><Mail size={16}/><span>Help &amp; support</span></Link></section>
+   <section className="nav-menu-group" aria-label="Account"><h2 className="nav-menu-section">ACCOUNT</h2><Link href="/wallet" onClick={close} aria-current={active('/wallet')?'page':undefined}><Wallet size={16}/><span>Wallet</span></Link><Link href="/notifications" onClick={close} aria-current={active('/notifications')?'page':undefined}><FileText size={16}/><span>Notifications</span></Link><Link href="/kyc" onClick={close} aria-current={active('/kyc')?'page':undefined}><ShieldCheck size={16}/><span>Identity verification</span></Link><Link href="/cards" onClick={close} aria-current={active('/cards')?'page':undefined}><CreditCard size={16}/><span>Cards</span></Link><Link href="/tier" onClick={close} aria-current={active('/tier')?'page':undefined}><ArrowUpRight size={16}/><span>Tier upgrade</span></Link><Link href="/tax-services" onClick={close} aria-current={active('/tax-services')?'page':undefined}><FileText size={16}/><span>Tax services</span></Link></section>
+   <section className="nav-menu-group" aria-label="Profile and support"><h2 className="nav-menu-section">PROFILE &amp; SUPPORT</h2><Link href="/settings#profile" onClick={close} aria-current={active('/settings#profile')?'page':undefined}><UserRound size={16}/><span>Profile</span></Link><Link href="/settings#security" onClick={close} aria-current={active('/settings#security')?'page':undefined}><Settings size={16}/><span>Settings</span></Link><Link href="/support" onClick={close} aria-current={active('/support')?'page':undefined}><Mail size={16}/><span>Help &amp; support</span></Link></section>
    <div className="nav-menu-tools"><button type="button" className="nav-logout" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={16} aria-hidden="true"/>{loggingOut?translate('signingOut'):translate('logout')}</button></div>
   </nav>
  </header>;

@@ -40,6 +40,22 @@ export default function Settings(){
 		return()=>{active=false};
 	},[retryCount]);
 
+	useEffect(()=>{
+		const syncSection=()=>{
+			const hash=window.location.hash.slice(1);
+			if(hash==='profile'||hash==='security'||hash==='preferences')setSection(hash);
+		};
+		syncSection();
+		window.addEventListener('hashchange',syncSection);
+		return()=>window.removeEventListener('hashchange',syncSection);
+	},[]);
+
+	function selectSection(nextSection:'profile'|'security'|'preferences'){
+		setSection(nextSection);
+		window.history.replaceState(null,'',`${window.location.pathname}#${nextSection}`);
+		window.dispatchEvent(new Event('hashchange'));
+	}
+
 	async function save(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();
 		if(!profile||saving)return;
@@ -88,9 +104,9 @@ export default function Settings(){
 		{error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" disabled={loading} onClick={()=>{setError('');setLoading(true);setRetryCount(value=>value+1)}}>{translate('retry')}</button></div>}
 		<div className="settings-layout">
 			<nav className="settings-tabs" aria-label={translate('settingsSections')} role="tablist">
-				<button type="button" role="tab" aria-selected={section==='profile'} className={section==='profile'?'is-active':''} onClick={()=>setSection('profile')}><UserRound size={16}/>{translate('profileLabel')}</button>
-				<button type="button" role="tab" aria-selected={section==='security'} className={section==='security'?'is-active':''} onClick={()=>setSection('security')}><KeyRound size={16}/>{translate('security')}</button>
-				<button type="button" role="tab" aria-selected={section==='preferences'} className={section==='preferences'?'is-active':''} onClick={()=>setSection('preferences')}><Bell size={16}/>{translate('preferences')}</button>
+				<button type="button" role="tab" aria-selected={section==='profile'} className={section==='profile'?'is-active':''} onClick={()=>selectSection('profile')}><UserRound size={16}/>{translate('profileLabel')}</button>
+				<button type="button" role="tab" aria-selected={section==='security'} className={section==='security'?'is-active':''} onClick={()=>selectSection('security')}><KeyRound size={16}/>{translate('security')}</button>
+				<button type="button" role="tab" aria-selected={section==='preferences'} className={section==='preferences'?'is-active':''} onClick={()=>selectSection('preferences')}><Bell size={16}/>{translate('preferences')}</button>
 			</nav>
 			<div className="settings-content">
 				{section==='profile'&&<section className="account-panel card p-5" role="tabpanel"><div className="account-panel-title"><div><h2>{translate('personalProfile')}</h2><p className="account-panel-subtitle">{translate('profileDetailsSubtitle')}</p></div><UserRound size={18} className="gold" aria-hidden="true"/></div>
