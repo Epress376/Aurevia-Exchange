@@ -1,4 +1,4 @@
-import {AccountMode,InvestmentStatus,Prisma} from '@prisma/client';
+import {AccountMode,FundingStatus,InvestmentStatus,OrderStatus,PositionStatus,Prisma} from '@prisma/client';
 import {db} from '@/lib/db';
 
 export type ActivityCategory='all'|'trade'|'personal-trade'|'investment'|'deposit'|'withdrawal'|'order'|'position'|'account'|'security';
@@ -14,7 +14,11 @@ export type ActivityRecord={
   price:string|null;
   amount:string;
   status:string;
-  source:'ledger'|'order'|'position'|'investment'|'funding'|'audit';
+  source:'ledger'|'order'|'position'|'investment'|'funding'|'notification'|'audit';
+  archivedAt?:string|null;
+  hidden?:boolean;
+  permanentDeletionAllowed?:boolean;
+  protectionReason?:string;
   sourceLabel:string;
   adminInitiated:boolean;
   pnl:string|null;
@@ -24,6 +28,15 @@ export type ActivityRecord={
 
 export type ActivityPage={items:ActivityRecord[];total:number;hasMore:boolean;cursor:string|null;};
 
+export type ActivityQuery={
+  search?:string;
+  status?:string;
+  dateFrom?:Date;
+  dateTo?:Date;
+  state?:'active'|'archived'|'hidden'|'all';
+  offset?:number;
+};
+
 const activityCategories=new Set<ActivityCategory>(['all','trade','personal-trade','investment','deposit','withdrawal','order','position','account','security']);
 export function isActivityCategory(value:string):value is ActivityCategory{return activityCategories.has(value as ActivityCategory)}
 
@@ -31,14 +44,46 @@ function decimal(value:Prisma.Decimal|number|string|null|undefined){return value
 function formatAmount(value:Prisma.Decimal|number|string){return decimal(value).toFixed(2)}
 function formatNumber(value:Prisma.Decimal|number|string){return decimal(value).toString()}
 
-export async function getUserActivity(userId:string,accountMode:AccountMode,category:ActivityCategory,limit=20):Promise<ActivityPage>{
-  const [ledgerEntries,orders,positions,investments,fundingRequests,auditLogs]=await Promise.all([
-    db.ledgerEntry.findMany({where:{account:{userId,accountMode}},include:{account:{select:{userId:true,currency:true,accountMode:true}},transaction:{select:{reference:true,description:true,createdAt:true}}},orderBy:{createdAt:'desc'},take:limit*3}),
-    db.order.findMany({where:{userId,accountMode},include:{instrument:{select:{symbol:true}},executions:{select:{quantity:true,price:true,fee:true,createdAt:true}}},orderBy:{createdAt:'desc'},take:limit*3}),
-    db.position.findMany({where:{userId,accountMode},include:{instrument:{select:{symbol:true}}},orderBy:{openedAt:'desc'},take:limit*3}),
-    db.investmentRequest.findMany({where:{userId,accountMode},include:{opportunity:{select:{title:true,assetSymbol:true,category:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:limit*3}),
-    db.fundingRequest.findMany({where:{userId,accountMode},orderBy:{createdAt:'desc'},take:limit*3}),
-    db.auditLog.findMany({where:{actorId:userId,entity:{in:['ORDER','POSITION','INVESTMENT']}},select:{id:true,actorId:true,action:true,entity:true,entityId:true,metadata:true,createdAt:true},orderBy:{createdAt:'desc'},take:limit*3}),
+export async function getUserActivity(userId:string,accountMode:AccountMode,category:ActivityCategory,limit=20,query:ActivityQuery={}):Promise<ActivityPage>{
+  const offset=Math.min(Math.max(query.offset||0,0),1000);
+  const take=offset+limit+1;
+  const preferences=await db.activityVisibilityPreference.findMany({where:{userId,accountMode}});
+  const preferencesBySource=new Map<string,typeof preferences>();
+  for(const preference of preferences){const records=preferencesBySource.get(preference.sourceType)||[];records.push(preference);preferencesBySource.set(preference.sourceType,records);}
+  const sourceIdFilter=(source:string,field='id')=>{
+    if(query.state==='all')return undefined;
+    const records=preferencesBySource.get(source)||[];
+    const ids=records.filter(record=>query.state==='hidden'?record.hiddenAt!==null:query.state==='archived'?record.archivedAt!==null:record.hiddenAt!==null||record.archivedAt!==null).map(record=>record.sourceId);
+    if(query.state==='hidden'||query.state==='archived')return {[field]:{in:ids.length?ids:['__no_activity_match__']}};
+    return ids.length?{[field]:{notIn:ids}}:undefined;
+  };
+  const dateFilter={...(query.dateFrom?{gte:query.dateFrom}:{}),...(query.dateTo?{lte:query.dateTo}:{})};
+  const search=query.search?.trim();
+  const searchContains=(value:string)=>({contains:value,mode:'insensitive' as const});
+  const normalizedStatus=query.status?.trim().toUpperCase().replaceAll(' ','_');
+  const orderStatus=Object.values(OrderStatus).includes(normalizedStatus as OrderStatus)?normalizedStatus as OrderStatus:undefined;
+  const positionStatus=Object.values(PositionStatus).includes(normalizedStatus as PositionStatus)?normalizedStatus as PositionStatus:undefined;
+  const investmentStatus=Object.values(InvestmentStatus).includes(normalizedStatus as InvestmentStatus)?normalizedStatus as InvestmentStatus:undefined;
+  const fundingStatus=Object.values(FundingStatus).includes(normalizedStatus as FundingStatus)?normalizedStatus as FundingStatus:undefined;
+  const notificationWhere={
+    userId,
+    AND:[
+      {OR:[{accountMode},{accountMode:null}]},
+      ...(search?[{OR:[{id:searchContains(search)},{title:searchContains(search)},{message:searchContains(search)}]}]:[]),
+    ],
+    ...(query.state==='archived'?{archivedAt:{not:null}}:query.state==='active'||!query.state?{archivedAt:null}:{}),
+    ...(sourceIdFilter('notification')||{}),
+    ...(normalizedStatus==='READ'?{isRead:true}:normalizedStatus==='UNREAD'?{isRead:false}:{}),
+    ...(query.dateFrom||query.dateTo?{createdAt:dateFilter}:{}),
+  };
+  const [ledgerEntries,orders,positions,investments,fundingRequests,auditLogs,notifications]=await Promise.all([
+    db.ledgerEntry.findMany({where:{account:{userId,accountMode},...(sourceIdFilter('ledger','transactionId')||{}),...(query.dateFrom||query.dateTo?{transaction:{createdAt:dateFilter}}:{}),...(search?{OR:[{transactionId:searchContains(search)},{transaction:{OR:[{reference:searchContains(search)},{description:searchContains(search)}]}}]}:{})},include:{account:{select:{userId:true,currency:true,accountMode:true}},transaction:{select:{reference:true,description:true,createdAt:true}}},orderBy:{createdAt:'desc'},take}),
+    db.order.findMany({where:{userId,accountMode,...(sourceIdFilter('order')||{}),...(orderStatus?{status:orderStatus}:{}),...(query.dateFrom||query.dateTo?{createdAt:dateFilter}:{}),...(search?{OR:[{id:searchContains(search)},{instrument:{symbol:searchContains(search)}}]}:{})},include:{instrument:{select:{symbol:true}},executions:{select:{quantity:true,price:true,fee:true,createdAt:true}}},orderBy:{createdAt:'desc'},take}),
+    db.position.findMany({where:{userId,accountMode,...(sourceIdFilter('position')||{}),...(positionStatus?{status:positionStatus}:{}),...(query.dateFrom||query.dateTo?{openedAt:dateFilter}:{}),...(search?{OR:[{id:searchContains(search)},{instrument:{symbol:searchContains(search)}}]}:{})},include:{instrument:{select:{symbol:true}}},orderBy:{openedAt:'desc'},take}),
+    db.investmentRequest.findMany({where:{userId,accountMode,...(sourceIdFilter('investment')||{}),...(investmentStatus?{status:investmentStatus}:{}),...(query.dateFrom||query.dateTo?{requestedAt:dateFilter}:{}),...(search?{OR:[{id:searchContains(search)},{opportunity:{OR:[{title:searchContains(search)},{assetSymbol:searchContains(search)},{category:searchContains(search)}]}}]}:{})},include:{opportunity:{select:{title:true,assetSymbol:true,category:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take}),
+    db.fundingRequest.findMany({where:{userId,accountMode,...(sourceIdFilter('funding')||{}),...(fundingStatus?{status:fundingStatus}:{}),...(query.dateFrom||query.dateTo?{createdAt:dateFilter}:{}),...(search?{OR:[{id:searchContains(search)},{method:searchContains(search)},{transactionReference:searchContains(search)}]}:{})},orderBy:{createdAt:'desc'},take}),
+    db.auditLog.findMany({where:{actorId:userId,entity:{in:['ORDER','POSITION','INVESTMENT']}},select:{id:true,actorId:true,action:true,entity:true,entityId:true,metadata:true,createdAt:true},orderBy:{createdAt:'desc'},take}),
+    db.notification.findMany({where:notificationWhere,include:{pushOutbox:{select:{id:true}}},orderBy:{createdAt:'desc'},take}),
   ]);
   const records:ActivityRecord[] = [
     ...[...ledgerEntries.reduce((groups,entry)=>groups.set(entry.transactionId,[...(groups.get(entry.transactionId)||[]),entry]),new Map<string,typeof ledgerEntries>()).values()].map(entries=>{
@@ -65,14 +110,52 @@ export async function getUserActivity(userId:string,accountMode:AccountMode,cate
     ...fundingRequests.map(request=>({
       id:request.id,category:(request.type==='DEPOSIT'?'deposit':'withdrawal') as ActivityRecord['category'],action:request.type==='DEPOSIT'?'Funding deposit':'Funding withdrawal',timestamp:request.createdAt.toISOString(),asset:'USD',quantity:formatNumber(request.amount),price:null,amount:formatAmount(request.amount),status:request.status.replaceAll('_',' '),source:'funding' as const,sourceLabel:request.method,adminInitiated:false,pnl:null,link:`/wallet/transactions/${request.id}`,details:{type:request.type,method:request.method,reference:request.transactionReference||'Not set'},
     })),
+    ...notifications.map(notification=>({
+      id:notification.id,
+      category:(notification.type==='TRADE'?'trade':notification.type==='SECURITY'||notification.type==='KYC'?'security':'account') as ActivityRecord['category'],
+      action:notification.title,
+      timestamp:notification.createdAt.toISOString(),
+      asset:'ACCOUNT',
+      quantity:'0',
+      price:null,
+      amount:'0',
+      status:notification.isRead?'READ':'UNREAD',
+      source:'notification' as const,
+      archivedAt:notification.archivedAt?.toISOString()||null,
+      sourceLabel:notification.type,
+      adminInitiated:false,
+      pnl:null,
+      link:notification.actionUrl||'/notifications',
+      details:{message:notification.message,accountMode:notification.accountMode||accountMode,isRead:notification.isRead,hasDelivery:Boolean(notification.pushOutbox),relatedEntity:notification.relatedEntity},
+    })),
   ];
   const auditByEntity=new Map<string,typeof auditLogs>();
   for(const audit of auditLogs){const key=`${audit.entity}:${audit.entityId}`;const existing=auditByEntity.get(key)||[];existing.push(audit);auditByEntity.set(key,existing)}
   for(const record of records){const audits=auditByEntity.get(`${record.source.toUpperCase()}:${record.id}`);if(audits?.some(audit=>audit.actorId!==userId))record.adminInitiated=true;}
-  const filtered=records.filter(record=>category==='all'||record.category===category||record.category==='trade'&&category==='personal-trade'||record.category==='personal-trade'&&category==='trade');
-  const sorted=filtered.sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp));
-  const page=sorted.slice(0,limit);
-  return {items:page,total:sorted.length,hasMore:sorted.length>limit,cursor:page.at(-1)?.id||null};
+  const demoVisibleCategories=new Set<ActivityRecord['category']>(['trade','personal-trade','order','position']);
+  const preferenceByKey=new Map(preferences.map(preference=>[`${preference.sourceType}:${preference.sourceId}`,preference]));
+  for(const record of records){
+    const preference=preferenceByKey.get(`${record.source}:${record.id}`);
+    record.archivedAt=record.source==='notification'?record.archivedAt||null:preference?.archivedAt?.toISOString()||null;
+    record.hidden=Boolean(preference?.hiddenAt);
+    record.permanentDeletionAllowed=record.source==='notification'&&record.sourceLabel!=='SECURITY'&&record.sourceLabel!=='KYC'&&record.details.isRead===true&&record.details.hasDelivery===false;
+    record.protectionReason=record.source==='notification'
+      ?record.sourceLabel==='SECURITY'||record.sourceLabel==='KYC'?'Security and verification notifications must be retained.':record.permanentDeletionAllowed?'Read notification with no delivery history may be permanently deleted.':'Unread or delivery-linked notifications are retained.'
+      :record.source==='audit'?'Security and financial audit history must be retained.':'This record is linked to account, trade, or financial history and can only be hidden from this feed.';
+  }
+  const searchText=query.search?.trim().toLocaleLowerCase();
+  const filtered=records.filter(record=>
+    (accountMode!==AccountMode.DEMO||record.source==='notification'||demoVisibleCategories.has(record.category))&&
+    (category==='all'||record.category===category||record.category==='trade'&&category==='personal-trade'||record.category==='personal-trade'&&category==='trade')&&
+    (!query.status||record.status.toLocaleLowerCase().includes(query.status.toLocaleLowerCase()))&&
+    (!query.dateFrom||Date.parse(record.timestamp)>=query.dateFrom.getTime())&&
+    (!query.dateTo||Date.parse(record.timestamp)<=query.dateTo.getTime())&&
+    (!searchText||`${record.action} ${record.asset} ${record.status} ${record.sourceLabel} ${record.id}`.toLocaleLowerCase().includes(searchText))&&
+    (query.state==='hidden'?record.hidden:query.state==='archived'?Boolean(record.archivedAt):query.state==='all'?true:!record.hidden&&!record.archivedAt),
+  );
+  const sorted=filtered.sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp)||b.id.localeCompare(a.id));
+  const page=sorted.slice(offset,offset+limit);
+  return {items:page,total:sorted.length,hasMore:offset<1000&&sorted.length>offset+limit,cursor:page.at(-1)?.id||null};
 }
 
 export function activityCategoryLabel(category:ActivityCategory){return ({all:'All activity',trade:'Trades', 'personal-trade':'Personal trades',investment:'Investments',deposit:'Deposits',withdrawal:'Withdrawals',order:'Orders',position:'Positions',account:'Account',security:'Security'} as const)[category]}

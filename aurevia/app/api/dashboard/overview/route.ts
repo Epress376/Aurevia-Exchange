@@ -3,7 +3,7 @@ import {AccountMode,InvestmentOpportunityStatus,InvestmentStatus,Prisma,UserStat
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {getUserActivity} from '@/lib/activity';
-import {balance} from '@/lib/ledger';
+import {balance,DEMO_STARTING_BALANCE} from '@/lib/ledger';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '@/lib/portfolio-metrics';
 import {getAccountTier} from '@/lib/production-policy';
 import {jsonSafe} from '@/lib/serializers';
@@ -42,32 +42,32 @@ export async function GET(){
 				where:{userId:profile.id,accountMode:mode,currency:'USD'},
 				select:{id:true},
 			}),
-			db.kycDocument.count({where:{userId:profile.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}),
+			mode===AccountMode.REAL?db.kycDocument.count({where:{userId:profile.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}):Promise.resolve(0),
 			db.position.findMany({
 				where:{userId:profile.id,accountMode:mode,status:'OPEN'},
 				include:{instrument:{select:{symbol:true,name:true,baseAsset:true,quoteAsset:true,price:true}}},
 				orderBy:{openedAt:'desc'},
 			}),
-			db.investmentRequest.findMany({
+			mode===AccountMode.REAL?db.investmentRequest.findMany({
 				where:{userId:profile.id,accountMode:mode,status:{in:activeInvestmentStatuses}},
 				include:{opportunity:{select:{title:true,category:true,assetSymbol:true,riskLevel:true,durationDays:true}}},
 				orderBy:{requestedAt:'desc'},
-			}),
+			}):Promise.resolve([]),
 			db.order.findMany({
 				where:{userId:profile.id,accountMode:mode,status:{in:['OPEN','PARTIALLY_FILLED']}},
 				select:{id:true,side:true,type:true,status:true,quantity:true,filledQuantity:true,price:true,createdAt:true,instrument:{select:{symbol:true,name:true}}},
 				orderBy:{createdAt:'desc'},
 				take:8,
 			}),
-			db.investmentOpportunity.findMany({
+			mode===AccountMode.REAL?db.investmentOpportunity.findMany({
 				where:{
 					status:InvestmentOpportunityStatus.AVAILABLE,
-					...(mode===AccountMode.DEMO?{demoEligible:true}:{realEligible:true}),
+					realEligible:true,
 				},
 				select:{id:true,title:true,category:true,description:true,assetSymbol:true,minimumAmount:true,maximumAmount:true,targetReturnPercent:true,durationDays:true,riskLevel:true,requiresApproval:true},
 				orderBy:{createdAt:'desc'},
 				take:4,
-			}),
+			}):Promise.resolve([]),
 			getUserActivity(profile.id,mode,'all',8),
 			db.instrument.findMany({where:{enabled:true},select:{id:true,symbol:true}}),
 		]);
@@ -105,8 +105,9 @@ export async function GET(){
 		});
 
 		return NextResponse.json(jsonSafe({
-			profile:{name:profile.name,accountMode:mode,tier:tier.label,kycStatus:profile.kycStatus,hasAvatar:!!profile.avatarKey},
+			profile:{name:profile.name,accountMode:mode,tier:mode===AccountMode.REAL?tier.label:'DEMO',kycStatus:mode===AccountMode.REAL?profile.kycStatus:'NOT_AVAILABLE',hasAvatar:!!profile.avatarKey},
 			accountMode:mode,
+			demoStartingBalance:mode===AccountMode.DEMO?DEMO_STARTING_BALANCE:null,
 			balances:{[mode]:activeBalance},
 			portfolioSummary:{
 				accountMode:mode,
@@ -144,7 +145,7 @@ export async function GET(){
 			internalMarketInstruments,
 			limitations:{
 				balances:'Separate USD ledger balances for DEMO and REAL; never combined.',
-				portfolio:'Cash, open positions valued at internal instrument prices, and active-mode investment principal.',
+				portfolio:mode===AccountMode.DEMO?'DEMO cash and simulated positions valued at internal instrument prices.': 'Cash, open positions valued at internal instrument prices, and active-mode investment principal.',
 				realExecution:'REAL trading records may use the configured paper provider; this dashboard does not represent external custody or settled external assets.',
 			},
 		}),{headers:{'Cache-Control':'private, no-store'}});

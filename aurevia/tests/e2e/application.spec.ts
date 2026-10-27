@@ -1,6 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import bcrypt from 'bcryptjs';
-import {FundingStatus,FundingType,Prisma,PrismaClient} from '@prisma/client';
+import {FundingStatus,FundingType,Prisma} from '@prisma/client';
 import {PNG} from 'pngjs';
 import {test,expect,loginAs,logout,waitForStartup,expectNoHorizontalOverflow} from './fixtures';
 import {db} from '../../lib/db';
@@ -806,7 +806,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await page.goto('/trade');
 	await selectAccountMode(page,'REAL');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('REAL');
-	await expect(page.getByText(/REAL orders use your separate Aurevia paper account/)).toBeVisible();
+	await expect(page.getByText(/REAL orders use Alpaca Paper Trading/)).toBeVisible();
 	await expect(page.getByRole('button',{name:'Place BUY order'})).toBeEnabled();
 	await selectAccountMode(page,'DEMO');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('DEMO');
@@ -1067,7 +1067,7 @@ test('closing a DEMO position records a sell execution, reconciles portfolio, an
 	expect(notificationResponse.notifications.some((item:{title:string;relatedId:string|null})=>item.relatedId===closeOrder.id&&item.title==='DEMO simulated position closed')).toBe(true);
 });
 
-test('simulated BTC conversion is ledger-backed, idempotent, and isolated from REAL cash',async({page})=>{
+test('DEMO currency conversion is disabled and leaves DEMO and REAL ledgers unchanged',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	await selectAccountMode(page,'REAL');
 	const realCashBefore=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
@@ -1075,46 +1075,18 @@ test('simulated BTC conversion is ledger-backed, idempotent, and isolated from R
 	const initial=await page.request.get('/api/wallet').then(response=>response.json());
 	const userId=await page.request.get('/api/profile').then(response=>response.json().then(profile=>profile.id));
 	const cashBefore=Number(initial.balance);
-	const btcBefore=Number(initial.balances.find((item:{currency:string})=>item.currency==='BTC')?.balance||0);
-	const btcInstrument=(await page.request.get('/api/market').then(response=>response.json())).find((item:{symbol:string})=>item.symbol==='BTC/USD');
-	expect(btcInstrument).toMatchObject({dataMode:'SIMULATED'});
-	const key=randomUUID();
-	const payload={direction:'BUY',amount:'100.00'};
-	const first=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':key},data:payload});
-	expect(first.status()).toBe(201);
-	const purchase=await first.json();
-	expect(purchase.reference).toContain('DEMO:BTC:CONVERSION:');
-	expect(Number(purchase.bitcoinAmount)).toBeGreaterThan(0);
-	const replay=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':key},data:payload});
-	expect(replay.status()).toBe(200);
-	expect((await replay.json()).replayed).toBe(true);
-	const afterBuy=await page.request.get('/api/wallet').then(response=>response.json());
-	expect(Number(afterBuy.balance)).toBeCloseTo(cashBefore-100,8);
-	expect(Number(afterBuy.balances.find((item:{currency:string})=>item.currency==='BTC').balance)).toBeCloseTo(btcBefore+Number(purchase.bitcoinAmount),10);
-	const attemptedOverspend=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':randomUUID()},data:{direction:'BUY',amount:'99999999'}});
-	expect(attemptedOverspend.status()).toBe(409);
-	const sellKey=randomUUID();
-	const sellAmount=(Number(purchase.bitcoinAmount)/2).toFixed(10);
-	const sale=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':sellKey},data:{direction:'SELL',amount:sellAmount}});
-	expect(sale.status()).toBe(201);
-	const afterSale=await page.request.get('/api/wallet').then(response=>response.json());
-	expect(Number(afterSale.balances.find((item:{currency:string})=>item.currency==='BTC').balance)).toBeCloseTo(Number(purchase.bitcoinAmount)-Number(sellAmount),10);
-	const conversions=await db.ledgerTransaction.findMany({where:{reference:{startsWith:`DEMO:BTC:CONVERSION:${userId}:`}},include:{entries:{include:{account:true}}}});
-	expect(conversions).toHaveLength(2);
-	for(const conversion of conversions){
-		for(const currency of ['USD','BTC']){
-			const currencyEntries=conversion.entries.filter(entry=>entry.account.currency===currency);
-			const debits=currencyEntries.filter(entry=>entry.type==='DEBIT').reduce((sum,entry)=>sum.plus(entry.amount),new Prisma.Decimal(0));
-			const credits=currencyEntries.filter(entry=>entry.type==='CREDIT').reduce((sum,entry)=>sum.plus(entry.amount),new Prisma.Decimal(0));
-			expect(debits.eq(credits),`${conversion.reference} ${currency}: ${JSON.stringify(currencyEntries.map(entry=>({type:entry.type,amount:entry.amount.toString(),accountId:entry.accountId})))}`).toBe(true);
-		}
-	}
+	const attemptStartedAt=new Date();
+	const conversion=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':randomUUID()},data:{direction:'BUY',amount:'100.00'}});
+	expect(conversion.status()).toBe(403);
+	const afterDemoAttempt=await page.request.get('/api/wallet').then(response=>response.json());
+	expect(Number(afterDemoAttempt.balance)).toBe(cashBefore);
+	expect(afterDemoAttempt.balances.map((item:{currency:string})=>item.currency)).toEqual(['USD']);
+	const conversions=await db.ledgerTransaction.findMany({where:{reference:{startsWith:`DEMO:BTC:CONVERSION:${userId}:`},createdAt:{gte:attemptStartedAt}}});
+	expect(conversions).toHaveLength(0);
 	await selectAccountMode(page,'REAL');
+	const realAttempt=await page.request.post('/api/wallet/convert-bitcoin',{headers:{'Idempotency-Key':randomUUID()},data:{direction:'BUY',amount:'100.00'}});
+	expect(realAttempt.status()).toBe(409);
 	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(realCashBefore);
-	await selectAccountMode(page,'DEMO');
-	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(Number(afterSale.balance));
-	const notifications=await page.request.get('/api/notifications?limit=100').then(response=>response.json());
-	expect(notifications.notifications.some((item:{message:string})=>item.message.includes(purchase.reference)&&item.message.includes('SIMULATED'))).toBe(true);
 });
 
 test('administrative balance adjustments require authorization and confirmation data, and are idempotent',async({browser,page})=>{
@@ -1173,7 +1145,7 @@ test('administrative balance adjustments require authorization and confirmation 
 	finally{await adminContext.close();}
 });
 
-test('simulated investment lifecycle and trading work in both account modes',async({browser,page})=>{
+test('DEMO blocks investment allocations while REAL investment lifecycle remains available',async({browser,page})=>{
 	const adminContext=await browser.newContext();
 	const adminPage=await adminContext.newPage();
 	const priorBitcoinAddress=await db.systemSetting.findUnique({where:{key:SIMULATED_BTC_ADDRESS_SETTING},select:{value:true}});
@@ -1189,20 +1161,13 @@ test('simulated investment lifecycle and trading work in both account modes',asy
 		await selectAccountMode(page,'DEMO');
 		const initialDemoWallet=await page.request.get('/api/wallet').then(response=>response.json());
 		const initialDemoBalance=Number(initialDemoWallet.balance);
-		expect(initialDemoBalance).toBeGreaterThanOrEqual(5000);
-		await page.goto('/investments');
-		await expect(page.getByRole('heading',{name:'Available opportunities'})).toBeVisible();
-		await page.getByLabel('Amount (USD)').fill('1000');
-		await page.getByRole('button',{name:'Review allocation'}).click();
-		await expect(page.getByRole('group',{name:'Review E2E simulated opportunity allocation'})).toBeVisible();
-		await page.getByRole('button',{name:'Confirm simulated allocation'}).click();
-		await expect(page.getByText('DEMO simulated investment request recorded.')).toBeVisible();
+		const blockedDemoRequest=await page.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:opportunity.id,amount:1000}});
+		expect(blockedDemoRequest.status()).toBe(403);
 		let userInvestments=await page.request.get('/api/investments').then(response=>response.json());
-		const demoRequest=userInvestments.requests.find((item:{opportunityId:string;accountMode:string})=>item.opportunityId===opportunity.id&&item.accountMode==='DEMO');
-		expect(demoRequest.status).toBe('PENDING_APPROVAL');
-		const demoRequestRow=page.locator('.investment-request-row').filter({hasText:'E2E simulated opportunity'});
-		await expect(demoRequestRow).toContainText('PENDING APPROVAL');
-		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance-1000);
+		expect(userInvestments).toMatchObject({accountMode:'DEMO',opportunities:[],requests:[]});
+		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance);
+		await page.goto('/investments');
+		await expect(page.getByLabel('Amount (USD)')).toHaveCount(0);
 
 		const unrelatedContext=await browser.newContext();
 		try{
@@ -1219,34 +1184,6 @@ test('simulated investment lifecycle and trading work in both account modes',asy
 			expect(response.ok(),`${action}: ${result.error||response.status()}`).toBeTruthy();
 			return result;
 		}
-		await review(demoRequest.id,'approve');
-		await expect(demoRequestRow).toContainText('APPROVED',{timeout:10_000});
-		await review(demoRequest.id,'activate');
-		await expect(demoRequestRow).toContainText('ACTIVE',{timeout:10_000});
-		await page.goto('/dashboard');
-		await expect(page.getByText('Overall recorded portfolio value')).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Portfolio performance'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Asset allocation'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Holdings'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Investment activity'})).toBeVisible();
-		const portfolioInvestment=page.locator('.portfolio-investment-row').filter({hasText:'E2E simulated opportunity'});
-		await expect(portfolioInvestment).toContainText('ACTIVE');
-		await expect(portfolioInvestment).toContainText('$1,000.00');
-		await expect(portfolioInvestment).toContainText('$1,000.00 principal');
-		const portfolioHolding=page.locator('.portfolio-holding').filter({hasText:'E2E simulated opportunity'});
-		await expect(portfolioHolding).toContainText('$1,000.00');
-		await page.goto('/investments');
-		await expect(page.locator('.investment-request-row').filter({hasText:'E2E simulated opportunity'})).toContainText('ACTIVE');
-		await review(demoRequest.id,'complete');
-		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance-1000);
-		await review(demoRequest.id,'settle',{simulatedPayout:110000});
-		userInvestments=await page.request.get('/api/investments').then(response=>response.json());
-		expect(userInvestments.requests.find((item:{id:string})=>item.id===demoRequest.id)).toMatchObject({status:'SETTLED',simulatedPayout:'1080'});
-		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance+80);
-		await page.getByRole('button',{name:'Refresh'}).click();
-		await page.getByRole('button',{name:'Reinvest returned principal · simulated'}).click();
-		await expect(page.getByLabel('Amount (USD)')).toHaveValue('1080.00');
-		await expect(page.getByRole('status').filter({hasText:'returned simulated payout selected'})).toBeVisible();
 
 		await selectAccountMode(page,'REAL');
 		const initialRealBalance=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
@@ -1288,24 +1225,25 @@ test('simulated investment lifecycle and trading work in both account modes',asy
 		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBeCloseTo(initialRealBalance+1040,2);
 		const tradeableInstrument=(await page.request.get('/api/market').then(response=>response.json())).find((item:{price:number})=>Number(item.price)<500);
 		expect(tradeableInstrument,'market should include enabled instruments').toBeTruthy();
+		const positionsBeforePaperOrder=await page.request.get('/api/positions').then(response=>response.json());
 		const realOrder=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:tradeableInstrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(tradeableInstrument.price),observedAt:tradeableInstrument.lastUpdatedAt||tradeableInstrument.updatedAt}});
-		expect(realOrder.status()).toBe(201);
-		expect((await realOrder.json()).accountMode).toBe('REAL');
-		expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(1);
+		expect([403,503]).toContain(realOrder.status());
+		expect((await realOrder.json()).error).toMatch(/Alpaca Paper/);
+		expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(positionsBeforePaperOrder.length);
 		const realPortfolio=await page.request.get('/api/portfolio').then(response=>response.json());
-		expect(realPortfolio.positions).toHaveLength(1);
+		expect(realPortfolio.positions.length).toBe(positionsBeforePaperOrder.length);
 		expect(realPortfolio.marketDataMode).toBe('SIMULATED');
 		const finalRealBalance=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
-		expect(finalRealBalance).toBeLessThan(initialRealBalance+1040);
+		expect(finalRealBalance).toBeCloseTo(initialRealBalance+1040,2);
 
 		await selectAccountMode(page,'DEMO');
-			await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance+80);
+			await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialDemoBalance);
 			await logout(page);
 		await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 		const persistedDemoWallet=await page.request.get('/api/wallet').then(response=>response.json());
 		expect(Number(persistedDemoWallet.balance)).toBe(initialDemoBalance+80);
 		await page.goto('/portfolio');
-		await page.getByRole('button',{name:'Reset DEMO'}).click();
+		await page.getByRole('button',{name:'Reset Demo Account'}).click();
 		await page.getByLabel('Type RESET DEMO ACCOUNT to confirm').fill('RESET DEMO ACCOUNT');
 		await page.getByRole('button',{name:'Confirm DEMO reset'}).click();
 		await expect(page.getByText(/DEMO portfolio reset to \$5,000\.00/)).toBeVisible();
@@ -2156,33 +2094,15 @@ test('approved internal deposit receipts show the requested ledger credit and re
 	}finally{await adminContext.close();}
 });
 
-test('matured no-approval DEMO investments credit configured simulated earnings once',async({page})=>{
-	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
-	const opportunityResponse=await page.request.post('/api/admin/investments',{data:{title:'E2E automatic maturity',category:'Simulated Bitcoin',description:'Disposable target return investment for maturity processing coverage.',assetSymbol:'BTC',minimumAmount:10,maximumAmount:1000,targetReturnPercent:15,durationDays:1,startsAt:null,maturesAt:null,riskLevel:'MODERATE',status:'AVAILABLE',demoEligible:true,realEligible:false,requiresApproval:false,targetPrice:null,stopPrice:null}});
-	expect(opportunityResponse.status()).toBe(201);
-	const opportunity=await opportunityResponse.json();
-	await logout(page);
+test('DEMO investment submissions cannot create settlement payouts',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	await selectAccountMode(page,'DEMO');
+	const userId=await page.request.get('/api/profile').then(response=>response.json().then(profile=>profile.id));
 	const startingBalance=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
-	const requestResponse=await page.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:opportunity.id,amount:500}});
-	expect(requestResponse.status()).toBe(201);
-	const investment=await requestResponse.json();
-	expect(investment).toMatchObject({status:'ACTIVE',activatedAt:expect.any(String),maturesAt:expect.any(String)});
-	const testDatabase=new PrismaClient();
-	try{await testDatabase.investmentRequest.update({where:{id:investment.id},data:{maturesAt:new Date(Date.now()-1000)}});}
-	finally{await testDatabase.$disconnect();}
-	await settleMaturedSimulatedInvestments();
-	await settleMaturedSimulatedInvestments();
-	const settled=await db.investmentRequest.findUniqueOrThrow({where:{id:investment.id}});
-	expect(settled.status).toBe('SETTLED');
-	expect(Number(settled.simulatedPayout)).toBe(575);
-	expect(settled.settlementReference).toBe(`SIMULATED-AUTO-SETTLEMENT:DEMO:${investment.id}`);
-	await selectAccountMode(page,'DEMO');
-	const endingBalance=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
-	expect(endingBalance).toBeCloseTo(startingBalance+75,2);
-	expect(await db.ledgerTransaction.count({where:{reference:`INVESTMENT:${investment.id}:PAYOUT`}})).toBe(1);
-	expect(await db.ledgerTransaction.count({where:{reference:`INVESTMENT:${investment.id}:EARNINGS`}})).toBe(1);
+	const requestResponse=await page.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:'not-a-demo-opportunity',amount:500}});
+	expect(requestResponse.status()).toBe(403);
+	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(startingBalance);
+	expect(await db.investmentRequest.count({where:{userId,accountMode:'DEMO',opportunityId:'not-a-demo-opportunity'}})).toBe(0);
 });
 
 test('KYC access is owner-scoped and unavailable signed Storage access fails closed',async({browser,page})=>{

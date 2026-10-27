@@ -163,7 +163,7 @@ describe('canonical environment configuration',()=>{
   it('normalizes only approved HTTPS Alpaca Trading API hosts',()=>{
     expect(normalizeAlpacaTradingBaseUrl(' https://PAPER-API.ALPACA.MARKETS/ ')).toBe('https://paper-api.alpaca.markets');
     expect(normalizeAlpacaTradingBaseUrl('https://paper-api.alpaca.markets/v2')).toBe('https://paper-api.alpaca.markets');
-    expect(normalizeAlpacaTradingBaseUrl('https://api.alpaca.markets')).toBe('https://api.alpaca.markets');
+    expect(normalizeAlpacaTradingBaseUrl('https://api.alpaca.markets')).toBeNull();
     for(const url of ['http://paper-api.alpaca.markets','https://example.com','https://paper-api.alpaca.markets/path','https://paper-api.alpaca.markets/v2/account','https://user:pass@paper-api.alpaca.markets']){
       expect(normalizeAlpacaTradingBaseUrl(url)).toBeNull();
     }

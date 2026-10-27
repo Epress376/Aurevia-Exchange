@@ -8,8 +8,8 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
 	try{
 		const user=await requireUser();
 		const {id}=await params;
-		const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
-		if(!currentUser||currentUser.status!=='ACTIVE'||currentUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Destination not found.'},{status:404});
+		const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true,role:true}});
+		if(!currentUser||currentUser.status!=='ACTIVE'||currentUser.role!=='USER'||currentUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Destination not found.'},{status:404});
 		const destination=await db.withdrawalDestination.findFirst({where:{id,userId:user.id,accountMode:AccountMode.REAL}});
 		if(!destination)return NextResponse.json({error:'Destination not found.'},{status:404});
 		const details=decryptWithdrawalDestination(destination);

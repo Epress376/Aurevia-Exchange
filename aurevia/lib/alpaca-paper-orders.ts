@@ -1,15 +1,20 @@
+import {createHash} from 'node:crypto';
 import {AccountMode,NotificationType,OrderSide,OrderStatus,OrderType,Prisma} from '@prisma/client';
 import {createNotification} from '@/lib/notifications';
 import {db} from '@/lib/db';
 import {balance,ensureUserLedger,reservedWithdrawalAmount} from '@/lib/ledger';
-import {assertFreshQuote,assertSellableQuantity} from '@/lib/trading-policy';
-import {assertPaperBuyCollateral,paperOrderCollateral} from '@/lib/bitcoin-funding';
+import {assertFreshQuote,assertSellableQuantity,averageEntryPrice,realizedSpotPnl} from '@/lib/trading-policy';
+import {ALPACA_PAPER_PROVIDER,assertPaperBuyCollateral,paperOrderCollateral} from '@/lib/bitcoin-funding';
 import {AlpacaTradingApiError,createIndividualTradingApiProviderFromEnvironment} from '@/lib/providers/alpaca-crypto-provider';
 import type {ProviderOrder} from '@/lib/providers/contracts';
 import {matchesOrder,type PlaceOrderInput} from '@/lib/orders';
 import {getServerConfiguration} from '@/lib/config/env';
 
-export const ALPACA_PAPER_PROVIDER='alpaca-paper';
+export {ALPACA_PAPER_PROVIDER};
+
+function clientOrderIdFor(userId:string,idempotencyKey:string){
+	return `au_${createHash('sha256').update(`${userId}\0${idempotencyKey}`).digest('hex').slice(0,40)}`;
+}
 
 export class AlpacaPaperOrderError extends Error{
 	constructor(readonly code:string,readonly httpStatus=409){super(code);this.name='AlpacaPaperOrderError'}
@@ -18,9 +23,11 @@ export class AlpacaPaperOrderError extends Error{
 function localStatus(order:ProviderOrder):OrderStatus{
 	switch(order.state){
 		case 'ACCEPTED':return OrderStatus.OPEN;
+		case 'PENDING_CANCEL':return OrderStatus.PENDING_CANCEL;
 		case 'PARTIALLY_FILLED':return OrderStatus.PARTIALLY_FILLED;
 		case 'FILLED':return OrderStatus.FILLED;
 		case 'CANCELLED':return OrderStatus.CANCELLED;
+		case 'EXPIRED':return OrderStatus.EXPIRED;
 		case 'REJECTED':
 		case 'FAILED':return OrderStatus.REJECTED;
 	}
@@ -45,19 +52,81 @@ function validatePaperResponse(order:ProviderOrder,requestedQuantity:Prisma.Deci
 	return {filled,providerStatus:order.providerStatus,acceptedAt:timestamp(order.acceptedAt),updatedAt:timestamp(order.updatedAt)};
 }
 
+async function applyConfirmedFill(
+	tx:Prisma.TransactionClient,
+	current:Prisma.OrderGetPayload<{include:{executions:true;instrument:true}}>,
+	response:ProviderOrder,
+	filled:Prisma.Decimal,
+	updatedAt:Date,
+){
+	if(filled.lt(current.filledQuantity))throw new AlpacaPaperOrderError('ALPACA_PAPER_FILL_QUANTITY_REGRESSION',502);
+	if(filled.equals(current.filledQuantity))return;
+	if(!response.averageFillPrice)throw new AlpacaPaperOrderError('ALPACA_PAPER_INVALID_ORDER_RESPONSE',502);
+	const fillQuantity=filled.minus(current.filledQuantity);
+	const cumulativeAverage=new Prisma.Decimal(response.averageFillPrice);
+	const previousNotional=current.filledQuantity.mul(current.averageFillPrice??0);
+	const fillPrice=filled.mul(cumulativeAverage).minus(previousNotional).div(fillQuantity);
+	if(!fillPrice.isFinite()||!fillPrice.gt(0))throw new AlpacaPaperOrderError('ALPACA_PAPER_INVALID_FILL_SNAPSHOT',502);
+	const providerExecutionId=`${response.providerOrderId}:${filled.toFixed(10)}`;
+	const duplicate=await tx.execution.findUnique({where:{providerExecutionId},select:{id:true}});
+	if(duplicate)throw new AlpacaPaperOrderError('ALPACA_PAPER_FILL_ALREADY_APPLIED',409);
+	if(current.side===OrderSide.BUY){
+		const position=await tx.position.findFirst({where:{
+			userId:current.userId,instrumentId:current.instrumentId,accountMode:AccountMode.REAL,
+			providerName:ALPACA_PAPER_PROVIDER,side:OrderSide.BUY,status:'OPEN',
+		},orderBy:{openedAt:'asc'}});
+		if(position){
+			const entryPrice=averageEntryPrice(position.quantity,position.entryPrice,fillQuantity,fillPrice,new Prisma.Decimal(0));
+			await tx.position.update({where:{id:position.id},data:{
+				quantity:{increment:fillQuantity},entryPrice,margin:0,
+			}});
+		}else{
+			await tx.position.create({data:{
+				userId:current.userId,instrumentId:current.instrumentId,accountMode:AccountMode.REAL,
+				providerName:ALPACA_PAPER_PROVIDER,side:OrderSide.BUY,quantity:fillQuantity,
+				entryPrice:fillPrice,leverage:1,margin:0,status:'OPEN',openedAt:updatedAt,
+			}});
+		}
+	}else{
+		const position=await tx.position.findFirst({where:{
+			userId:current.userId,instrumentId:current.instrumentId,accountMode:AccountMode.REAL,
+			providerName:ALPACA_PAPER_PROVIDER,side:OrderSide.BUY,status:'OPEN',
+		},orderBy:{openedAt:'asc'}});
+		if(!position||position.quantity.lt(fillQuantity))throw new AlpacaPaperOrderError('ALPACA_PAPER_POSITION_RECONCILIATION_REQUIRED',409);
+		const realized=realizedSpotPnl(position.entryPrice,fillPrice,fillQuantity,new Prisma.Decimal(0));
+		const remaining=position.quantity.minus(fillQuantity);
+		await tx.position.update({where:{id:position.id},data:remaining.isZero()?{
+			quantity:remaining,status:'CLOSED',closedAt:updatedAt,margin:0,realizedPnl:{increment:realized},
+		}:{
+			quantity:remaining,margin:0,realizedPnl:{increment:realized},
+		}});
+	}
+	await tx.execution.create({data:{
+		orderId:current.id,accountMode:AccountMode.REAL,quantity:fillQuantity,price:fillPrice,
+		fee:0,providerExecutionId,createdAt:updatedAt,
+	}});
+}
+
 async function persistProviderOrder(orderId:string,response:ProviderOrder,accountId:string,actorId:string){
 	return db.$transaction(async tx=>{
 		const current=await tx.order.findUnique({where:{id:orderId},include:{executions:true,instrument:true}});
 		if(!current||current.providerName!==ALPACA_PAPER_PROVIDER||current.accountMode!==AccountMode.REAL)throw new AlpacaPaperOrderError('ALPACA_PAPER_ORDER_NOT_FOUND',404);
 		if(current.providerOrderId&&current.providerOrderId!==response.providerOrderId)throw new AlpacaPaperOrderError('ALPACA_PAPER_ORDER_ID_MISMATCH',409);
-		if(response.clientOrderId!==current.idempotencyKey)throw new AlpacaPaperOrderError('ALPACA_PAPER_CLIENT_ORDER_ID_MISMATCH',502);
+		const expectedClientOrderId=current.providerClientOrderId??current.idempotencyKey;
+		if(response.clientOrderId!==expectedClientOrderId)throw new AlpacaPaperOrderError('ALPACA_PAPER_CLIENT_ORDER_ID_MISMATCH',502);
 		const validated=validatePaperResponse(response,current.quantity);
+		if(validated.filled.lt(current.filledQuantity))throw new AlpacaPaperOrderError('ALPACA_PAPER_FILL_QUANTITY_REGRESSION',502);
+		if(validated.filled.equals(current.filledQuantity)&&validated.filled.gt(0)&&
+			current.averageFillPrice&&!new Prisma.Decimal(response.averageFillPrice??0).equals(current.averageFillPrice)){
+			throw new AlpacaPaperOrderError('ALPACA_PAPER_FILL_SNAPSHOT_CONFLICT',409);
+		}
+		if(validated.filled.gt(current.filledQuantity))await applyConfirmedFill(tx,current,response,validated.filled,validated.updatedAt);
 		const nextStatus=localStatus(response);
 		const changed=current.providerOrderId!==response.providerOrderId||
 			current.providerStatus!==validated.providerStatus||
+			current.status!==nextStatus||
 			!current.filledQuantity.equals(validated.filled)||
 			current.averageFillPrice?.toString()!==(response.averageFillPrice??null);
-		if(!changed)return current;
 		const updated=await tx.order.update({where:{id:current.id},data:{
 			providerAccountId:accountId,
 			providerOrderId:response.providerOrderId,
@@ -67,10 +136,11 @@ async function persistProviderOrder(orderId:string,response:ProviderOrder,accoun
 			status:nextStatus,
 			filledQuantity:validated.filled,
 			averageFillPrice:response.averageFillPrice===undefined?null:new Prisma.Decimal(response.averageFillPrice),
+			providerReservedAmount:current.providerReservedAmount,
 			reconciliationStatus:'CONFIRMED_BY_ALPACA_PAPER',
 			reconciledAt:new Date(),
 		},include:{executions:true,instrument:true}});
-		await tx.auditLog.create({data:{actorId,action:'REAL_PAPER_ORDER_PROVIDER_UPDATED',entity:'ORDER',entityId:current.id,metadata:{
+		if(changed)await tx.auditLog.create({data:{actorId,action:'REAL_PAPER_ORDER_PROVIDER_UPDATED',entity:'ORDER',entityId:current.id,metadata:{
 			oldState:current.providerStatus??'SUBMISSION_PENDING',
 			newState:validated.providerStatus,
 			accountMode:AccountMode.REAL,
@@ -81,7 +151,7 @@ async function persistProviderOrder(orderId:string,response:ProviderOrder,accoun
 			filledQuantity:validated.filled.toString(),
 			averageFillPrice:response.averageFillPrice??null,
 		}}});
-		await createNotification(tx,{userId:current.userId,type:NotificationType.TRADE,title:`REAL · Alpaca Paper order ${validated.providerStatus.replaceAll('_',' ')}`,message:`Your ${current.side.toLowerCase()} ${current.instrument.symbol} order updated in the shared Alpaca Paper account. Paper activity does not change your Aurevia REAL balance or positions.`,dedupeKey:`paper-order:${current.id}:${validated.providerStatus}:${validated.filled.toString()}`,relatedEntity:'ORDER',relatedId:current.id,actionUrl:'/orders'});
+		if(changed)await createNotification(tx,{userId:current.userId,type:NotificationType.TRADE,title:`REAL · Alpaca Paper order ${validated.providerStatus.replaceAll('_',' ')}`,message:`Your ${current.side.toLowerCase()} ${current.instrument.symbol} order updated in the shared Alpaca Paper account. Paper activity does not change your Aurevia REAL balance or wallet funds.`,dedupeKey:`paper-order:${current.id}:${validated.providerStatus}:${validated.filled.toString()}`,relatedEntity:'ORDER',relatedId:current.id,actionUrl:'/orders'});
 		return updated;
 	},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});
 }
@@ -103,7 +173,7 @@ function paperPositionAvailable(history:Array<{side:OrderSide;quantity:Prisma.De
 		if(order.side===OrderSide.BUY)owned=owned.plus(order.filledQuantity);
 		else{
 			owned=owned.minus(order.filledQuantity);
-			if(order.status===OrderStatus.OPEN||order.status===OrderStatus.PARTIALLY_FILLED)reserved=reserved.plus(order.quantity.minus(order.filledQuantity));
+			if(order.status===OrderStatus.OPEN||order.status===OrderStatus.PARTIALLY_FILLED||order.status===OrderStatus.PENDING_CANCEL)reserved=reserved.plus(order.quantity.minus(order.filledQuantity));
 		}
 	}
 	return {owned,reserved};
@@ -111,6 +181,7 @@ function paperPositionAvailable(history:Array<{side:OrderSide;quantity:Prisma.De
 
 export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput,idempotencyKey:string){
 	if(!Number.isFinite(input.quantity)||input.quantity<=0||input.quantity>1_000_000_000)throw new AlpacaPaperOrderError('INVALID_QUANTITY',400);
+	if(new Prisma.Decimal(input.quantity).decimalPlaces()>10)throw new AlpacaPaperOrderError('INVALID_QUANTITY',400);
 	if(!Number.isFinite(input.expectedPrice)||input.expectedPrice<=0)throw new AlpacaPaperOrderError('INVALID_PRICE',400);
 	try{assertFreshQuote(input.observedAt)}catch{throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409)}
 	if(input.type===OrderType.LIMIT&&(!Number.isFinite(input.price)||Number(input.price)<=0))throw new AlpacaPaperOrderError('LIMIT_PRICE_REQUIRED',400);
@@ -133,6 +204,10 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 		const instrument=await tx.instrument.findUnique({where:{id:input.instrumentId}});
 		if(!instrument||!instrument.enabled)throw new AlpacaPaperOrderError('INSTRUMENT_UNAVAILABLE',409);
 		if(instrument.updatedAt.getTime()>Date.now()+5_000)throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409);
+		try{
+			assertFreshQuote(instrument.updatedAt);
+			if(Math.abs(Date.parse(input.observedAt)-instrument.updatedAt.getTime())>5_000)throw new Error('STALE_MARKET_QUOTE');
+		}catch{throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409)}
 		const history=await tx.order.findMany({
 			where:{userId,accountMode:AccountMode.REAL,providerName:ALPACA_PAPER_PROVIDER},
 			select:{instrumentId:true,side:true,quantity:true,filledQuantity:true,averageFillPrice:true,providerReservedAmount:true,status:true,createdAt:true,instrument:{select:{takerFee:true}}},
@@ -140,14 +215,15 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 		});
 		if(input.side===OrderSide.BUY){
 			const collateralHistory=history.map(order=>({...order,takerFee:order.instrument.takerFee}));
+			for(const record of collateralHistory)record.takerFee=new Prisma.Decimal(0);
 			const collateral=paperOrderCollateral(collateralHistory);
 			const account=await ensureUserLedger(tx,userId,AccountMode.REAL,'USD');
 			const [walletBalance,pendingWithdrawals]=await Promise.all([
 				balance(tx,account.id),
 				reservedWithdrawalAmount(tx,userId,AccountMode.REAL,'USD'),
 			]);
-			const reservePrice=new Prisma.Decimal(input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:input.expectedPrice);
-			const requestedCollateral=new Prisma.Decimal(input.quantity).mul(reservePrice).mul(new Prisma.Decimal(1).plus(instrument.takerFee));
+			const reservePrice=new Prisma.Decimal(input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:instrument.price);
+			const requestedCollateral=new Prisma.Decimal(input.quantity).mul(reservePrice);
 			try{assertPaperBuyCollateral(walletBalance,pendingWithdrawals,collateral.committed,requestedCollateral)}
 			catch{throw new AlpacaPaperOrderError('INSUFFICIENT_REAL_WALLET_COLLATERAL',409)}
 		}
@@ -155,13 +231,14 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 			const position=paperPositionAvailable(history.filter(order=>order.instrumentId===instrument.id));
 			assertSellableQuantity(position.owned,position.reserved,new Prisma.Decimal(input.quantity));
 		}
-		const reservePrice=input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:input.expectedPrice;
+		const reservePrice=input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:instrument.price;
 		const providerReservedAmount=input.side===OrderSide.BUY
-			?new Prisma.Decimal(input.quantity).mul(reservePrice).mul(new Prisma.Decimal(1).plus(instrument.takerFee))
+			?new Prisma.Decimal(input.quantity).mul(reservePrice)
 			:null;
 		const order=await tx.order.create({data:{
 			userId,instrumentId:instrument.id,accountMode:AccountMode.REAL,side:input.side,type:input.type,
 			quantity:input.quantity,price:input.price,stopPrice:input.stopPrice,idempotencyKey,
+			providerClientOrderId:clientOrderIdFor(userId,idempotencyKey),
 			status:OrderStatus.OPEN,providerName:ALPACA_PAPER_PROVIDER,providerStatus:'SUBMISSION_PENDING',providerReservedAmount,
 		},include:{executions:true,instrument:true}});
 		await tx.auditLog.create({data:{actorId:userId,action:'REAL_PAPER_ORDER_SUBMISSION_STARTED',entity:'ORDER',entityId:order.id,metadata:{
@@ -183,7 +260,19 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 		throw error;
 	}
 
-	if(!createResult.created)return createResult.order;
+	if(!createResult.created){
+		if(createResult.order.providerName===ALPACA_PAPER_PROVIDER&&
+			['SUBMISSION_PENDING','SUBMISSION_UNKNOWN','SUBMISSION_OUTCOME_UNKNOWN'].includes(createResult.order.providerStatus??'')){
+			try{return await syncAlpacaPaperOrder(createResult.order.id,userId)}
+			catch(error){
+				if(error instanceof AlpacaPaperOrderError&&['ALPACA_PAPER_ORDER_NOT_FOUND_AT_PROVIDER','ALPACA_PAPER_ORDER_STATUS_UNAVAILABLE'].includes(error.code)){
+					return db.order.findUniqueOrThrow({where:{id:createResult.order.id},include:{executions:true,instrument:true}});
+				}
+				throw error;
+			}
+		}
+		return createResult.order;
+	}
 	const order=createResult.order;
 	let account;
 	let asset;
@@ -199,17 +288,26 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 			await persistSubmissionFailure(order.id,userId,'ASSET_NOT_TRADABLE',OrderStatus.REJECTED);
 			throw new AlpacaPaperOrderError('ALPACA_PAPER_ASSET_NOT_TRADABLE',422);
 		}
+		if(asset.class.toLowerCase()==='crypto'&&input.type===OrderType.STOP){
+			await persistSubmissionFailure(order.id,userId,'UNSUPPORTED_CRYPTO_ORDER_TYPE',OrderStatus.REJECTED);
+			throw new AlpacaPaperOrderError('ALPACA_PAPER_UNSUPPORTED_ORDER_TYPE',422);
+		}
+		if(asset.class.toLowerCase()==='us_equity'&&!Number.isInteger(input.quantity)&&
+			(!asset.fractionable||input.type===OrderType.STOP)){
+			await persistSubmissionFailure(order.id,userId,'FRACTIONAL_ORDER_NOT_SUPPORTED',OrderStatus.REJECTED);
+			throw new AlpacaPaperOrderError('ALPACA_PAPER_FRACTIONAL_ORDER_UNSUPPORTED',422);
+		}
 	}catch(error){
 		if(error instanceof AlpacaPaperOrderError)throw error;
 		const providerStatus=error instanceof AlpacaTradingApiError?`PRECHECK_FAILED:${error.status}`:'PRECHECK_UNAVAILABLE';
-		const status=error instanceof AlpacaTradingApiError&&[401,403,404,422].includes(error.status)?OrderStatus.REJECTED:OrderStatus.OPEN;
+		const status=OrderStatus.REJECTED;
 		await persistSubmissionFailure(order.id,userId,providerStatus,status);
-		throw new AlpacaPaperOrderError(providerStatus,status===OrderStatus.REJECTED?422:503);
+		throw new AlpacaPaperOrderError(providerStatus,error instanceof AlpacaTradingApiError&&[401,403,404,422].includes(error.status)?422:503);
 	}
 
 	try{
 		const response=await provider.submitOrder({
-			clientOrderId:idempotencyKey,accountId:account.id,symbol:order.instrument.symbol,
+			clientOrderId:order.providerClientOrderId??idempotencyKey,accountId:account.id,symbol:order.instrument.symbol,
 			side:input.side,type:input.type,quantity:new Prisma.Decimal(input.quantity).toString(),
 			timeInForce:order.instrument.quoteAsset==='USD'&&asset.class.toLowerCase()==='crypto'?'gtc':'day',
 			limitPrice:order.price?.toString(),
@@ -219,9 +317,24 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 	}catch(error){
 		if(error instanceof AlpacaPaperOrderError)throw error;
 		if(error instanceof AlpacaTradingApiError){
-			const failed=await persistSubmissionFailure(order.id,userId,`REJECTED:${error.status}`,OrderStatus.REJECTED);
-			void failed;
+			if(error.status>=500||error.status===408){
+				try{
+					const recovered=await provider.getOrderByClientId(order.providerClientOrderId??idempotencyKey);
+					return await persistProviderOrder(order.id,recovered,account.id,userId);
+				}catch(recoveryError){
+					if(recoveryError instanceof AlpacaPaperOrderError)throw recoveryError;
+				}
+				await persistSubmissionFailure(order.id,userId,'SUBMISSION_UNKNOWN',OrderStatus.OPEN);
+				return db.order.findUniqueOrThrow({where:{id:order.id},include:{executions:true,instrument:true}});
+			}
+			await persistSubmissionFailure(order.id,userId,`REJECTED:${error.status}`,OrderStatus.REJECTED);
 			throw new AlpacaPaperOrderError(`ALPACA_PAPER_ORDER_REJECTED:${error.status}`,422);
+		}
+		try{
+			const recovered=await provider.getOrderByClientId(order.providerClientOrderId??idempotencyKey);
+			return await persistProviderOrder(order.id,recovered,account.id,userId);
+		}catch(recoveryError){
+			if(recoveryError instanceof AlpacaPaperOrderError)throw recoveryError;
 		}
 		await persistSubmissionFailure(order.id,userId,'SUBMISSION_UNKNOWN',OrderStatus.OPEN);
 		return db.order.findUniqueOrThrow({where:{id:order.id},include:{executions:true,instrument:true}});
@@ -240,7 +353,7 @@ export async function syncAlpacaPaperOrder(orderId:string,actorId:string){
 	try{
 		response=order.providerOrderId
 			?await provider.getOrderStatus(order.providerOrderId)
-			:await provider.getOrderByClientId(order.idempotencyKey??'');
+			:await provider.getOrderByClientId(order.providerClientOrderId??order.idempotencyKey??'');
 	}catch(error){
 		if(error instanceof AlpacaTradingApiError&&error.status===404)throw new AlpacaPaperOrderError('ALPACA_PAPER_ORDER_NOT_FOUND_AT_PROVIDER',404);
 		if(error instanceof AlpacaTradingApiError&&(error.status===401||error.status===403))throw new AlpacaPaperOrderError('ALPACA_PAPER_AUTHENTICATION_FAILED',503);
@@ -257,7 +370,7 @@ export async function cancelAlpacaPaperOrder(orderId:string,userId:string){
 	if(!order||!order.providerAccountId||!order.providerOrderId)throw new AlpacaPaperOrderError('ALPACA_PAPER_ORDER_NOT_FOUND',404);
 	if(order.status!==OrderStatus.OPEN&&order.status!==OrderStatus.PARTIALLY_FILLED)throw new AlpacaPaperOrderError('ORDER_NOT_OPEN',409);
 	try{
-		const response=await provider.cancelOrder(order.providerOrderId,order.idempotencyKey??order.id);
+		const response=await provider.cancelOrder(order.providerOrderId,order.providerClientOrderId??order.idempotencyKey??order.id);
 		return await persistProviderOrder(order.id,response,order.providerAccountId,userId);
 	}catch(error){
 		if(error instanceof AlpacaPaperOrderError)throw error;

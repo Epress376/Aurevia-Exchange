@@ -39,6 +39,11 @@ export async function GET(){
 		const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
 		if(!currentUser||currentUser.status!=='ACTIVE')return NextResponse.json({error:'Wallet account is unavailable.'},{status:403});
 		await ensureUserLedger(db,user.id,currentUser.accountMode,'USD');
+		if(currentUser.accountMode===AccountMode.DEMO){
+			const account=await db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${AccountMode.DEMO}:USD`}});
+			const virtualBalance=account?await balance(db,account.id):new Prisma.Decimal(0);
+			return NextResponse.json(jsonSafe({accountMode:AccountMode.DEMO,balance:virtualBalance,withdrawableBalance:null,balances:[{currency:'USD',balance:virtualBalance}],transactions:[],adminLedgerReceipts:[]}),{headers:{'Cache-Control':'private, no-store'}});
+		}
 		const [accounts,transactions]=await Promise.all([
 			db.ledgerAccount.findMany({where:{userId:user.id,accountMode:currentUser.accountMode},orderBy:{currency:'asc'}}),
 			db.fundingRequest.findMany({where:{userId:user.id,accountMode:currentUser.accountMode},orderBy:{createdAt:'desc'},take:100,include:{paymentMethod:{select:{id:true,name:true}},user:{select:{name:true,email:true}},withdrawalDestination:{select:{nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}},withdrawalDestinationSnapshot:{select:{nickname:true,countryCode:true,network:true,asset:true,maskedLabel:true}}}}),

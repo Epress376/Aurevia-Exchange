@@ -24,7 +24,7 @@ const originalKey=process.env.WITHDRAWAL_DESTINATION_ENCRYPTION_KEY;
 beforeEach(()=>{
 	vi.clearAllMocks();
 	mocks.requireUser.mockResolvedValue({id:'user-1'});
-	mocks.userFindUnique.mockResolvedValue({accountMode:'REAL',status:'ACTIVE'});
+	mocks.userFindUnique.mockResolvedValue({accountMode:'REAL',status:'ACTIVE',role:'USER'});
 	mocks.findMany.mockResolvedValue([record]);
 	mocks.findFirst.mockResolvedValue({id:'destination-1'});
 	mocks.fundingFindFirst.mockResolvedValue(null);
@@ -80,7 +80,7 @@ describe('withdrawal destination API',()=>{
 	});
 
 	it('blocks DEMO accounts and unauthenticated callers',async()=>{
-		mocks.userFindUnique.mockResolvedValue({accountMode:'DEMO',status:'ACTIVE'});
+		mocks.userFindUnique.mockResolvedValue({accountMode:'DEMO',status:'ACTIVE',role:'USER'});
 		const demo=await POST(new Request('https://aurevia.test/api/withdrawal-destinations',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(validBank)}));
 		expect(demo.status).toBe(403);
 		mocks.requireUser.mockRejectedValue(new Error('UNAUTHORIZED'));

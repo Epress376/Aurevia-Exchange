@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {CardApplicationStatus,NotificationType} from '@prisma/client';
+import {AccountMode,CardApplicationStatus,NotificationType} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
@@ -17,6 +17,9 @@ const schema=z.object({
 export async function POST(request:Request){
 	try{
 		const user=await requireUser();
+		const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+		if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		if(activeUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Card applications are available in REAL mode only.'},{status:403});
 		rateLimit(`card-apply:${user.id}`,8,3600000);
 		await ensureCardCatalog();
 		const input=schema.parse(await request.json());
@@ -25,6 +28,9 @@ export async function POST(request:Request){
 		await assertNoDuplicatePending(user.id,product.id,product.allowMultiple);
 		const cardholderName=(user.name||user.email?.split('@')[0]||'Cardholder').trim().slice(0,120);
 		const application=await db.$transaction(async tx=>{
+			const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{accountMode:true,status:true}});
+			if(current.status!=='ACTIVE')throw new Error('ACCOUNT_UNAVAILABLE');
+			if(current.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
 			const created=await tx.cardApplication.create({
 				data:{
 					reference:createApplicationReference(),
@@ -47,6 +53,8 @@ export async function POST(request:Request){
 		});
 		return NextResponse.json(jsonSafe(application),{status:201,headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
+		if(error instanceof Error&&error.message==='REAL_MODE_REQUIRED')return NextResponse.json({error:'Card applications are available in REAL mode only.'},{status:403});
+		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		if(error instanceof ZodError)return NextResponse.json({error:'Accept the product terms and select a card.'},{status:400});
 		if(error instanceof Error&&error.message==='DUPLICATE_PENDING_APPLICATION')return NextResponse.json({error:'You already have a pending application for this card.'},{status:409});
 		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Too many applications.'},{status:429});

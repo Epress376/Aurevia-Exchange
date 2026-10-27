@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import {AccountMode,NotificationType,OrderSide,OrderStatus,OrderType,Prisma} from '@prisma/client';
 import {beforeEach,describe,expect,it,vi} from 'vitest';
 
@@ -6,6 +7,8 @@ const mocks=vi.hoisted(()=>({
 	ensureUserLedger:vi.fn(),
 	balance:vi.fn(),
 	reservedWithdrawalAmount:vi.fn(),
+	positionCreate:vi.fn(),
+	executionCreate:vi.fn(),
 }));
 
 vi.mock('@/lib/db',()=>({db:{
@@ -15,10 +18,11 @@ vi.mock('@/lib/db',()=>({db:{
 	instrument:{findUnique:vi.fn()},
 	auditLog:{create:vi.fn()},
 	ledgerEntry:{create:vi.fn()},
-	position:{create:vi.fn()},
-	execution:{create:vi.fn()},
+	position:{create:mocks.positionCreate},
+	execution:{create:mocks.executionCreate},
 }}));
 vi.mock('@/lib/notifications',()=>({createNotification:vi.fn()}));
+vi.mock('server-only',()=>({}));
 vi.mock('@/lib/ledger',()=>({
 	ensureUserLedger:mocks.ensureUserLedger,
 	balance:mocks.balance,
@@ -31,13 +35,14 @@ vi.mock('@/lib/providers/alpaca-crypto-provider',async importOriginal=>{
 
 import {db} from '@/lib/db';
 import {createNotification} from '@/lib/notifications';
-import {submitAlpacaPaperOrder} from '@/lib/alpaca-paper-orders';
+import {submitAlpacaPaperOrder,syncAlpacaPaperOrder} from '@/lib/alpaca-paper-orders';
 import type {ProviderOrder} from '@/lib/providers/contracts';
 
 const now=new Date();
-const instrument={id:'instrument-1',symbol:'AAPL',enabled:true,updatedAt:now,quoteAsset:'USD',takerFee:new Prisma.Decimal('0.01')};
+const instrument={id:'instrument-1',symbol:'AAPL',enabled:true,price:new Prisma.Decimal(100),updatedAt:now,quoteAsset:'USD',takerFee:new Prisma.Decimal('0.01')};
 const request={instrumentId:instrument.id,side:OrderSide.BUY,type:OrderType.MARKET,quantity:2,expectedPrice:100,observedAt:now.toISOString()};
 const idempotencyKey='paper-order-key-001';
+const providerClientOrderId=`au_${createHash('sha256').update(`user-1\0${idempotencyKey}`).digest('hex').slice(0,40)}`;
 type MockOrder={
 	[key:string]:unknown;
 	id:string;
@@ -59,6 +64,8 @@ type MockProvider={
 	cancelOrder:ReturnType<typeof vi.fn>;
 };
 let storedOrder:MockOrder|null=null;
+let storedPosition:{id:string;quantity:Prisma.Decimal;entryPrice:Prisma.Decimal;realizedPnl:Prisma.Decimal;status:string}|null=null;
+let providerExecutionIds=new Set<string>();
 let provider:MockProvider;
 
 function decimal(value:unknown):Prisma.Decimal{
@@ -90,7 +97,7 @@ function updateStoredOrder(existing:MockOrder,data:Record<string,unknown>):MockO
 function providerOrder(state:ProviderOrder['state'],filledQuantity='0'):ProviderOrder{
 	return {
 		providerOrderId:'alpaca-order-1',
-		clientOrderId:idempotencyKey,
+		clientOrderId:providerClientOrderId,
 		state,
 		providerStatus:state.toLowerCase(),
 		acceptedAt:now.toISOString(),
@@ -111,12 +118,22 @@ beforeEach(()=>{
 	vi.clearAllMocks();
 	vi.stubEnv('ALPACA_PAPER_ORDERS_ENABLED','true');
 	storedOrder=null;
+	storedPosition=null;
+	providerExecutionIds=new Set();
+	mocks.positionCreate.mockImplementation(async({data}:{data:Record<string,unknown>})=>{
+		storedPosition={id:'paper-position-1',quantity:decimal(data.quantity),entryPrice:decimal(data.entryPrice),realizedPnl:new Prisma.Decimal(0),status:'OPEN'};
+		return storedPosition;
+	});
+	mocks.executionCreate.mockImplementation(async({data}:{data:Record<string,unknown>})=>{
+		providerExecutionIds.add(String(data.providerExecutionId));
+		return data;
+	});
 	mocks.ensureUserLedger.mockResolvedValue({id:'real-usd-ledger',currency:'USD'});
 	mocks.balance.mockResolvedValue(new Prisma.Decimal(1000));
 	mocks.reservedWithdrawalAmount.mockResolvedValue(new Prisma.Decimal(0));
 	provider={
 		getAccount:vi.fn().mockResolvedValue({id:'paper-account-1',status:'ACTIVE',account_blocked:false,trading_blocked:false,trade_suspended_by_user:false}),
-		getAsset:vi.fn().mockResolvedValue({id:'asset-1',symbol:'AAPL',class:'us_equity',status:'active',tradable:true}),
+		getAsset:vi.fn().mockResolvedValue({id:'asset-1',symbol:'AAPL',class:'us_equity',status:'active',tradable:true,fractionable:true}),
 		submitOrder:vi.fn().mockResolvedValue(providerOrder('FILLED','2')),
 		getOrderStatus:vi.fn(),
 		getOrderByClientId:vi.fn(),
@@ -157,6 +174,23 @@ beforeEach(()=>{
 				return storedOrder;
 			}),
 		},
+		position:{
+			findFirst:vi.fn(async()=>storedPosition?.status==='OPEN'?storedPosition:null),
+			create:mocks.positionCreate,
+			update:vi.fn(async({where,data}:{where:{id:string};data:Record<string,unknown>})=>{
+				if(!storedPosition||storedPosition.id!==where.id)throw new Error('missing position');
+				if(typeof data.quantity==='object'&&data.quantity!==null&&'increment'in data.quantity)storedPosition.quantity=storedPosition.quantity.plus(decimal((data.quantity as {increment:unknown}).increment));
+				else if(data.quantity!==undefined)storedPosition.quantity=decimal(data.quantity);
+				if(data.entryPrice!==undefined)storedPosition.entryPrice=decimal(data.entryPrice);
+				if(data.realizedPnl&&typeof data.realizedPnl==='object'&&'increment'in data.realizedPnl)storedPosition.realizedPnl=storedPosition.realizedPnl.plus(decimal((data.realizedPnl as {increment:unknown}).increment));
+				if(typeof data.status==='string')storedPosition.status=data.status;
+				return storedPosition;
+			}),
+		},
+		execution:{
+			findUnique:vi.fn(async({where}:{where:{providerExecutionId:string}})=>providerExecutionIds.has(where.providerExecutionId)?{id:where.providerExecutionId}:null),
+			create:mocks.executionCreate,
+		},
 		user:{findUnique:vi.fn().mockResolvedValue({id:'user-1',accountMode:AccountMode.REAL,status:'ACTIVE',accountRestricted:false,role:'USER'})},
 		instrument:{findUnique:vi.fn().mockResolvedValue(instrument)},
 		auditLog:{create:vi.fn().mockResolvedValue({})},
@@ -175,22 +209,26 @@ beforeEach(()=>{
 });
 
 describe('Alpaca Paper order isolation and status handling',()=>{
-	it('records a verified paper fill without creating Aurevia ledger, execution, or position records',async()=>{
+	it('records provider-confirmed fills as user-scoped holdings without changing the Aurevia ledger',async()=>{
 		const order=await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
 
 		expect(order).toMatchObject({accountMode:AccountMode.REAL,providerName:'alpaca-paper',providerAccountId:'paper-account-1',providerOrderId:'alpaca-order-1',status:OrderStatus.FILLED,providerStatus:'filled',filledQuantity:new Prisma.Decimal(2)});
-		expect(order.providerReservedAmount?.toString()).toBe('202');
+		expect(order.providerReservedAmount?.toString()).toBe('200');
+		expect(order.providerClientOrderId).toBe(providerClientOrderId);
 		expect(provider.submitOrder).toHaveBeenCalledTimes(1);
 		expect(db.ledgerEntry.create).not.toHaveBeenCalled();
-		expect(db.position.create).not.toHaveBeenCalled();
-		expect(db.execution.create).not.toHaveBeenCalled();
+		expect(mocks.positionCreate).toHaveBeenCalledOnce();
+		expect(mocks.executionCreate).toHaveBeenCalledOnce();
+		expect(storedPosition).toMatchObject({quantity:new Prisma.Decimal(2),entryPrice:new Prisma.Decimal('101.25'),status:'OPEN'});
 		expect(createNotification).toHaveBeenCalledWith(expect.anything(),expect.objectContaining({type:NotificationType.TRADE}));
 	});
 
 	it.each([
 		['PARTIALLY_FILLED','1',OrderStatus.PARTIALLY_FILLED],
+		['PENDING_CANCEL','0',OrderStatus.PENDING_CANCEL],
 		['CANCELLED','0',OrderStatus.CANCELLED],
 		['REJECTED','0',OrderStatus.REJECTED],
+		['EXPIRED','0',OrderStatus.EXPIRED],
 	] as const)('maps provider %s status into the local order status',async(state,filled,status)=>{
 		provider.submitOrder.mockResolvedValue(providerOrder(state,filled));
 		const order=await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
@@ -215,11 +253,27 @@ describe('Alpaca Paper order isolation and status handling',()=>{
 
 	it('does not resubmit an order whose first provider outcome was ambiguous',async()=>{
 		provider.submitOrder.mockRejectedValueOnce(new Error('network unavailable'));
+		provider.getOrderByClientId.mockRejectedValue(new Error('not found yet'));
 		const first=await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
 		const repeated=await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
 
 		expect(first.providerStatus).toBe('SUBMISSION_UNKNOWN');
 		expect(repeated.id).toBe(first.id);
 		expect(provider.submitOrder).toHaveBeenCalledTimes(1);
+	});
+
+	it('applies partial and subsequent fills incrementally and idempotently',async()=>{
+		provider.submitOrder.mockResolvedValueOnce(providerOrder('PARTIALLY_FILLED','1'));
+		provider.getOrderStatus.mockResolvedValue({...providerOrder('FILLED','2'),averageFillPrice:'102.5'});
+		await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
+		expect(storedPosition?.quantity.toString()).toBe('1');
+
+		await syncAlpacaPaperOrder('local-order-1','admin-1');
+		await syncAlpacaPaperOrder('local-order-1','admin-1');
+
+		expect(storedPosition?.quantity.toString()).toBe('2');
+		expect(storedPosition?.entryPrice.toString()).toBe('102.5');
+		expect(mocks.executionCreate).toHaveBeenCalledTimes(2);
+		expect(providerExecutionIds.size).toBe(2);
 	});
 });

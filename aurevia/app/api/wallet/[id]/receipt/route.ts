@@ -1,4 +1,5 @@
 import {NextResponse} from 'next/server';
+import {AccountMode} from '@prisma/client';
 import {FundingStatus,FundingType,NotificationType} from '@prisma/client';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
@@ -17,7 +18,7 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
 		const user=await requireUser();
 		const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
 		if(!currentUser||currentUser.status!=='ACTIVE')return NextResponse.json({error:'Wallet account is unavailable.'},{status:403});
-		if(currentUser.accountMode==='DEMO')return NextResponse.json({error:'Deposits and withdrawals are available in REAL Mode only.'},{status:403});
+		if(currentUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Receipt management is available in REAL mode only.'},{status:403});
 		ownerId=user.id;
 		const contentLength=Number(request.headers.get('content-length')||0);
 		if(contentLength>maxFundingEvidenceBytes+64*1024)return NextResponse.json({error:'Evidence must be 5 MB or smaller.'},{status:413});
@@ -61,6 +62,7 @@ export async function GET(_request:Request,{params}:{params:Promise<{id:string}>
 		const user=await requireUser();
 		const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
 		if(!currentUser||currentUser.status!=='ACTIVE')return NextResponse.json({error:'Wallet account is unavailable.'},{status:403});
+		if(currentUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Transaction records are available in REAL mode only.'},{status:403});
 		const funding=await db.fundingRequest.findFirst({where:{id,userId:user.id,accountMode:currentUser.accountMode},select:{userId:true,receiptKey:true}});
 		if(!funding)return NextResponse.json({error:'Funding request not found.'},{status:404});
 		if(!funding.receiptKey)return NextResponse.json({error:'No receipt is attached to this request.'},{status:404});

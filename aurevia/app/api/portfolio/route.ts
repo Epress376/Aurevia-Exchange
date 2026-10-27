@@ -2,8 +2,8 @@ import {NextResponse} from 'next/server';
 import {AccountMode,FundingStatus,FundingType,InvestmentStatus,Prisma} from '@prisma/client';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
-import {balance} from '@/lib/ledger';
-import {BTC_FUNDING_METHOD} from '@/lib/bitcoin-funding';
+import {balance,reservedWithdrawalAmount} from '@/lib/ledger';
+import {ALPACA_PAPER_PROVIDER,BTC_FUNDING_METHOD,paperOrderCollateral} from '@/lib/bitcoin-funding';
 import {recordedInvestmentPnl} from '@/lib/investment-policy';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '@/lib/portfolio-metrics';
 import {jsonSafe} from '@/lib/serializers';
@@ -16,27 +16,38 @@ const activeInvestmentStatuses:Set<InvestmentStatus>=new Set([InvestmentStatus.P
 export async function GET(){
  try{
   const user=await requireUser();
-  const mode=user.accountMode;
-  const [account,positions,realizedAggregate,investments,settledInvestments,depositAggregate,withdrawalAggregate,recentFunding,availableOpportunities]=await Promise.all([
+   const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+   if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'Unauthorized'},{status:401});
+   const mode=activeUser.accountMode;
+  const [account,positions,realizedAggregate,investments,settledInvestments,depositAggregate,recentFunding,availableOpportunities,paperOrders,pendingWithdrawals]=await Promise.all([
    db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${mode}:USD`},select:{id:true,startingBalance:true}}),
    db.position.findMany({where:{userId:user.id,accountMode:mode,status:'OPEN'},include:{instrument:true},orderBy:{openedAt:'asc'}}),
-   db.position.aggregate({where:{userId:user.id,accountMode:mode},_sum:{realizedPnl:true}}),
-   db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode},include:{opportunity:{select:{title:true,category:true,assetSymbol:true,riskLevel:true,durationDays:true}}},orderBy:{requestedAt:'desc'}}),
-   db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode,status:InvestmentStatus.SETTLED},select:{amount:true,simulatedPayout:true}}),
-   db.fundingRequest.aggregate({
+   db.position.aggregate({where:{userId:user.id,accountMode:mode,providerName:null},_sum:{realizedPnl:true}}),
+   mode===AccountMode.REAL?db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode},include:{opportunity:{select:{title:true,category:true,assetSymbol:true,riskLevel:true,durationDays:true}}},orderBy:{requestedAt:'desc'}}):Promise.resolve([]),
+   mode===AccountMode.REAL?db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode,status:InvestmentStatus.SETTLED},select:{amount:true,simulatedPayout:true}}):Promise.resolve([]),
+   mode===AccountMode.REAL?db.fundingRequest.aggregate({
     where:mode===AccountMode.REAL
      ?{userId:user.id,accountMode:mode,type:FundingType.DEPOSIT,currency:'BTC',method:BTC_FUNDING_METHOD,creditedCurrency:'USD',status:{in:[FundingStatus.APPROVED,FundingStatus.COMPLETED]}}
      :{userId:user.id,accountMode:mode,currency:'USD',type:FundingType.DEPOSIT,status:{in:[FundingStatus.APPROVED,FundingStatus.COMPLETED]}},
     _sum:{amount:true,creditedAmount:true},
-   }),
-   db.fundingRequest.aggregate({where:{userId:user.id,accountMode:mode,currency:'USD',type:FundingType.WITHDRAWAL,status:{in:[FundingStatus.APPROVED,FundingStatus.COMPLETED]}},_sum:{amount:true}}),
-   db.fundingRequest.findMany({where:{userId:user.id,accountMode:mode},select:{id:true,type:true,method:true,amount:true,currency:true,status:true,createdAt:true},orderBy:{createdAt:'desc'},take:5}),
-   db.investmentOpportunity.findMany({where:{status:'AVAILABLE',...(mode===AccountMode.DEMO?{demoEligible:true}:{realEligible:true})},select:{id:true,title:true,category:true,assetSymbol:true,minimumAmount:true,targetReturnPercent:true,durationDays:true,riskLevel:true},orderBy:{createdAt:'desc'},take:3}),
+   }):Promise.resolve({_sum:{amount:null,creditedAmount:null}}),
+   mode===AccountMode.REAL?db.fundingRequest.findMany({where:{userId:user.id,accountMode:mode},select:{id:true,type:true,method:true,amount:true,currency:true,status:true,createdAt:true},orderBy:{createdAt:'desc'},take:5}):Promise.resolve([]),
+   mode===AccountMode.REAL?db.investmentOpportunity.findMany({where:{status:'AVAILABLE',realEligible:true},select:{id:true,title:true,category:true,assetSymbol:true,minimumAmount:true,targetReturnPercent:true,durationDays:true,riskLevel:true},orderBy:{createdAt:'desc'},take:3}):Promise.resolve([]),
+   mode===AccountMode.REAL?db.order.findMany({where:{userId:user.id,accountMode:mode,providerName:ALPACA_PAPER_PROVIDER},select:{instrumentId:true,side:true,quantity:true,filledQuantity:true,averageFillPrice:true,providerReservedAmount:true,status:true,createdAt:true,instrument:{select:{takerFee:true}}},orderBy:{createdAt:'asc'}}):Promise.resolve([]),
+   mode===AccountMode.REAL?reservedWithdrawalAmount(db,user.id,AccountMode.REAL,'USD'):Promise.resolve(zero()),
   ]);
   const cashBalance=account?await balance(db,account.id):zero();
+  const paperCollateral=paperOrderCollateral(paperOrders.map(order=>({...order,takerFee:zero()})));
+  const paperAvailableBalance=Prisma.Decimal.max(zero(),cashBalance.minus(pendingWithdrawals).minus(paperCollateral.committed));
+  const paperPositions=positions.filter(position=>position.providerName===ALPACA_PAPER_PROVIDER).map(position=>({
+   id:position.id,symbol:position.instrument.symbol,name:position.instrument.name,side:position.side,
+   quantity:position.quantity,averageEntryPrice:position.entryPrice,realizedPnl:position.realizedPnl,
+   openedAt:position.openedAt,valuationStatus:'UNAVAILABLE' as const,
+  }));
+  const internalPositions=positions.filter(position=>position.providerName!==ALPACA_PAPER_PROVIDER);
   let positionValue=zero();
   let unrealizedPnl=zero();
-  const valuedPositions=positions.map(position=>{
+  const valuedPositions=internalPositions.map(position=>{
    const currentPrice=position.instrument.price;
    const marketValue=currentPrice.mul(position.quantity);
    const direction=position.side==='BUY'?1:-1;
@@ -51,7 +62,7 @@ export async function GET(){
   const realizedPnl=new Prisma.Decimal(realizedAggregate._sum.realizedPnl??0).plus(settledInvestmentPnl);
   const totalPnl=realizedPnl.plus(unrealizedPnl);
   const totalValue=cashBalance.plus(positionValue).plus(investmentValue);
-  const netDemoFunding=mode===AccountMode.DEMO?new Prisma.Decimal(depositAggregate._sum.amount??0).minus(withdrawalAggregate._sum.amount??0):zero();
+  const netDemoFunding=zero();
   const startingBalance=account?.startingBalance??zero();
   const returnBasis=mode===AccountMode.REAL?new Prisma.Decimal(depositAggregate._sum.creditedAmount??0):startingBalance.plus(netDemoFunding);
   const returnPercent=returnBasis.gt(0)?totalPnl.div(returnBasis).mul(100):null;
@@ -98,7 +109,7 @@ export async function GET(){
   const allocations=calculateAllocationPercentages([...allocationValues].map(([category,value])=>({category,value})));
   const rankedPositions=valuedPositions.filter(position=>position.unrealizedPnl!==null).toSorted((left,right)=>Number(right.unrealizedPnl)-Number(left.unrealizedPnl));
   const totalInvested=valuedPositions.reduce((sum,item)=>sum.plus(item.entryPrice.mul(item.quantity)),zero()).plus(investedRequests.reduce((sum,item)=>sum.plus(item.amount),zero()));
-  const response={accountMode:mode,currency:'USD',cashBalance,positionValue,investmentValue,totalValue,realizedPnl,unrealizedPnl,totalPnl,returnPercent,dailyPnl,dailyPercent,positions:valuedPositions,investments,holdings,totalInvested,totalCurrentValue:totalValue,allocations,recentFunding,availableOpportunities,topGainers:rankedPositions.slice(0,3),topLosers:rankedPositions.slice(-3).reverse(),performance:performance.toReversed(),marketDataMode:'SIMULATED',externalValuationAvailable:false};
+  const response={accountMode:mode,currency:'USD',cashBalance,positionValue,investmentValue,totalValue,realizedPnl,unrealizedPnl,totalPnl,returnPercent,dailyPnl,dailyPercent,positions:valuedPositions,paperPositions,paperReservedBalance:paperCollateral.committed,paperAvailableBalance,investments,holdings,totalInvested,totalCurrentValue:totalValue,allocations,recentFunding,availableOpportunities,topGainers:rankedPositions.slice(0,3),topLosers:rankedPositions.slice(-3).reverse(),performance:performance.toReversed(),marketDataMode:'SIMULATED',externalValuationAvailable:false};
   return NextResponse.json(jsonSafe(response),{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   return NextResponse.json({error:error instanceof Error&&error.message==='UNAUTHORIZED'?'Unauthorized':'Portfolio data is temporarily unavailable.'},{status:error instanceof Error&&error.message==='UNAUTHORIZED'?401:503,headers:{'Cache-Control':'private, no-store'}});

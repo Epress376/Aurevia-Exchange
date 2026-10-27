@@ -29,6 +29,7 @@ const moreMenuGroups=[
   {href:'/support',label:'Help and support',icon:Mail},
  ]},
 ];
+const realOnlyNavigationPaths=new Set(['/investments','/wallet/transactions','/kyc','/cards','/tier','/tax-services']);
 
 export default function Nav(){
  const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
@@ -58,7 +59,10 @@ export default function Nav(){
   {href:'/settings#security',label:'Settings',group:'Profile & support'},
   {href:'/support',label:'Help & support',group:'Profile & support'},
  ];
- const matchingPages=marketSearch.trim()?userDestinations.filter(item=>`${item.label} ${item.group}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,5):[];
+ const currentMode=data?.user?.accountMode;
+ const visibleDestinations=currentMode==='DEMO'?userDestinations.filter(item=>!realOnlyNavigationPaths.has(item.href)):userDestinations;
+ const visibleMoreMenuGroups=moreMenuGroups.map(group=>({...group,links:group.links.filter(item=>currentMode!=='DEMO'||!realOnlyNavigationPaths.has(item.href))})).filter(group=>group.links.length>0);
+ const matchingPages=marketSearch.trim()?visibleDestinations.filter(item=>`${item.label} ${item.group}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,5):[];
  const matchingMarkets=marketSearch.trim()?MARKET_ASSETS.filter(asset=>`${asset.id} ${asset.name} ${asset.ticker}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,6):[];
  async function changeMode(accountMode:'DEMO'|'REAL'){
   if(modeBusy)return;
@@ -212,8 +216,8 @@ export default function Nav(){
   {open&&<button type="button" className="user-more-backdrop" aria-label="Close More menu" tabIndex={-1} onClick={close}/>}
   <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>
    <header className="user-more-heading"><div><span>ACCOUNT NAVIGATION</span><h2 id="user-more-title">More</h2></div><button type="button" className="user-more-close" aria-label="Close More menu" onClick={close}><X size={18}/></button></header>
-   <div className="user-more-groups">{moreMenuGroups.map(group=><section className="user-more-group" key={group.title} aria-label={group.title}><h3>{group.title}</h3>{group.links.map(({href,label,icon:Icon})=><Link href={href} key={href} aria-current={active(href)?'page':undefined} onClick={close}><Icon size={17} strokeWidth={1.7}/><span>{label}</span></Link>)}</section>)}
-    <section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link><Link href="/tier" aria-current={active('/tier')?'page':undefined} onClick={close}><ArrowUpRight size={17}/><span>Tier upgrade</span></Link></section>
+   <div className="user-more-groups">{visibleMoreMenuGroups.map(group=><section className="user-more-group" key={group.title} aria-label={group.title}><h3>{group.title}</h3>{group.links.map(({href,label,icon:Icon})=><Link href={href} key={href} aria-current={active(href)?'page':undefined} onClick={close}><Icon size={17} strokeWidth={1.7}/><span>{label}</span></Link>)}</section>)}
+    {currentMode!=='DEMO'&&<section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link><Link href="/tier" aria-current={active('/tier')?'page':undefined} onClick={close}><ArrowUpRight size={17}/><span>Tier upgrade</span></Link></section>}
    </div>
    <button type="button" className="user-more-logout" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={17}/>{loggingOut?translate('signingOut'):translate('logout')}</button>
   </section>

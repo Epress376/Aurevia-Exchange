@@ -15,19 +15,20 @@ const refundableStatuses=[InvestmentStatus.PENDING_APPROVAL,InvestmentStatus.APP
 export async function POST(request:Request){
  try{
   const user=await requireUser();
-  if(user.accountMode!==AccountMode.DEMO)return NextResponse.json({error:'Switch to DEMO before resetting simulated activity.'},{status:409});
     schema.parse(await request.json());
   rateLimit(`demo-reset:${user.id}`,2,24*60*60_000);
   const result=await db.$transaction(async tx=>{
-   const accountOwner=await tx.user.findUnique({where:{id:user.id},select:{accountMode:true}});
+   const accountOwner=await tx.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true,role:true}});
+   if(!accountOwner||accountOwner.status!=='ACTIVE'||accountOwner.role!=='USER')throw new Error('ACCOUNT_UNAVAILABLE');
    if(accountOwner?.accountMode!==AccountMode.DEMO)throw new Error('DEMO_MODE_REQUIRED');
    await initializeDemoAccount(tx,user.id);
    const incomplete=await tx.investmentRequest.findFirst({where:{userId:user.id,accountMode:AccountMode.DEMO,status:InvestmentStatus.COMPLETED},select:{id:true}});
    if(incomplete)throw new Error('COMPLETED_INVESTMENT_REQUIRES_SETTLEMENT');
 
-   const orders=await tx.order.findMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:OrderStatus.OPEN},select:{id:true}});
-   const cancelledOrders=await tx.order.updateMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:OrderStatus.OPEN},data:{status:OrderStatus.CANCELLED}});
-   if(cancelledOrders.count)await tx.auditLog.create({data:{actorId:user.id,action:'DEMO_ORDERS_CANCELLED_BY_RESET',entity:'ORDER',entityId:user.id,metadata:{oldState:OrderStatus.OPEN,newState:OrderStatus.CANCELLED,count:cancelledOrders.count,orderIds:orders.map(order=>order.id)}}});
+   const openStatuses=[OrderStatus.OPEN,OrderStatus.PARTIALLY_FILLED];
+   const orders=await tx.order.findMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:openStatuses}},select:{id:true}});
+   const cancelledOrders=await tx.order.updateMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:openStatuses}},data:{status:OrderStatus.CANCELLED}});
+   if(cancelledOrders.count)await tx.auditLog.create({data:{actorId:user.id,action:'DEMO_ORDERS_CANCELLED_BY_RESET',entity:'ORDER',entityId:user.id,metadata:{oldState:openStatuses,newState:OrderStatus.CANCELLED,count:cancelledOrders.count,orderIds:orders.map(order=>order.id)}}});
    for(const order of orders)await createNotification(tx,{userId:user.id,type:NotificationType.TRADE,title:'DEMO order cancelled by reset',message:'Your open simulated order was cancelled during the DEMO portfolio reset.',dedupeKey:`demo-reset:${user.id}:order:${order.id}`,relatedEntity:'ORDER',relatedId:order.id,actionUrl:'/orders'});
 
    const investments=await tx.investmentRequest.findMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:refundableStatuses}},include:{opportunity:{select:{title:true}}}});
@@ -62,6 +63,7 @@ export async function POST(request:Request){
   if(error instanceof ZodError)return NextResponse.json({error:'Type RESET DEMO ACCOUNT to confirm this simulated-account reset.'},{status:400});
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
   if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Too many reset attempts. Try again tomorrow.'},{status:429});
+  if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
   if(error instanceof Error&&['DEMO_MODE_REQUIRED','COMPLETED_INVESTMENT_REQUIRES_SETTLEMENT','DEMO_RESET_STATE_CHANGED'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:409});
   return NextResponse.json({error:'Unable to reset the DEMO portfolio.'},{status:503});
  }

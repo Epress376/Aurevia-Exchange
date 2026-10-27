@@ -118,7 +118,7 @@ export function normalizeAlpacaTradingBaseUrl(value: string): string | null {
   try {
     const parsed = new URL(value.trim());
     const host = parsed.hostname.toLowerCase();
-    if (parsed.protocol !== 'https:' || !['api.alpaca.markets', 'paper-api.alpaca.markets'].includes(host)) return null;
+    if (parsed.protocol !== 'https:' || host !== 'paper-api.alpaca.markets') return null;
     const basePath = parsed.pathname.replace(/\/+$/, '');
     if (parsed.username || parsed.password || parsed.port || !['', '/v2'].includes(basePath) || parsed.search || parsed.hash) return null;
     return `https://${host}`;
@@ -137,9 +137,10 @@ export function getServerConfiguration(source: EnvironmentSource = process.env):
   const verificationEmailConfigured = Boolean(env('VERIFICATION_EMAIL_API_URL', source) && env('VERIFICATION_EMAIL_API_KEY', source));
   const verificationSmsConfigured = Boolean(env('VERIFICATION_SMS_API_URL', source) && env('VERIFICATION_SMS_API_KEY', source));
   const executionProvider = env('ALPACA_PROVIDER', source) || env('BROKER_PROVIDER', source) || null;
-  const alpacaProvider = env('ALPACA_PROVIDER', source);
+  const alpacaProvider = env('ALPACA_PROVIDER', source) || 'alpaca';
   const brokerProvider = env('BROKER_PROVIDER', source);
-  const alpacaTradingRawBaseUrl = env('ALPACA_TRADING_BASE_URL', source);
+  const configuredAlpacaTradingBaseUrl = env('ALPACA_TRADING_BASE_URL', source);
+  const alpacaTradingRawBaseUrl = configuredAlpacaTradingBaseUrl || 'https://paper-api.alpaca.markets/v2';
   const alpacaTradingBaseUrl = normalizeAlpacaTradingBaseUrl(alpacaTradingRawBaseUrl) || '';
   const alpacaTradingApiKey = env('ALPACA_API_KEY', source);
   const alpacaTradingApiSecret = env('ALPACA_SECRET_KEY', source) || env('ALPACA_API_SECRET', source);
@@ -218,7 +219,7 @@ export function getServerConfiguration(source: EnvironmentSource = process.env):
       alpacaClientSecret,
       alpacaConfigured,
       alpacaTradingBaseUrl,
-      alpacaTradingUrlConfigured: Boolean(alpacaTradingRawBaseUrl),
+      alpacaTradingUrlConfigured: Boolean(configuredAlpacaTradingBaseUrl),
       alpacaTradingUrlValid: Boolean(alpacaTradingBaseUrl),
       alpacaTradingApiKey,
       alpacaTradingApiSecret,

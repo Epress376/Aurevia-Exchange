@@ -1,7 +1,9 @@
 'use client';
 
+import Image from 'next/image';
+import Link from 'next/link';
 import {useRef,useState} from 'react';
-import {ChevronDown,Download,Printer,X} from 'lucide-react';
+import {ArrowDownLeft,ArrowLeft,ArrowUpRight,Check,ClipboardCopy,Download,FileText,Printer,ShieldCheck,WalletCards} from 'lucide-react';
 import html2canvas from 'html2canvas-pro';
 import {jsPDF} from 'jspdf';
 import {formatUsd} from '@/lib/currency-format';
@@ -9,7 +11,7 @@ import {formatUsd} from '@/lib/currency-format';
 export type ReceiptData={
 	id:string;
 	reference:string;
-	status:'PENDING'|'PENDING_REVIEW'|'PROCESSING'|'APPROVED'|'COMPLETED'|'REJECTED'|'FAILED'|'CANCELLED';
+	status:'PENDING'|'PENDING_REVIEW'|'PROCESSING'|'APPROVED'|'COMPLETED'|'REJECTED'|'FAILED'|'CANCELLED'|'REVERSED';
 	type?:'DEPOSIT'|'WITHDRAWAL'|'CREDIT'|'DEBIT';
 	accountMode?:'DEMO'|'REAL';
 	simulated?:boolean;
@@ -44,134 +46,162 @@ export type ReceiptData={
 
 const dateLabel=(value:string)=>{
 	const date=new Date(value);
-	return Number.isNaN(date.getTime())?'Not recorded':new Intl.DateTimeFormat('en-US',{dateStyle:'medium',timeStyle:'short',timeZone:'UTC'}).format(date);
+	return Number.isNaN(date.getTime())?'Not recorded':new Intl.DateTimeFormat(undefined,{dateStyle:'medium',timeStyle:'short'}).format(date);
 };
 const amountLabel=(value:number|string,currency:string)=>{
 	const amount=Number(value);
-	if(!Number.isFinite(amount))return '—';
-	return currency==='USD'?formatUsd(Math.abs(amount)):`${Math.abs(amount).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:8})} ${currency}`;
+	if(!Number.isFinite(amount))return 'Not available';
+	const code=currency.toUpperCase();
+	return code==='USD'?formatUsd(Math.abs(amount)):`${Math.abs(amount).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8})} ${code}`;
 };
 
 export default function ReceiptGenerator({receipt}:{receipt:ReceiptData}){
 	const receiptRef=useRef<HTMLElement>(null);
 	const [busy,setBusy]=useState(false);
-	const [error,setError]=useState('');
-	const [visible,setVisible]=useState(true);
-	const [showDetails,setShowDetails]=useState(false);
+	const [feedback,setFeedback]=useState('');
 	const currentReceipt=receipt;
-
 	const kind=currentReceipt.type||'DEPOSIT';
 	const isWithdrawal=currentReceipt.isWithdrawal===true||kind==='WITHDRAWAL';
-	const isSuccessful=currentReceipt.status==='COMPLETED'||(currentReceipt.status==='APPROVED'&&!isWithdrawal);
-	const isFailed=currentReceipt.status==='REJECTED'||currentReceipt.status==='FAILED'||currentReceipt.status==='CANCELLED';
+	const isSuccessful=currentReceipt.status==='COMPLETED';
+	const isFailed=currentReceipt.status==='REJECTED'||currentReceipt.status==='FAILED'||currentReceipt.status==='CANCELLED'||currentReceipt.status==='REVERSED';
 	const statusLabel=currentReceipt.status==='APPROVED'&&isWithdrawal
 		?'Approved · payout not confirmed'
 		:currentReceipt.status==='APPROVED'?'Approved'
 		:currentReceipt.status==='COMPLETED'&&isWithdrawal?'Completed · admin-recorded payout'
-		:currentReceipt.status==='COMPLETED'?'Completed'
+		:currentReceipt.status==='COMPLETED'?'Completed · ledger record'
 		:currentReceipt.status==='REJECTED'?'Rejected'
 		:currentReceipt.status==='FAILED'?'Failed'
+		:currentReceipt.status==='REVERSED'?'Reversed'
 		:currentReceipt.status==='CANCELLED'?'Cancelled'
 		:currentReceipt.status==='PENDING_REVIEW'?'Pending review'
 		:currentReceipt.status==='PROCESSING'?'Processing'
 		:'Pending';
 	const receiptTitle=kind==='WITHDRAWAL'
-		?currentReceipt.status==='COMPLETED'?'Withdrawal processing record':'Withdrawal request confirmation'
+		?currentReceipt.status==='COMPLETED'?'Withdrawal transaction receipt':'Withdrawal request receipt'
 		:kind==='DEPOSIT'
-			?currentReceipt.status==='APPROVED'||currentReceipt.status==='COMPLETED'?'Internal deposit ledger record':'Deposit request confirmation'
-			:kind==='CREDIT'?'Account credit record':'Account debit record';
-	const amountDescription=isWithdrawal?'Requested amount':kind==='DEPOSIT'&&currentReceipt.status!=='APPROVED'&&currentReceipt.status!=='COMPLETED'?'Requested amount':kind==='DEPOSIT'?'Ledger credit':'Recorded amount';
+			?currentReceipt.status==='COMPLETED'?'Deposit transaction receipt':'Deposit request receipt'
+			:kind==='CREDIT'?'Account credit receipt':'Account debit receipt';
+	const transactionLabel=kind==='CREDIT'?'Account credit':kind==='DEBIT'?'Account debit':kind==='WITHDRAWAL'?'Withdrawal':'Deposit';
 	const recipientName=currentReceipt.recipientName||currentReceipt.destinationName||(isWithdrawal?'Saved destination':'Aurevia internal ledger');
 	const recipientNumber=currentReceipt.recipientNumber||currentReceipt.destinationNumber||(isWithdrawal?'Sensitive destination details are masked':'Internal account entry');
 	const gateway=currentReceipt.gateway||(currentReceipt.accountMode==='REAL'?'Internal Aurevia ledger':'DEMO paper ledger');
 	const fileName=`aurevia-${kind.toLowerCase()}-${currentReceipt.status.toLowerCase()}-${currentReceipt.id}`;
-	const statusExplanation=isWithdrawal
+	const numericAmount=Number(currentReceipt.amount);
+	const numericFee=currentReceipt.fee===null||currentReceipt.fee===undefined?null:Number(currentReceipt.fee);
+	const total=numericFee!==null&&Number.isFinite(numericAmount)&&Number.isFinite(numericFee)?Math.abs(numericAmount)+Math.abs(numericFee):null;
+	const feeLabel=numericFee!==null&&Number.isFinite(numericFee)?amountLabel(numericFee,currentReceipt.currency):'Not recorded';
+	const explanation=isWithdrawal
 		?currentReceipt.status==='COMPLETED'
-			?'An administrator recorded the external processing reference and corresponding Aurevia ledger debit. Aurevia did not independently verify a bank or blockchain provider.'
+			?'An administrator recorded the processing reference and corresponding Aurevia ledger debit. This record does not independently verify a bank or blockchain provider.'
 			:currentReceipt.status==='APPROVED'
 				?'The request is approved and the amount remains reserved. No external payout has been confirmed.'
 				:currentReceipt.status==='PROCESSING'
-					?'An administrator is processing the request. This status is not proof of payment.'
-					:currentReceipt.status==='REJECTED'||currentReceipt.status==='FAILED'||currentReceipt.status==='CANCELLED'
-						?'The request did not complete. No successful payout is represented by this receipt.'
+					?'The request is being processed. This status is not proof of payment.'
+					:currentReceipt.status==='REVERSED'
+						?'The transaction was reversed in the account ledger. This receipt does not represent a current completed transfer or credit.'
+					:isFailed
+						?'The request did not complete. This receipt does not represent a successful payout.'
 						:'This confirms receipt of your withdrawal request only. It is not proof of payment.'
-		:'This record reflects the current status in Aurevia’s internal account ledger; it is not a bank or payment-provider receipt.';
+		:currentReceipt.status==='COMPLETED'
+			?'The transaction is recorded as completed in Aurevia’s account ledger. This is an internal account record, not a bank or payment-provider receipt.'
+			:currentReceipt.status==='APPROVED'
+				?'This request has been approved. Refer to the ledger amount, if shown, for any amount actually posted; approval alone does not confirm external funds.'
+				:currentReceipt.status==='REVERSED'
+					?'The transaction was reversed in the account ledger. No current completed transfer or credit is represented.'
+				:isFailed
+					?'The transaction did not complete. No successful transfer or credit is represented by this receipt.'
+					:'This receipt confirms a request in Aurevia’s internal account workflow. No completed transfer or credit is represented.';
+	const statusHeading=isSuccessful?'Transaction Successful':isFailed?`Transaction ${statusLabel}`:statusLabel;
+	const subtitle=isSuccessful
+		?(isWithdrawal?'The recorded withdrawal is complete.':'The recorded ledger transaction is complete.')
+		:currentReceipt.status==='REVERSED'?'This ledger transaction was reversed.'
+		:isFailed?'This transaction was not completed.'
+			:currentReceipt.status==='APPROVED'?'The request is approved; completion is not confirmed.'
+				:'Your request is recorded and its current status is shown below.';
+	const rows:Array<{label:string;value:string;emphasis?:boolean}>=[
+		{label:'ACCOUNT',value:`${currentReceipt.name||'Account holder'} · ${currentReceipt.accountMode||'Mode not recorded'} · ${gateway}`},
+		{label:'AMOUNT',value:amountLabel(currentReceipt.amount,currentReceipt.currency)},
+		{label:'FEE',value:feeLabel},
+		{label:'TOTAL',value:total===null?'Not available':amountLabel(total,currentReceipt.currency),emphasis:true},
+		{label:'METHOD',value:currentReceipt.method||'Not recorded'},
+		{label:'REFERENCE ID',value:currentReceipt.reference||currentReceipt.id},
+		{label:'STATUS',value:statusLabel},
+		{label:'DATE & TIME',value:dateLabel(currentReceipt.createdAt)},
+	];
+	if(isWithdrawal)rows.splice(1,0,{label:'DESTINATION',value:`${recipientName} · ${recipientNumber}`});
+	if(currentReceipt.processingReference)rows.splice(rows.length-2,0,{label:'PROCESSING REFERENCE',value:currentReceipt.processingReference});
+	if(currentReceipt.creditedAmount!==undefined&&currentReceipt.creditedAmount!==null)rows.splice(2,0,{label:'LEDGER CREDIT',value:amountLabel(currentReceipt.creditedAmount,currentReceipt.creditedCurrency||currentReceipt.currency)});
+	const description=explanation;
 
-	async function exportReceipt(format:'png'|'pdf'){
+	async function exportPdf(){
 		if(!receiptRef.current||busy)return;
-		setBusy(true);setError('');
+		setBusy(true);setFeedback('');
 		try{
-			const element=receiptRef.current;
-			const originalMaxHeight=element.style.maxHeight;
-			const originalOverflowY=element.style.overflowY;
-			let canvas:HTMLCanvasElement;
-			element.style.maxHeight='none';
-			element.style.overflowY='visible';
-			try{canvas=await html2canvas(element,{scale:2,backgroundColor:'#ffffff',logging:false,useCORS:true});}
-			finally{element.style.maxHeight=originalMaxHeight;element.style.overflowY=originalOverflowY;}
-			if(format==='png'){
-				const link=document.createElement('a');link.download=`${fileName}.png`;link.href=canvas.toDataURL('image/png');link.click();
-			}else{
-				const pdf=new jsPDF({orientation:'portrait',unit:'px',format:[canvas.width,canvas.height]});
-				pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,canvas.width,canvas.height);
-				pdf.save(`${fileName}.pdf`);
-			}
+			await Promise.all(Array.from(receiptRef.current.querySelectorAll('img')).map(image=>image.decode().catch(()=>undefined)));
+			const canvas=await html2canvas(receiptRef.current,{scale:2,backgroundColor:'#07140f',logging:false,useCORS:true});
+			const pdf=new jsPDF({orientation:'portrait',unit:'px',format:[canvas.width,canvas.height]});
+			pdf.addImage(canvas.toDataURL('image/png'),'PNG',0,0,canvas.width,canvas.height);
+			pdf.save(`${fileName}.pdf`);
 		}catch(exception){
 			console.error('Unable to export receipt:',exception instanceof Error?exception.message:'Unknown error');
-			setError('This receipt could not be exported. Please try again.');
+			setFeedback('This receipt could not be exported. Please try again.');
 		}finally{setBusy(false)}
 	}
 
-	if(!visible)return <button type="button" className="min-h-10 rounded-lg border border-slate-200 bg-white px-4 text-sm font-semibold text-slate-700 shadow-sm" onClick={()=>setVisible(true)}>View transaction receipt</button>;
+	async function copyReference(){
+		try{
+			await navigator.clipboard.writeText(currentReceipt.reference||currentReceipt.id);
+			setFeedback('Reference number copied.');
+		}catch{
+			setFeedback('Copy is unavailable in this browser. Select the reference number in the receipt.');
+		}
+	}
 
 	return <div className="aurevia-receipt-wrap">
-		<article ref={receiptRef} className="receipt-container aurevia-receipt" aria-label={`${receiptTitle} ${currentReceipt.status.toLowerCase().replaceAll('_',' ')} receipt`}>
-			<header className="receipt-brand-header">
-				<div className="receipt-brand-lockup"><span aria-hidden="true">A</span><div><b>AUREVIA</b><small>INVEST · INTERNAL RECORD</small></div></div>
-				<button type="button" className="receipt-close no-print" aria-label="Close receipt" onClick={()=>setVisible(false)}><X size={17}/></button>
-			</header>
-			<div className="receipt-inner">
-				<div className="receipt-title-row"><div><span className="receipt-kicker">TRANSACTION DOCUMENT</span><h2>{receiptTitle}</h2></div><p className={`receipt-status ${isSuccessful?'is-success':isFailed?'is-failed':'is-pending'}`}><i aria-hidden="true"/>{statusLabel}</p></div>
-				<div className="receipt-amount-row"><div><small>{amountDescription}</small><b>{amountLabel(currentReceipt.amount,currentReceipt.currency)}</b></div><div><small>Transaction date</small><b>{dateLabel(currentReceipt.createdAt)}</b></div></div>
-				<div className="receipt-rule"/>
-				<section className="receipt-information" aria-label="Transaction details">
-					<h3>Transaction details</h3>
-					<dl>
-						<ReceiptRow label="Transaction reference" value={currentReceipt.reference}/>
-						<ReceiptRow label="Transaction type" value={`${kind.replaceAll('_',' ')} · ${currentReceipt.method}`}/>
-						{currentReceipt.accountMode&&<ReceiptRow label="Account mode" value={`${currentReceipt.accountMode} ${currentReceipt.accountMode==='DEMO'?'virtual':'internal ledger'}`}/>}
-						{isWithdrawal&&<ReceiptRow label="Destination" value={`${recipientName} · ${recipientNumber}`}/>}
-						{currentReceipt.fee!==null&&currentReceipt.fee!==undefined?<ReceiptRow label="Configured fee" value={amountLabel(currentReceipt.fee,currentReceipt.currency)}/>:isWithdrawal&&<ReceiptRow label="Fee / payout conversion" value="Not configured; no net payout estimate is available."/>}
-						{currentReceipt.processingReference&&<ReceiptRow label="Administrator-recorded external reference" value={currentReceipt.processingReference}/>}
-						{currentReceipt.creditedAmount!==undefined&&currentReceipt.creditedAmount!==null&&<ReceiptRow label="Aurevia ledger credit" value={amountLabel(currentReceipt.creditedAmount,currentReceipt.creditedCurrency||currentReceipt.currency)}/>}
-						{currentReceipt.externalReference&&currentReceipt.externalReference!==currentReceipt.processingReference&&<ReceiptRow label="User-provided reference · unverified" value={currentReceipt.externalReference}/>}
-						{currentReceipt.reviewedAt&&<ReceiptRow label="Administrator reviewed" value={dateLabel(currentReceipt.reviewedAt)}/>}
-						{currentReceipt.completedAt&&<ReceiptRow label="Ledger debit posted" value={dateLabel(currentReceipt.completedAt)}/>}
-					</dl>
+		<article ref={receiptRef} className="receipt-container aurevia-receipt" aria-label={`${receiptTitle} · ${statusLabel}`}>
+			<div className="receipt-frame">
+				<header className="receipt-brand-header">
+					<div className="receipt-brand">
+						<Image src="/aurevia-logo.png" alt="" width={58} height={58} className="receipt-brand-emblem"/>
+						<div className="receipt-brand-copy"><b>AUREVIA</b><strong>INVEST</strong><small>BUILD WEALTH · TRADE SMART · GROW TOGETHER</small></div>
+					</div>
+					<div className="receipt-header-document"><span>OFFICIAL RECEIPT</span><strong>TRANSACTION<br/>CONFIRMATION</strong><div><small>RECEIPT NUMBER</small><b>{currentReceipt.reference||currentReceipt.id}</b></div></div>
+				</header>
+				<div className="receipt-divider"/>
+				<section className="receipt-confirmation">
+					<span className={`receipt-confirmation-icon ${isSuccessful?'is-success':isFailed?'is-failed':'is-pending'}`}>{isSuccessful?<Check size={27}/>:isFailed?<span aria-hidden="true">!</span>:<WalletCards size={24}/>}</span>
+					<div className="receipt-confirmation-copy"><span className="receipt-kicker">TRANSACTION CONFIRMATION</span><h2>{statusHeading}</h2><p>{subtitle}</p></div>
+					<div className="receipt-confirmation-date"><small>DATE &amp; TIME</small><strong>{dateLabel(currentReceipt.createdAt)}</strong></div>
 				</section>
-				<p className={`receipt-explanation ${isWithdrawal&&currentReceipt.status==='COMPLETED'?'is-complete':''}`}>{statusExplanation}</p>
-				<details className="receipt-additional no-print" open={showDetails}>
-					<summary aria-expanded={showDetails} onClick={event=>{event.preventDefault();setShowDetails(value=>!value)}}><span>Additional reference details</span><ChevronDown size={15} className={showDetails?'rotate-180':''}/></summary>
-					<dl hidden={!showDetails}>
-						{currentReceipt.accountReference&&<ReceiptRow label="Internal account reference" value={currentReceipt.accountReference}/>}
-						{currentReceipt.reviewedBy?.name&&<ReceiptRow label="Reviewed by" value={currentReceipt.reviewedBy.name}/>}
-						{currentReceipt.previousBalance!==null&&currentReceipt.previousBalance!==undefined&&<ReceiptRow label="Previous balance" value={amountLabel(currentReceipt.previousBalance,currentReceipt.currency)}/>}
-						{currentReceipt.resultingBalance!==null&&currentReceipt.resultingBalance!==undefined&&<ReceiptRow label="Resulting balance" value={amountLabel(currentReceipt.resultingBalance,currentReceipt.currency)}/>}
-						{currentReceipt.adminNote&&<ReceiptRow label="Administrator note" value={currentReceipt.adminNote}/>}
-						<ReceiptRow label="Ledger classification" value={gateway}/>
-					</dl>
-				</details>
-				{currentReceipt.simulated&&<p className="receipt-explanation">INTERNAL LEDGER RECORD · This record documents an Aurevia account entry only. It is not proof of external funds received or transferred.</p>}
-				<footer className="receipt-footer"><span>Aurevia Invest · Internal platform record</span>{kind==='WITHDRAWAL'&&<a href={`/wallet/transactions/${encodeURIComponent(currentReceipt.id)}`}>Verify request record in Aurevia</a>}</footer>
+				<section className="receipt-details-card" aria-label="Transaction details">
+					<header className="receipt-details-heading"><span className="receipt-transaction-icon">{kind==='DEPOSIT'||kind==='CREDIT'?<ArrowDownLeft size={17}/>:<ArrowUpRight size={17}/>}</span><div><small>TRANSACTION TYPE</small><h3>{transactionLabel}</h3></div><span className={`receipt-status ${isSuccessful?'is-success':isFailed?'is-failed':'is-pending'}`}><i aria-hidden="true"/>{statusLabel}</span></header>
+					<dl className="receipt-detail-rows">{rows.map(row=><ReceiptRow key={row.label} label={row.label} value={row.value} emphasis={row.emphasis}/>)}</dl>
+				</section>
+				<section className="receipt-information">
+					<header><FileText size={18}/><h3>Transaction Details</h3></header>
+					<p>{description}</p>
+					<p className="receipt-record-source">Record source: {gateway}</p>
+					{currentReceipt.externalReference&&<p className="receipt-user-reference"><b>User-provided reference · unverified</b><span>{currentReceipt.externalReference}</span></p>}
+					<p className="receipt-thank-you">Thank you for choosing Aurevia Invest.</p>
+					<div className="receipt-security"><ShieldCheck size={19}/><div><strong>Secure · Encrypted · Trusted</strong><small>Your transaction details are presented from the authorized account record. Keep this receipt private.</small></div></div>
+				</section>
+				<footer className="receipt-footer">
+					<p>Your Future. Our Priority.</p>
+					<div className="receipt-seal" aria-label="Aurevia Invest seal"><Image src="/aurevia-logo.png" alt="" width={44} height={44}/><span>AUREVIA<br/>INVEST</span></div>
+					<small>{currentReceipt.accountMode==='REAL'?'REAL · INTERNAL LEDGER RECORD':currentReceipt.accountMode==='DEMO'?'DEMO · VIRTUAL ACCOUNT RECORD':'AUREVIA ACCOUNT RECORD'}</small>
+				</footer>
 			</div>
 		</article>
-		<div className="receipt-actions no-print">
-			<button type="button" className="receipt-action" onClick={()=>window.print()}><Printer size={14}/>Print / Save as PDF</button>
-			<button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm disabled:opacity-60" disabled={busy} onClick={()=>void exportReceipt('png')}><Download size={14}/>{busy?'Preparing…':'Download PNG'}</button>
-			<button type="button" className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 shadow-sm disabled:opacity-60" disabled={busy} onClick={()=>void exportReceipt('pdf')}><Download size={14}/>{busy?'Preparing…':'Download PDF'}</button>
+		<div className="receipt-actions no-print" aria-label="Receipt actions">
+			<button type="button" className="receipt-action" disabled={busy} onClick={()=>void exportPdf()}><Download size={15}/>{busy?'Preparing PDF…':'Download PDF'}</button>
+			<button type="button" className="receipt-action" onClick={()=>window.print()}><Printer size={15}/>Print Receipt</button>
+			<button type="button" className="receipt-action" onClick={()=>void copyReference()}><ClipboardCopy size={15}/>Copy Reference Number</button>
+			<Link href="/wallet" className="receipt-action"><ArrowLeft size={15}/>Return to Wallet</Link>
 		</div>
-		{error&&<p className="text-sm text-rose-700" role="alert">{error}</p>}
+		{feedback&&<p className="receipt-feedback no-print" role="status">{feedback}</p>}
 	</div>;
 }
 
-function ReceiptRow({label,value}:{label:string;value:string}){return <div className="receipt-row"><dt>{label}</dt><dd>{value||'Not provided'}</dd></div>}
+function ReceiptRow({label,value,emphasis=false}:{label:string;value:string;emphasis?:boolean}){
+	return <div className={`receipt-row ${emphasis?'is-total':''}`}><dt>{label}</dt><dd>{value||'Not recorded'}</dd></div>;
+}

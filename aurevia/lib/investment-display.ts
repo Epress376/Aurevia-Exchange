@@ -12,7 +12,7 @@ export function calculateInvestmentDisplay(input:{
 	const progress=(boundedNow-input.activatedAt)/duration;
 	return {
 		progress,
-		earnings:Math.max(0,(input.targetPayout-input.principal)*progress),
+		earnings:(input.targetPayout-input.principal)*progress,
 		secondsRemaining:Math.max(0,Math.ceil((input.maturesAt-boundedNow)/1000)),
 		matured:input.now>=input.maturesAt,
 	};

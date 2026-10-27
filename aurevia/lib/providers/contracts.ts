@@ -1,4 +1,4 @@
-export type ProviderOrderState='ACCEPTED'|'PARTIALLY_FILLED'|'FILLED'|'REJECTED'|'CANCELLED'|'FAILED';
+export type ProviderOrderState='ACCEPTED'|'PARTIALLY_FILLED'|'PENDING_CANCEL'|'FILLED'|'REJECTED'|'CANCELLED'|'EXPIRED'|'FAILED';
 
 export type ProviderOrderRequest={
 	clientOrderId:string;

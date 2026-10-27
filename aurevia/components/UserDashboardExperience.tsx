@@ -9,12 +9,15 @@ import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
 import LivePriceChart from '@/components/LivePriceChart';
 import {InvestmentProgressCard} from '@/components/InvestmentProgressCard';
+import DemoAiTradingPanel from '@/components/DemoAiTradingPanel';
+import DemoAccountControls from '@/components/DemoAccountControls';
 import {DEFAULT_WATCHLIST,MARKET_ASSETS,type MarketCandle,type MarketQuote,type TimeframeId} from '@/lib/live-market';
 import {formatUsd} from '@/lib/currency-format';
 
 type Overview={
 	profile:{name:string|null;accountMode:'DEMO'|'REAL';tier:string;kycStatus:string;hasAvatar:boolean};
 	accountMode:'DEMO'|'REAL';
+	demoStartingBalance:string|null;
 	balances:Partial<Record<'DEMO'|'REAL',string>>;
 	portfolioSummary:{
 		accountMode:'DEMO'|'REAL';cashBalance:string;positionValue:string;investmentValue:string;totalValue:string;unrealizedPnl:string;
@@ -219,18 +222,19 @@ export default function UserDashboardExperience(){
 				<div className="user-dashboard-welcome-actions">
 					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
 						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
-						<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>
-						<Link href="/wallet" title="Wallet" aria-label="Wallet"><WalletCards size={15}/></Link>
-						<Link href="/activity" title="Account activity" aria-label="Account activity"><Activity size={15}/></Link>
+						{overview.accountMode==='REAL'&&<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>}
+						{overview.accountMode==='REAL'&&<Link href="/wallet" title="Wallet" aria-label="Wallet"><WalletCards size={15}/></Link>}
+						<Link href={overview.accountMode==='DEMO'?'/orders':'/activity'} title={overview.accountMode==='DEMO'?'Demo trade history':'Account activity'} aria-label={overview.accountMode==='DEMO'?'Demo trade history':'Account activity'}><Activity size={15}/></Link>
 					</nav>
-					<span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode} ACCOUNT</span>
+					<span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode==='DEMO'?'DEMO MODE · VIRTUAL':'REAL ACCOUNT'}</span>
 					<button type="button" className="user-dashboard-refresh" aria-label="Refresh dashboard" disabled={refreshing} onClick={()=>void load()}><RefreshCw size={15} className={refreshing?'is-spinning':''}/></button>
 				</div>
 			</header>
 			<section className="user-dashboard-metrics" aria-label={`${overview.accountMode} account balance and portfolio value`}>
-				<UserMetric label={`${overview.accountMode} account`} value={formatUsd(overview.balances[overview.accountMode]||'0')} detail={overview.accountMode==='DEMO'?'Separate virtual USD ledger':'Internal USD ledger balance'} active icon={overview.accountMode==='DEMO'?WalletCards:ShieldCheck}/>
-				<UserMetric label={`${overview.accountMode} portfolio value`} value={formatUsd(overview.portfolioSummary.totalValue)} detail="Cash + positions + allocated principal" active icon={ChartNoAxesCombined}/>
+				<UserMetric label={`${overview.accountMode} ${overview.accountMode==='DEMO'?'virtual cash':'account balance'}`} value={formatUsd(overview.balances[overview.accountMode]||'0')} detail={overview.accountMode==='DEMO'?`Available DEMO cash · ${formatUsd(overview.demoStartingBalance||'5000.00')} starting allocation`:'Internal USD ledger balance'} active icon={overview.accountMode==='DEMO'?WalletCards:ShieldCheck}/>
+				<UserMetric label={`${overview.accountMode} portfolio value`} value={formatUsd(overview.portfolioSummary.totalValue)} detail={overview.accountMode==='DEMO'?'Virtual cash + simulated trading positions':'Cash + positions + allocated principal'} active icon={ChartNoAxesCombined}/>
 			</section>
+			{overview.accountMode==='DEMO'&&<DemoAccountControls startingBalance={overview.demoStartingBalance||'5000.00'} onReset={refreshOverview}/>}
 			{overview.accountMode==='REAL'&&<p className="user-dashboard-real-note">REAL funding is credited only through existing administrator-approved requests. Balances shown are internal Aurevia ledger records.</p>}
 			<section className="user-market-assets" aria-label="Supported market quotes">
 				<header className="user-market-assets-heading"><div><span className="user-dashboard-eyebrow">SUPPORTED INSTRUMENTS</span><h2>Market pulse</h2></div><small>{quoteSource||'Quote source connecting'}</small></header>
@@ -247,10 +251,11 @@ export default function UserDashboardExperience(){
 			<div className="user-dashboard-columns">
 				<div className="user-dashboard-primary">
 					<MarketChartPanel selectedSymbol={selectedSymbol} quotes={quotes} internalInstrumentId={internalInstrumentId}/>
-					{overview.activeInvestments.length>0&&<section className="user-dashboard-panel" aria-labelledby="user-live-investments-heading">
+					{overview.accountMode==='REAL'&&overview.activeInvestments.length>0&&<section className="user-dashboard-panel" aria-labelledby="user-live-investments-heading">
 						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACTIVE {overview.accountMode} MODE</span><h2 id="user-live-investments-heading">Live investments</h2><p>Per-second estimates use your recorded simulated investment terms.</p></div><Link className="user-dashboard-panel-link" href="/investments">Investment activity <ArrowRight size={14}/></Link></header>
 						<div className="investment-live-grid">{overview.activeInvestments.map(investment=><InvestmentProgressCard key={investment.id} investment={investment} onMaturity={refreshOverview}/>)}</div>
 					</section>}
+					{overview.accountMode==='DEMO'&&<DemoAiTradingPanel/>}
 					<div className="user-dashboard-two-up">
 						<AssetAllocation overview={overview}/>
 						<section className="user-dashboard-panel" aria-labelledby="user-positions-heading">
@@ -262,15 +267,15 @@ export default function UserDashboardExperience(){
 						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACTIVE {overview.accountMode} MODE</span><h2 id="user-orders-heading">Open orders</h2><p>Orders owned by your current account mode.</p></div><Link className="user-dashboard-panel-link" href="/orders">Order history <ArrowRight size={14}/></Link></header>
 						{overview.openOrders.length?<div className="user-dashboard-table-wrap"><table className="user-dashboard-table"><thead><tr><th>Instrument</th><th>Side / Type</th><th>Quantity</th><th>Filled</th><th>Limit</th><th>Status</th></tr></thead><tbody>{overview.openOrders.map(order=><tr key={order.id}><td><b>{order.instrument.symbol}</b><small>{order.instrument.name}</small></td><td>{order.side} · {order.type}</td><td>{Number(order.quantity).toLocaleString(undefined,{maximumFractionDigits:6})}</td><td>{Number(order.filledQuantity).toLocaleString(undefined,{maximumFractionDigits:6})}</td><td>{order.price?formatUsd(order.price):'Market'}</td><td><span className="user-order-status">{order.status.replaceAll('_',' ')}</span></td></tr>)}</tbody></table></div>:<div className="user-dashboard-empty compact"><Clock3 size={18}/><p>There are no open orders for {overview.accountMode} mode.</p></div>}
 					</section>
-					<section className="user-dashboard-panel user-opportunities" aria-labelledby="user-opportunities-heading">
+					{overview.accountMode==='REAL'&&<section className="user-dashboard-panel user-opportunities" aria-labelledby="user-opportunities-heading">
 						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ADMIN-PUBLISHED</span><h2 id="user-opportunities-heading">Investment opportunities</h2><p>Available opportunities eligible for your current account mode.</p></div><Link className="user-dashboard-panel-link" href="/investments">Explore all <ArrowRight size={14}/></Link></header>
 						{overview.opportunities.length?<div className="user-opportunity-grid">{overview.opportunities.slice(0,3).map(item=><article key={item.id}><span className="user-opportunity-category">{item.category}</span><h3>{item.title}</h3><p>{item.description}</p><dl><div><dt>Minimum</dt><dd>{formatUsd(item.minimumAmount)}</dd></div><div><dt>Duration</dt><dd>{item.durationDays} days</dd></div><div><dt>Target return</dt><dd>{item.targetReturnPercent===null?'Not stated':`${Number(item.targetReturnPercent).toFixed(2)}%`}</dd></div></dl><Link href="/investments">Review opportunity <ArrowRight size={13}/></Link></article>)}</div>:<div className="user-dashboard-empty"><BriefcaseBusiness size={19}/><p>No opportunities are currently published for {overview.accountMode} accounts.</p></div>}
-					</section>
+					</section>}
 				</div>
 				<aside className="user-dashboard-rail" aria-label="Account tools and updates">
-					<section className="user-dashboard-panel user-wallet-panel" aria-labelledby="user-wallet-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">{overview.accountMode} WALLET</span><h2 id="user-wallet-heading">My wallet</h2></div><WalletCards size={18}/></header><strong>{formatUsd(overview.portfolioSummary.cashBalance)}</strong><p>Available internal USD ledger balance</p>{overview.accountMode==='REAL'?<div className="user-wallet-actions"><Link href="/wallet?type=DEPOSIT"><ArrowDownLeft size={14}/>Deposit</Link><Link href="/wallet?type=WITHDRAWAL"><ArrowUpRight size={14}/>Withdraw</Link></div>:<div className="user-wallet-demo-note">Switch to REAL mode for funding requests. <Link href="/wallet">Wallet details <ArrowRight size={12}/></Link></div>}</section>
-					<section className="user-dashboard-panel" aria-labelledby="user-quick-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">YOUR WORKSPACE</span><h2 id="user-quick-heading">Quick actions</h2></div></header><div className="user-quick-actions"><QuickAction href="/trade" label="Trade markets" icon={Activity}/><QuickAction href="/investments" label="Explore investments" icon={BriefcaseBusiness}/><QuickAction href="/wallet" label="Manage wallet" icon={WalletCards}/><QuickAction href="/kyc" label="Identity verification" icon={ShieldCheck}/></div></section>
-					<section className="user-dashboard-panel" aria-labelledby="user-activity-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACCOUNT RECORDS</span><h2 id="user-activity-heading">Recent activity</h2></div><Link className="user-dashboard-panel-link" href="/activity">View all <ArrowRight size={14}/></Link></header><ActivityList items={overview.recentActivity}/></section>
+					<section className="user-dashboard-panel user-wallet-panel" aria-labelledby="user-wallet-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">{overview.accountMode} WALLET</span><h2 id="user-wallet-heading">{overview.accountMode==='DEMO'?'Virtual cash':'My wallet'}</h2></div><WalletCards size={18}/></header><strong>{formatUsd(overview.portfolioSummary.cashBalance)}</strong><p>{overview.accountMode==='DEMO'?'Available simulated trading cash':'Available internal USD ledger balance'}</p>{overview.accountMode==='REAL'&&<div className="user-wallet-actions"><Link href="/wallet?type=DEPOSIT"><ArrowDownLeft size={14}/>Deposit</Link><Link href="/wallet?type=WITHDRAWAL"><ArrowUpRight size={14}/>Withdraw</Link></div>}</section>
+					<section className="user-dashboard-panel" aria-labelledby="user-quick-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">YOUR WORKSPACE</span><h2 id="user-quick-heading">Quick actions</h2></div></header><div className="user-quick-actions"><QuickAction href="/trade" label="Trade markets" icon={Activity}/>{overview.accountMode==='REAL'&&<><QuickAction href="/investments" label="Explore investments" icon={BriefcaseBusiness}/><QuickAction href="/wallet" label="Manage wallet" icon={WalletCards}/><QuickAction href="/kyc" label="Identity verification" icon={ShieldCheck}/></>}</div></section>
+					<section className="user-dashboard-panel" aria-labelledby="user-activity-heading"><header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACCOUNT RECORDS</span><h2 id="user-activity-heading">Recent activity</h2></div><Link className="user-dashboard-panel-link" href="/activity">View all <ArrowRight size={14}/></Link></header>					<ActivityList items={overview.accountMode==='DEMO'?overview.recentActivity.filter(item=>['trade','personal-trade','order','position'].includes(item.category)):overview.recentActivity}/></section>
 					<section className="user-dashboard-panel user-news-panel" aria-label="Live market news"><NewsFeedPanel compact/></section>
 					<section className="user-support-panel"><span><LifeBuoy size={17}/></span><div><b>Need a hand?</b><small>Contact our support team.</small></div><Link href="/support" aria-label="Get help and support"><ArrowRight size={15}/></Link></section>
 				</aside>

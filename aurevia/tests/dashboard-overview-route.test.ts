@@ -28,7 +28,7 @@ vi.mock('@/lib/db',()=>({db:{
 	instrument:{findMany:mocks.instrumentFindMany},
 }}));
 vi.mock('@/lib/activity',()=>({getUserActivity:mocks.getActivity}));
-vi.mock('@/lib/ledger',()=>({balance:mocks.balance}));
+vi.mock('@/lib/ledger',()=>({balance:mocks.balance,DEMO_STARTING_BALANCE:'5000.00'}));
 
 import {GET} from '@/app/api/dashboard/overview/route';
 

@@ -3,6 +3,15 @@ import {NotificationType,Prisma,PrismaClient} from '@prisma/client';
 
 type NotificationStore=PrismaClient|Prisma.TransactionClient;
 
+async function resolveNotificationMode(tx:NotificationStore,relatedEntity?:string,relatedId?:string){
+	if(!relatedEntity||!relatedId)return null;
+	if(relatedEntity==='ORDER')return (await tx.order.findFirst({where:{id:relatedId},select:{accountMode:true}}))?.accountMode||null;
+	if(relatedEntity==='FUNDING')return (await tx.fundingRequest.findFirst({where:{id:relatedId},select:{accountMode:true}}))?.accountMode||null;
+	if(relatedEntity==='INVESTMENT')return (await tx.investmentRequest.findFirst({where:{id:relatedId},select:{accountMode:true}}))?.accountMode||null;
+	if(relatedEntity==='LEDGER_TRANSACTION')return (await tx.ledgerTransaction.findUnique({where:{id:relatedId},select:{accountMode:true}}))?.accountMode||null;
+	return null;
+}
+
 export async function createNotification(tx:NotificationStore,input:{
 	userId:string;
 	type:NotificationType;
@@ -13,10 +22,11 @@ export async function createNotification(tx:NotificationStore,input:{
 	relatedEntity?:string;
 	relatedId?:string;
 }){
+	const accountMode=await resolveNotificationMode(tx,input.relatedEntity,input.relatedId);
 	const notification=await tx.notification.upsert({
 		where:{dedupeKey:input.dedupeKey},
 		update:{},
-		create:input,
+		create:{...input,accountMode},
 	});
 	await tx.pushOutbox.upsert({
 		where:{notificationId:notification.id},
@@ -34,6 +44,7 @@ export async function notifyActiveAdmins(tx:NotificationStore,input:Omit<Paramet
 export async function notifyActiveUsers(tx:NotificationStore,input:Omit<Parameters<typeof createNotification>[1],'userId'|'dedupeKey'> & {dedupeKey:string}){
 	const users=await tx.user.findMany({where:{role:'USER',status:'ACTIVE'},select:{id:true}});
 	if(!users.length)return;
+	const accountMode=await resolveNotificationMode(tx,input.relatedEntity,input.relatedId);
 	const notifications=users.map(user=>({
 		id:randomUUID(),
 		userId:user.id,
@@ -44,6 +55,7 @@ export async function notifyActiveUsers(tx:NotificationStore,input:Omit<Paramete
 		relatedEntity:input.relatedEntity,
 		relatedId:input.relatedId,
 		actionUrl:input.actionUrl,
+		accountMode,
 	}));
 	await tx.notification.createMany({data:notifications,skipDuplicates:true});
 	const inserted=await tx.notification.findMany({where:{dedupeKey:{in:notifications.map(notification=>notification.dedupeKey)}},select:{id:true,userId:true}});

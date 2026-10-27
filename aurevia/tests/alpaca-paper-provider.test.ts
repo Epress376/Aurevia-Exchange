@@ -1,4 +1,5 @@
 import {describe,expect,it,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
 import {AlpacaTradingApiError,IndividualAlpacaTradingProvider} from '@/lib/providers/alpaca-crypto-provider';
 
 const account={

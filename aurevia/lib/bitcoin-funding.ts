@@ -1,6 +1,7 @@
 import {Prisma} from '@prisma/client';
 
 export const BTC_FUNDING_METHOD='BTC deposit · manual verification';
+export const ALPACA_PAPER_PROVIDER='alpaca-paper';
 
 export function normalizeBitcoinTransactionId(value:string){
 	const normalized=value.trim().toLowerCase();
@@ -36,7 +37,7 @@ export function paperOrderCollateral(records:PaperOrderCollateralRecord[]){
 				holding.quantity=holding.quantity.plus(order.filledQuantity);
 				holding.cost=holding.cost.plus(filledCost);
 			}
-			if((order.status==='OPEN'||order.status==='PARTIALLY_FILLED')&&order.providerReservedAmount&&order.quantity.gt(0)){
+			if((order.status==='OPEN'||order.status==='PARTIALLY_FILLED'||order.status==='PENDING_CANCEL')&&order.providerReservedAmount&&order.quantity.gt(0)){
 				const remaining=Prisma.Decimal.max(order.quantity.minus(order.filledQuantity),new Prisma.Decimal(0));
 				reservedBuys=reservedBuys.plus(order.providerReservedAmount.mul(remaining).div(order.quantity));
 			}

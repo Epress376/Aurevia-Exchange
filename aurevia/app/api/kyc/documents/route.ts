@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {NotificationType} from '@prisma/client';
+import {AccountMode,NotificationType} from '@prisma/client';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {createNotification} from '@/lib/notifications';
@@ -22,6 +22,9 @@ function detectMime(bytes:Buffer){
 export async function GET(){
   try{
     const user=await requireUser();
+    const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+    if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+    if(activeUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Identity verification is available in REAL mode only.'},{status:403});
     const documents=await db.kycDocument.findMany({where:{userId:user.id},select:{id:true,kind:true,filename:true,mimeType:true,size:true,status:true,uploadedAt:true,reviewedAt:true,reviewNote:true},orderBy:{uploadedAt:'desc'}});
     return NextResponse.json(documents,{headers:{'Cache-Control':'private, no-store'}});
   }catch(error){
@@ -36,6 +39,9 @@ export async function POST(request:Request){
  try{
   const user=await requireUser();
   ownerId=user.id;
+  const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+  if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+  if(activeUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Identity verification is available in REAL mode only.'},{status:403});
   rateLimit(`kyc-document-upload:${user.id}`,5,60*60_000);
   if(await db.kycDocument.count({where:{userId:user.id}})>=10)throw new Error('DOCUMENT_LIMIT_REACHED');
   const contentLength=Number(request.headers.get('content-length')||0);
@@ -53,7 +59,9 @@ export async function POST(request:Request){
     await uploadPrivateObject('kyc',user.id,documentStorageKey,bytes,mime);
     storageUploaded=true;
   const document=await db.$transaction(async tx=>{
-    const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{kycStatus:true}});
+    const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{kycStatus:true,accountMode:true,status:true}});
+    if(current.status!=='ACTIVE')throw new Error('ACCOUNT_UNAVAILABLE');
+    if(current.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
     assertKycSubmissionAllowed(current.kycStatus);
     const filename=file.name.replace(/[\u0000-\u001f\u007f]/g,'').slice(0,255)||'identity-document';
     const created=await tx.kycDocument.create({data:{userId:user.id,kind:String(kind),filename,storageKey:documentStorageKey,mimeType:mime,size:bytes.length,status:'SUBMITTED'}});
@@ -65,6 +73,8 @@ export async function POST(request:Request){
  }catch(error){
     if(storageUploaded&&storageKey&&ownerId)await deletePrivateObject('kyc',ownerId,storageKey);
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
+  if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+  if(error instanceof Error&&error.message==='REAL_MODE_REQUIRED')return NextResponse.json({error:'Identity verification is available in REAL mode only.'},{status:403});
   if(error instanceof PrivateStorageError)return NextResponse.json({error:error.message},{status:error.status});
   if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Too many document uploads. Try again later.'},{status:429});
   if(error instanceof Error&&error.message==='DOCUMENT_LIMIT_REACHED')return NextResponse.json({error:'The account document limit has been reached.'},{status:409});

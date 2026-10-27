@@ -24,19 +24,21 @@ type Order = {
 };
 type Pos = {
   id: string;
+  instrumentId:string;
   side: string;
   quantity: number;
   entryPrice: number;
   margin: number;
-  instrument: { symbol: string; price: number };
+  providerName:string|null;
+  instrument: { symbol: string; price: number;updatedAt:string };
 };
 type PositionResponse=Omit<Pos,"quantity"|"entryPrice"|"margin"|"instrument">&{
   quantity:NumericValue;
   entryPrice:NumericValue;
   margin:NumericValue;
-  instrument:{symbol:string;price:NumericValue};
+  instrument:{symbol:string;price:NumericValue;updatedAt:string};
 };
-type WalletResponse={accountMode:"DEMO"|"REAL";balance:NumericValue};
+type WalletResponse={accountMode:"DEMO"|"REAL";cashBalance:NumericValue;paperReservedBalance:NumericValue;paperAvailableBalance:NumericValue};
 type OrderBookLevel={price:number;quantity:number};
 type OrderBook={bids?:OrderBookLevel[];asks?:OrderBookLevel[]};
 export default function Trade() {
@@ -54,6 +56,8 @@ export default function Trade() {
   const [positions, setPositions] = useState<Pos[]>([]);
   const [book, setBook] = useState<OrderBook>({ bids: [], asks: [] });
   const [availableBalance, setAvailableBalance] = useState<number | null>(null);
+  const [paperReservedBalance,setPaperReservedBalance]=useState(0);
+  const [paperAvailableBalance,setPaperAvailableBalance]=useState(0);
   const [accountMode, setAccountMode] = useState<'DEMO'|'REAL'|'LOADING'>('LOADING');
   const [placing, setPlacing] = useState(false);
   useEffect(() => {
@@ -70,7 +74,7 @@ export default function Trade() {
           fetch("/api/market"),
           fetch("/api/orders"),
           fetch("/api/positions"),
-          fetch("/api/wallet"),
+          fetch("/api/portfolio"),
         ]);
         if (responses.some((response) => !response.ok))
           throw new Error("Unable to load trading data.");
@@ -87,7 +91,9 @@ export default function Trade() {
         if (market[0]) setSelected(market[0].id);
         setOrders(orderData);
         setAccountMode(walletData.accountMode);
-        setAvailableBalance(Number(walletData.balance));
+        setAvailableBalance(Number(walletData.cashBalance));
+        setPaperReservedBalance(Number(walletData.paperReservedBalance));
+        setPaperAvailableBalance(Number(walletData.paperAvailableBalance));
         setPositions(
           positionData.map((position) => ({
             ...position,
@@ -134,13 +140,13 @@ export default function Trade() {
     return () => clearInterval(t);
   }, [selected,accountMode]);
   const cur = items.find((i) => i.id === selected);
-  const pnl = (p: Pos) =>
+  const pnl = (p: Pos) => p.providerName==='alpaca-paper'?null:
     p.side === "BUY"
       ? ((cur?.price ?? p.instrument.price) - p.entryPrice) * p.quantity
       : (p.entryPrice - (cur?.price ?? p.instrument.price)) * p.quantity;
   const requestedQuantity = Number(qty);
   const estimatedNotional = (cur?.price ?? 0) * (Number.isFinite(requestedQuantity) ? requestedQuantity : 0);
-  const estimatedFee = estimatedNotional * Number(cur?.takerFee ?? 0);
+  const estimatedFee = accountMode==='DEMO'?estimatedNotional * Number(cur?.takerFee ?? 0):0;
   const estimatedRequiredCash = estimatedNotional + estimatedFee;
 
   async function place(event: FormEvent<HTMLFormElement>) {
@@ -194,6 +200,27 @@ export default function Trade() {
     }
   }
   async function close(id: string) {
+    const position=positions.find((item)=>item.id===id);
+    if(!position)return;
+    if(position.providerName==='alpaca-paper'){
+      const quote=items.find((item)=>item.id===position.instrumentId);
+      const response=await fetch('/api/orders',{
+        method:'POST',
+        headers:{'content-type':'application/json','Idempotency-Key':crypto.randomUUID()},
+        body:JSON.stringify({
+          instrumentId:position.instrumentId,side:'SELL',type:'MARKET',quantity:position.quantity,
+          expectedPrice:quote?.price??position.instrument.price,observedAt:quote?.updatedAt??position.instrument.updatedAt,
+        }),
+      });
+      const result=await response.json();
+      setMsg(response.ok?`Paper sell order ${String(result.status||'submitted').replaceAll('_',' ').toLowerCase()}.`:result.error||'Unable to submit sell order.');
+      if(response.ok){
+        const [orderResponse,positionResponse]=await Promise.all([fetch('/api/orders'),fetch('/api/positions')]);
+        if(orderResponse.ok)setOrders(await orderResponse.json());
+        if(positionResponse.ok)setPositions((await positionResponse.json()).map((item:PositionResponse)=>({...item,quantity:Number(item.quantity),entryPrice:Number(item.entryPrice),margin:Number(item.margin),instrument:{...item.instrument,price:Number(item.instrument.price)}})));
+      }
+      return;
+    }
     const r = await fetch("/api/positions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -207,7 +234,7 @@ export default function Trade() {
     <>
       <Nav />
       <main className="trade-terminal">
-        <header className="account-heading"><div><span className="account-kicker">{accountMode==='LOADING'?translate('restoringAccountMode'):`${accountMode} ACCOUNT · ${translate('tradingWorkspace')}`}</span><h1>{translate('tradeMarkets')}</h1><p>{accountMode==='LOADING'?'Loading your active paper account.':`${accountMode} orders use your separate Aurevia paper account and internally matched execution.`}</p></div><span className={`status-pill ${accountMode==='REAL'?'mode-real':'mode-demo'}`}>{accountMode==='LOADING'?'RESTORING':`${accountMode} · SIMULATED`}</span></header>
+        <header className="account-heading"><div><span className="account-kicker">{accountMode==='LOADING'?translate('restoringAccountMode'):`${accountMode} ACCOUNT · ${translate('tradingWorkspace')}`}</span><h1>{translate('tradeMarkets')}</h1><p>{accountMode==='LOADING'?'Loading your active paper account.':accountMode==='REAL'?'Orders go to the shared Alpaca Paper account. Confirmed fills are attributed to your Aurevia user; wallet cash remains separate.':'DEMO orders use Aurevia’s isolated internal simulator.'}</p></div><span className={`status-pill ${accountMode==='REAL'?'mode-real':'mode-demo'}`}>{accountMode==='LOADING'?'RESTORING':accountMode==='REAL'?'REAL · ALPACA PAPER':'DEMO · SIMULATED'}</span></header>
         {(accountMode==='REAL'||accountMode==='DEMO')?<>
         <div className="grid gap-4 xl:grid-cols-[1fr_340px]">
           <section className="card min-h-[650px] p-5">
@@ -271,7 +298,7 @@ export default function Trade() {
             </div>
           </section>
           <section className="card p-5">
-            <div className="account-panel-title"><div><h2>{translate('orderTicket')}</h2><p className="account-panel-subtitle">{accountMode} paper order · simulated price and execution</p></div><span className={`status-pill ${accountMode==='REAL'?'mode-real':'mode-demo'}`}>{accountMode} · SIMULATED</span></div>
+            <div className="account-panel-title"><div><h2>{translate('orderTicket')}</h2><p className="account-panel-subtitle">{accountMode==='REAL'?'Alpaca Paper order · confirmed provider status':'DEMO order · simulated execution'}</p></div><span className={`status-pill ${accountMode==='REAL'?'mode-real':'mode-demo'}`}>{accountMode==='REAL'?'ALPACA PAPER':'DEMO · SIMULATED'}</span></div>
             <form onSubmit={place} className="space-y-3">
               <fieldset className="space-y-3">
               <div className="grid grid-cols-2 gap-2" role="group" aria-label={translate('orderSide')}>
@@ -291,8 +318,8 @@ export default function Trade() {
               <label className="account-label">{translate('orderType')}<select className="input" required value={type} onChange={(event) => setType(event.target.value as "MARKET"|"LIMIT"|"STOP")}><option value="MARKET">Market</option><option value="LIMIT">Limit</option><option value="STOP">Stop</option></select></label>
               <label className="account-label">{translate('quantity')}<input className="input" type="number" min="0.00000001" step="any" inputMode="decimal" required value={qty} onChange={(event) => setQty(event.target.value)} placeholder="0.00"/></label>
               {type !== "MARKET" && <label className="account-label">{type === "STOP" ? translate('stopPrice') : translate('limitPrice')}<input className="input" type="number" min="0.00000001" step="any" inputMode="decimal" required value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0.00"/></label>}
-              <div className="trade-estimate" aria-live="polite"><div><span>Available balance · {accountMode}</span><b>{availableBalance===null?"Loading…":formatUsd(availableBalance)}</b></div><div><span>{translate('estimatedRequiredCash')}</span><b>{cur?formatUsd(estimatedRequiredCash):"—"}</b></div><div><span>{translate('estimatedFee')}</span><b>{cur?.takerFee===undefined?"Not configured":formatUsd(estimatedFee)}</b></div></div>
-              <p className="trade-estimate-note">Quotes, order matching, positions, and P/L are simulated and isolated to this {accountMode} account. No order is sent to an external broker or exchange.</p>
+              <div className="trade-estimate" aria-live="polite"><div><span>Available Aurevia wallet · {accountMode}</span><b>{availableBalance===null?"Loading…":formatUsd(availableBalance)}</b></div>{accountMode==='REAL'&&<><div><span>Reserved for Paper orders</span><b>{formatUsd(paperReservedBalance)}</b></div><div><span>Available Paper buy allocation</span><b>{formatUsd(paperAvailableBalance)}</b></div></>}<div><span>{accountMode==='REAL'?'Estimated buy notional':'Estimated required cash'}</span><b>{cur?formatUsd(estimatedRequiredCash):"—"}</b></div>{accountMode==='DEMO'&&<div><span>{translate('estimatedFee')}</span><b>{cur?.takerFee===undefined?"Not configured":formatUsd(estimatedFee)}</b></div>}</div>
+              <p className="trade-estimate-note">{accountMode==='REAL'?'Displayed quotes are simulated estimates; Alpaca Paper determines actual fills and prices. Paper reservations do not debit the Aurevia wallet, and provider cash is not withdrawable.':'Quotes, order matching, positions, and P/L are simulated and isolated to your DEMO account.'}</p>
               <button type="submit" disabled={placing||!selected} className="btn w-full bg-gold text-black disabled:opacity-50">{placing?translate('submittingOrder'):translate('placeOrder',{side})}</button>
               </fieldset>
               {msg&&<p className="text-sm muted" role="status">{msg}</p>}
@@ -322,7 +349,7 @@ export default function Trade() {
           </section>
         </div>
         <section className="card mt-4 p-5">
-          <div className="account-panel-title"><div><h2>{translate('openPositions')}</h2><p className="account-panel-subtitle">{translate('unrealizedPnl')} · {accountMode} simulated positions</p></div><span className="status-pill">{positions.length} open</span></div>
+          <div className="account-panel-title"><div><h2>{translate('openPositions')}</h2><p className="account-panel-subtitle">{translate('unrealizedPnl')} · {accountMode==='REAL'?'REAL-side holdings from confirmed fills; paper valuation unavailable':'DEMO simulated positions'}</p></div><span className="status-pill">{positions.length} open</span></div>
           {positions.length ? (
             <div className="mt-3 space-y-2">
               {positions.map((p) => (
@@ -333,11 +360,11 @@ export default function Trade() {
                   <span>
                     {p.instrument.symbol} · {p.side} · {p.quantity}
                   </span>
-                  <span className={pnl(p) >= 0 ? "text-profit" : "text-loss"}>
-                    {pnl(p) >= 0 ? "+" : ""}${pnl(p).toFixed(2)}
+                  <span className={pnl(p)===null?"muted":pnl(p)! >= 0 ? "text-profit" : "text-loss"}>
+                    {pnl(p)===null?"P/L unavailable":`${pnl(p)! >= 0 ? "+" : ""}$${pnl(p)!.toFixed(2)}`}
                   </span>
-                  <button type="button" className="btn bg-loss" onClick={() => close(p.id)}>
-                    {translate('close')}
+                  <button type="button" className="btn bg-loss" onClick={() => void close(p.id)}>
+                    {p.providerName==='alpaca-paper'?'Market sell':translate('close')}
                   </button>
                 </div>
               ))}

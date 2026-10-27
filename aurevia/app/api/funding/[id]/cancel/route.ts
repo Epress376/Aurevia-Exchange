@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {FundingStatus,FundingType,NotificationType,Prisma} from '@prisma/client';
+import {AccountMode,FundingStatus,FundingType,NotificationType,Prisma} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
@@ -11,11 +11,17 @@ const cancellable:FundingStatus[]=[FundingStatus.PENDING,FundingStatus.PENDING_R
 export async function POST(request:Request,{params}:{params:Promise<{id:string}>}){
 	try{
 		const user=await requireUser();
+		const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+		if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		if(activeUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Withdrawal management is available in REAL mode only.'},{status:403});
 		const {id}=await params;
 		const body=schema.parse(await request.json());
 		const idempotencyKey=request.headers.get('Idempotency-Key')||'';
 		if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey))return NextResponse.json({error:'A valid idempotency key is required.'},{status:400});
 		const result=await db.$transaction(async tx=>{
+			const currentUser=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{accountMode:true,status:true}});
+			if(currentUser.status!=='ACTIVE')throw new Error('ACCOUNT_UNAVAILABLE');
+			if(currentUser.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
 			const replay=await tx.auditLog.findFirst({where:{entity:'FUNDING',entityId:id,action:'WITHDRAWAL_CANCELLED_BY_USER',metadata:{path:['idempotencyKey'],equals:idempotencyKey}},select:{id:true}});
 			if(replay)return {request:await tx.fundingRequest.findFirstOrThrow({where:{id,userId:user.id,type:FundingType.WITHDRAWAL}}),replayed:true};
 			const current=await tx.fundingRequest.findFirst({where:{id,userId:user.id,type:FundingType.WITHDRAWAL},select:{id:true,userId:true,accountMode:true,status:true}});
@@ -33,6 +39,8 @@ export async function POST(request:Request,{params}:{params:Promise<{id:string}>
 	}catch(error){
 		if(error instanceof ZodError)return NextResponse.json({error:'Enter a valid cancellation reason.'},{status:400});
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
+		if(error instanceof Error&&error.message==='REAL_MODE_REQUIRED')return NextResponse.json({error:'Withdrawal management is available in REAL mode only.'},{status:403});
+		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		if(error instanceof Error&&error.message==='WITHDRAWAL_NOT_FOUND')return NextResponse.json({error:'Withdrawal request not found.'},{status:404});
 		if(error instanceof Error&&error.message==='WITHDRAWAL_NOT_CANCELLABLE')return NextResponse.json({error:'Only pending or approved withdrawals can be cancelled; processing requests require administrator review.'},{status:409});
 		if(error&&typeof error==='object'&&'code'in error&&String(error.code)==='P2034')return NextResponse.json({error:'The withdrawal changed while cancelling. Retry with the same idempotency key.'},{status:409});

@@ -1,4 +1,5 @@
 import {afterEach,describe,expect,it,vi} from 'vitest';
+vi.mock('server-only',()=>({}));
 import {AlpacaCryptoProvider,IndividualAlpacaTradingProvider,buildAlpacaCryptoClient,createIndividualTradingApiProviderFromEnvironment,getAlpacaPaperAccountHealth} from '../lib/providers/alpaca-crypto-provider';
 import {AlpacaCryptoMarketDataProvider} from '../lib/providers/alpaca-crypto.market-data';
 
@@ -70,7 +71,7 @@ describe('Alpaca crypto provider safety',()=>{
 	it('handles the no-content cancellation response by reading final order state',async()=>{
 		const fetcher=vi.fn()
 			.mockResolvedValueOnce(new Response(null,{status:204}))
-			.mockResolvedValueOnce(new Response(JSON.stringify({id:'provider-order-id',client_order_id:'order-key-123456',status:'canceled',created_at:'2026-10-15T12:00:00Z',updated_at:'2026-10-15T12:01:00Z'}),{status:200}));
+			.mockResolvedValueOnce(new Response(JSON.stringify({id:'provider-order-id',client_order_id:'order-key-123456',status:'canceled',filled_qty:'0',created_at:'2026-10-15T12:00:00Z',updated_at:'2026-10-15T12:01:00Z'}),{status:200}));
 		const provider=new IndividualAlpacaTradingProvider({baseUrl:'https://paper-api.alpaca.markets',apiKey:'paper-key',apiSecret:'paper-secret',fetcher});
 		await expect(provider.cancelOrder('provider-order-id','order-key-123456')).resolves.toMatchObject({state:'CANCELLED'});
 		expect(fetcher.mock.calls.map(([,init])=>init.method)).toEqual(['DELETE',undefined]);
@@ -95,7 +96,7 @@ describe('Alpaca crypto provider safety',()=>{
 	it('normalizes later provider status and cancellation transitions',async()=>{
 		const fetcher=vi.fn()
 			.mockResolvedValueOnce(new Response(JSON.stringify({id:'provider-order-id',client_order_id:'client',status:'filled',filled_qty:'2',filled_avg_price:'190',created_at:'2026-10-15T12:00:00Z',updated_at:'2026-10-15T12:01:00Z'}),{status:200}))
-			.mockResolvedValueOnce(new Response(JSON.stringify({id:'provider-order-id',client_order_id:'client',status:'rejected',created_at:'2026-10-15T12:00:00Z',updated_at:'2026-10-15T12:02:00Z'}),{status:200}));
+			.mockResolvedValueOnce(new Response(JSON.stringify({id:'provider-order-id',client_order_id:'client',status:'rejected',filled_qty:'0',created_at:'2026-10-15T12:00:00Z',updated_at:'2026-10-15T12:02:00Z'}),{status:200}));
 		const provider=new IndividualAlpacaTradingProvider({baseUrl:'https://paper-api.alpaca.markets',apiKey:'paper-key',apiSecret:'paper-secret',fetcher});
 		await expect(provider.getOrderStatus('provider-order-id')).resolves.toMatchObject({state:'FILLED',filledQuantity:'2',averageFillPrice:'190'});
 		await expect(provider.getOrderStatus('provider-order-id')).resolves.toMatchObject({state:'REJECTED'});

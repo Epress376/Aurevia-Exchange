@@ -21,9 +21,9 @@ describe('display-only investment progress',()=>{
 		expect(result).toMatchObject({progress:1,earnings:20,secondsRemaining:0,matured:true});
 	});
 
-	it('does not show negative accrued earnings when recorded payout is below principal',()=>{
+	it('shows negative estimated earnings when the recorded payout is below principal',()=>{
 		const result=calculateInvestmentDisplay({principal:100,targetPayout:90,activatedAt:start,maturesAt:end,now:start+5*86_400_000});
-		expect(result.earnings).toBe(0);
+		expect(result.earnings).toBe(-5);
 	});
 
 	it('returns safe zero values for invalid investment terms',()=>{

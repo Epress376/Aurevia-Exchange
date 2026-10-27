@@ -21,13 +21,17 @@ function sameRequest(existing:{userId:string;opportunityId:string;accountMode:Ac
 export async function GET(){
  try{
   const user=await requireUser();
-  const modeFilter=user.accountMode===AccountMode.DEMO?{demoEligible:true}:{realEligible:true};
+  const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+  if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+  const accountMode=activeUser.accountMode;
+  if(accountMode===AccountMode.DEMO)return NextResponse.json({accountMode,availableBalance:'0',opportunities:[],requests:[]},{headers:{'Cache-Control':'private, no-store'}});
+  const modeFilter={realEligible:true};
   const [opportunities,requests,account]=await Promise.all([
    db.investmentOpportunity.findMany({where:{status:InvestmentOpportunityStatus.AVAILABLE,...modeFilter},orderBy:{createdAt:'desc'}}),
-   db.investmentRequest.findMany({where:{userId:user.id,accountMode:user.accountMode},include:{opportunity:{select:{title:true,category:true,assetSymbol:true,riskLevel:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:100}),
-   db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${user.accountMode}:USD`},select:{id:true}}),
+   db.investmentRequest.findMany({where:{userId:user.id,accountMode},include:{opportunity:{select:{title:true,category:true,assetSymbol:true,riskLevel:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:100}),
+   db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${accountMode}:USD`},select:{id:true}}),
   ]);
-    const [ledgerBalance,reserved]=await Promise.all([account?balance(db,account.id):new Prisma.Decimal(0),reservedWithdrawalAmount(db,user.id,user.accountMode,'USD')]);
+    const [ledgerBalance,reserved]=await Promise.all([account?balance(db,account.id):new Prisma.Decimal(0),reservedWithdrawalAmount(db,user.id,accountMode,'USD')]);
     const availableBalance=Prisma.Decimal.max(new Prisma.Decimal(0),ledgerBalance.minus(reserved));
     const requestsWithDisplayTerms=requests.map(item=>({
      ...item,
@@ -35,7 +39,7 @@ export async function GET(){
       ?simulatedInvestmentSettlement(item.amount,item.targetReturnPercent,item.tierBoostPercent??new Prisma.Decimal(0)).toString()
       :null,
     }));
-    return NextResponse.json(jsonSafe({accountMode:user.accountMode,availableBalance,opportunities,requests:requestsWithDisplayTerms}),{headers:{'Cache-Control':'private, no-store'}});
+    return NextResponse.json(jsonSafe({accountMode,availableBalance,opportunities,requests:requestsWithDisplayTerms}),{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   return NextResponse.json({error:error instanceof Error&&error.message==='UNAUTHORIZED'?'Unauthorized':'Unable to load investments.'},{status:error instanceof Error&&error.message==='UNAUTHORIZED'?401:503,headers:{'Cache-Control':'private, no-store'}});
  }
@@ -61,6 +65,7 @@ export async function POST(request:Request){
    ]);
    if(!profile||profile.status!=='ACTIVE'||profile.role!=='USER')throw new Error('INVESTMENT_USER_UNAVAILABLE');
    if(profile.accountMode!==user.accountMode)throw new Error('ACCOUNT_MODE_CHANGED');
+   if(profile.accountMode===AccountMode.DEMO)throw new Error('DEMO_INVESTING_DISABLED');
    if(profile.accountRestricted)throw new Error('INVESTMENT_USER_RESTRICTED');
    if(!opportunity||opportunity.status!==InvestmentOpportunityStatus.AVAILABLE)throw new Error('INVESTMENT_UNAVAILABLE');
    if(user.accountMode===AccountMode.DEMO&&!opportunity.demoEligible)throw new Error('INVESTMENT_MODE_UNAVAILABLE');
@@ -102,6 +107,7 @@ export async function POST(request:Request){
   if(error instanceof ZodError)return NextResponse.json({error:'Enter an amount within the opportunity limits.'},{status:400});
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
   if(error instanceof Error&&error.message==='ACCOUNT_MODE_CHANGED')return NextResponse.json({error:'Your active account mode changed. Refresh and submit the allocation again.'},{status:409});
+  if(error instanceof Error&&error.message==='DEMO_INVESTING_DISABLED')return NextResponse.json({error:'Investment requests are unavailable in DEMO. Use DEMO mode for simulated trading only.'},{status:403});
   if(error instanceof Error&&['IDEMPOTENCY_KEY_REUSED','INVESTMENT_UNAVAILABLE','INVESTMENT_MODE_UNAVAILABLE','INVESTMENT_MATURED','INVESTMENT_USER_UNAVAILABLE','INVESTMENT_USER_RESTRICTED'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:409});
   if(error instanceof Error&&['INVESTMENT_AMOUNT_OUT_OF_RANGE','INSUFFICIENT_SIMULATED_BALANCE','INVALID_AMOUNT'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:400});
   if(error&&typeof error==='object'&&'code'in error&&String(error.code)==='P2002')return NextResponse.json({error:'This investment request was already received.'},{status:409});

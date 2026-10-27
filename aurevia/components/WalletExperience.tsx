@@ -3,13 +3,14 @@
 import {FormEvent,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useSession} from 'next-auth/react';
-import {ArrowDownLeft,ArrowUpRight,Check,Copy,Eye,EyeOff,RefreshCw,WalletCards,X} from 'lucide-react';
+import {ArrowDownLeft,ArrowRight,ArrowUpRight,Check,Copy,Eye,EyeOff,RefreshCw,WalletCards,X} from 'lucide-react';
 import Nav from '@/components/Nav';
 import ReceiptGenerator,{type ReceiptData} from '@/components/ReceiptGenerator';
 import WithdrawalDestinationPanel from '@/components/WithdrawalDestinationPanel';
 import {useLocale} from '@/lib/i18n-context';
 import {SUPPORTED_CURRENCIES} from '@/lib/config/simulation';
 import {formatUsd} from '@/lib/currency-format';
+import {useSearchParams} from 'next/navigation';
 
 type PaymentMethod={id:string;name:string;currencies:string[];destination:string|null;instructions:string|null;minimumAmount:string|number;maximumAmount:string|number|null;depositEnabled:boolean;withdrawalEnabled:boolean;requiresNetwork:boolean;demoOnly:boolean};
 type FundingRecord={id:string;type:'DEPOSIT'|'WITHDRAWAL';method:string;amount:number|string;creditedAmount?:number|string|null;creditedCurrency?:string|null;currency:string;status:string;accountMode:'DEMO'|'REAL';createdAt:string;reviewedAt?:string|null;verifiedAt?:string|null;settledAt?:string|null;settlementReference?:string|null;processingReference?:string|null;processingConfirmedAt?:string|null;withdrawalDestinationId?:string|null;withdrawalDestination?:{nickname:string;countryCode:string;network:string|null;asset:string|null;maskedLabel:string}|null;reviewedBy?:{name:string|null;email:string}|null;transactionReference?:string|null;destinationInfo?:string|null;beneficiaryInfo?:string|null;note?:string|null;adminNote?:string|null;previousBalance?:string|null;resultingBalance?:string|null;hasReceipt?:boolean;network?:string|null;user?:{name:string|null;email:string}};
@@ -18,13 +19,13 @@ type WalletData={accountMode:'DEMO'|'REAL';balance:number|string|null;withdrawab
 type CurrencyRate={rate:number|string|null;source:string|null;observedAt:string|null;status:'CURRENT'|'STALE'|'INTERNAL'|'UNAVAILABLE'};
 type PaymentMethodsResponse={methods:PaymentMethod[];fundingStatus:'SIMULATED'|'DEMO'|'AVAILABLE'|'MANUAL_REVIEW'|'NOT_CONFIGURED'|'DISABLED'|'ERROR';simulationAvailable?:boolean;supportedCurrencies?:readonly string[];btcAddress?:string|null;realFundingAvailable:boolean;realWithdrawalAvailable:boolean;manualDepositReviewAvailable:boolean};
 type KycData={kycStatus:string;documents:number;verificationProfileSubmitted:boolean;depositEnabled:boolean;withdrawalEnabled:boolean;accountRestricted:boolean;restrictionReason:string|null;canWithdraw?:boolean};
+type WalletActivity={id:string;source:string;action:string;timestamp:string;asset:string;amount:string;status:string;link:string};
 
 const money=(amount:number,currency='USD')=>currency==='USD'?formatUsd(amount):`${amount.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:8})} ${currency}`;
 const statuses:Record<string,string>={PENDING:'Pending',PENDING_REVIEW:'Pending administrator review',PROCESSING:'External processing · not confirmed',APPROVED:'Approved · amount reserved',COMPLETED:'Completed · admin recorded payout',FAILED:'Failed · reservation released',REVERSED:'Reversed',REJECTED:'Rejected',CANCELLED:'Cancelled'};
 const receiptStatus=(status:string):ReceiptData['status']=>{
 	switch(status){
-		case 'PENDING':case 'PENDING_REVIEW':case 'PROCESSING':case 'APPROVED':case 'COMPLETED':case 'REJECTED':case 'FAILED':case 'CANCELLED':return status;
-		case 'REVERSED':return 'CANCELLED';
+		case 'PENDING':case 'PENDING_REVIEW':case 'PROCESSING':case 'APPROVED':case 'COMPLETED':case 'REJECTED':case 'FAILED':case 'CANCELLED':case 'REVERSED':return status;
 		default:return 'PENDING';
 	}
 };
@@ -60,8 +61,10 @@ function isPaymentMethodsResponse(value:unknown):value is PaymentMethodsResponse
 export default function WalletExperience(){
 	const {data:session,status:sessionStatus}=useSession();
 	const {translate}=useLocale();
+	const searchParams=useSearchParams();
 	const activeMode=session?.user?.accountMode;
 	const [data,setData]=useState<WalletData>({accountMode:'DEMO',balance:0,balances:[],transactions:[],adminLedgerReceipts:[]});
+	const [recentActivity,setRecentActivity]=useState<WalletActivity[]>([]);
 	const [methods,setMethods]=useState<PaymentMethod[]>([]);
 	const [fundingStatus,setFundingStatus]=useState<PaymentMethodsResponse['fundingStatus']>('NOT_CONFIGURED');
 	const [realFundingAvailable,setRealFundingAvailable]=useState(false);
@@ -100,6 +103,7 @@ export default function WalletExperience(){
 	const [displayCurrency,setDisplayCurrency]=useState('USD');
 	const [currencyRate,setCurrencyRate]=useState<CurrencyRate|null>(null);
 	const [currencyError,setCurrencyError]=useState('');
+	const [workflow,setWorkflow]=useState<'DEPOSIT'|'WITHDRAWAL'|null>(null);
 
 	const availableMethods=useMemo(()=>methods.filter(method=>type==='DEPOSIT'?method.depositEnabled:method.withdrawalEnabled&&(data.accountMode==='DEMO'||realWithdrawalAvailable)),[methods,type,data.accountMode,realWithdrawalAvailable]);
 	const selectedMethod=availableMethods.find(method=>method.id===methodId);
@@ -126,9 +130,10 @@ export default function WalletExperience(){
 			fetch('/api/payment-methods',{cache:'no-store'}).then(async response=>({response,result:await response.json()})),
 			fetch('/api/profile',{cache:'no-store'}).then(async response=>({response,result:await response.json()})),
 			fetch('/api/currency-preference',{cache:'no-store'}).then(async response=>({response,result:await response.json()})),
+			fetch('/api/activity?category=all&limit=5',{cache:'no-store'}).then(async response=>({response,result:await response.json()})),
 		]);
 		if(requestId!==latestRequest.current)return;
-		const [walletRequest,methodsRequest,profileRequest,currencyPreferenceRequest]=requests;
+		const [walletRequest,methodsRequest,profileRequest,currencyPreferenceRequest,activityRequest]=requests;
 		if(walletRequest.status==='fulfilled'&&walletRequest.value.response.ok&&isWalletData(walletRequest.value.result)){
 			setData({...walletRequest.value.result,adminLedgerReceipts:walletRequest.value.result.adminLedgerReceipts||[]});setHasWalletData(true);
 		}else{
@@ -156,6 +161,9 @@ export default function WalletExperience(){
 		}else{
 			setProfile(null);setProfileLoadError('Account verification status is temporarily unavailable.');
 		}
+		if(activityRequest.status==='fulfilled'&&activityRequest.value.response.ok&&Array.isArray(activityRequest.value.result.data?.items)){
+			setRecentActivity(activityRequest.value.result.data.items.filter((item:WalletActivity)=>['ledger','funding','order','position','notification'].includes(item.source)).slice(0,5));
+		}else setRecentActivity([]);
 		if(!currencyPreferenceInitialized.current&&currencyPreferenceRequest.status==='fulfilled'&&currencyPreferenceRequest.value.response.ok&&typeof currencyPreferenceRequest.value.result.currency==='string'){
 			const preferred=currencyPreferenceRequest.value.result.currency;
 			setDisplayCurrency(preferred);
@@ -202,8 +210,12 @@ export default function WalletExperience(){
 		void load(true);
 	},[sessionStatus,activeMode,load]);
 	useEffect(()=>{
-		if(new URLSearchParams(window.location.search).get('type')==='WITHDRAWAL')setType('WITHDRAWAL');
-	},[]);
+		const requested=searchParams.get('action')||searchParams.get('type');
+		if(requested==='DEPOSIT'||requested==='WITHDRAWAL'){
+			setType(requested);
+			setWorkflow(requested);
+		}else setWorkflow(null);
+	},[searchParams]);
 	useEffect(()=>{
 		if(sessionStatus!=='authenticated')return;
 		const timer=window.setInterval(()=>void load(),15000);
@@ -292,8 +304,44 @@ export default function WalletExperience(){
 		finally{setSubmitting(false)}
 	}
 
-	return <><Nav/><main className="account-page">
-		<header className="account-heading"><div><span className="account-kicker">{data.accountMode} ACCOUNT · {translate('walletHeader')}</span><h1>{translate('walletTitle')}</h1><p>{data.accountMode==='DEMO'?'DEMO uses a separate virtual wallet and simulated transactions.':'REAL account activity is recorded only in Aurevia’s internal ledger; no external payment or transfer is processed.'}</p></div><span className={`status-pill ${data.accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{data.accountMode==='DEMO'?'DEMO · VIRTUAL':'REAL · INTERNAL LEDGER'}</span></header>
+	return <><Nav/><main className="account-page wallet-premium-page" data-wallet-view={workflow?'workflow':'overview'}>
+		<header className="wallet-page-heading"><div><span className="wallet-eyebrow">{data.accountMode} ACCOUNT · PRIVATE WALLET</span><h1>{workflow?`${type==='DEPOSIT'?'Deposit':'Withdraw'} funds`:'Wallet'}</h1><p>{data.accountMode==='DEMO'?'A separate virtual USD wallet for simulated activity.':'Your Aurevia REAL account ledger, requests and reservations.'}</p></div><div className="wallet-heading-actions"><span className={`status-pill ${data.accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{data.accountMode==='DEMO'?'DEMO · VIRTUAL':'REAL · LEDGER'}</span><button type="button" className="wallet-refresh" aria-label="Refresh wallet" title="Refresh wallet" onClick={()=>void load(true)} disabled={loading}><RefreshCw size={16}/></button></div></header>
+		{!workflow&&<>
+			{error&&<p className="wallet-feedback is-error" role="alert">{error}</p>}
+			<section className="wallet-balance-panel wallet-signature-card">
+				<div className="wallet-balance-heading"><span className="wallet-eyebrow">{data.accountMode==='DEMO'?'VIRTUAL USD BALANCE':'AUREVIA USD LEDGER'}</span><button type="button" className="wallet-balance-toggle" aria-label={balanceVisible?'Hide balance':'Show balance'} aria-pressed={!balanceVisible} onClick={()=>setBalanceVisible(value=>!value)}>{balanceVisible?<EyeOff size={16}/>:<Eye size={16}/>}<span>{balanceVisible?'Hide':'Show'}</span></button></div>
+				<div className="wallet-balance-caption">Available balance</div>
+				<div className="wallet-balance-value" aria-live="polite">{loading?translate('loading'):!hasWalletData||availableBalance===null?'Unavailable':balanceVisible?money(availableBalance,'USD'):'•••••• USD'}</div>
+				<div className="wallet-balance-foot"><span>{data.accountMode==='DEMO'?'Practice account · no real funds':'Available after pending withdrawal reservations'}</span><span className="wallet-currency-mark">USD</span></div>
+				<div className="wallet-reservation-row"><span>Pending / reserved</span><strong>{loading||!hasWalletData?'—':balanceVisible?money(pendingWithdrawal,'USD'):'•••••• USD'}</strong><span>{hasWalletData?data.transactions.filter(item=>reserves.includes(item.status)).length:0} pending requests</span></div>
+			</section>
+			{!hasWalletData&&<p className="wallet-feedback is-error" role="status">{loading?'Loading your authenticated wallet…':'Balance could not be retrieved. No balance is assumed.'}</p>}
+			{data.accountMode==='REAL'?<nav className="wallet-quick-actions" aria-label="Wallet actions">
+				<Link href="/wallet?action=DEPOSIT" className="wallet-quick-action"><span className="wallet-action-icon"><ArrowDownLeft size={19}/></span><span>Deposit</span></Link>
+				<Link href="/wallet?action=WITHDRAWAL" className="wallet-quick-action"><span className="wallet-action-icon"><ArrowUpRight size={19}/></span><span>Withdraw</span></Link>
+				<Link href="/wallet/transactions" className="wallet-quick-action"><span className="wallet-action-icon"><WalletCards size={19}/></span><span>Transactions</span></Link>
+			</nav>:<nav className="wallet-quick-actions wallet-quick-actions-demo" aria-label="Wallet actions"><Link href="/wallet/transactions" className="wallet-quick-action"><span className="wallet-action-icon"><WalletCards size={19}/></span><span>Transactions</span></Link><Link href="/trade" className="wallet-quick-action"><span className="wallet-action-icon"><ArrowUpRight size={19}/></span><span>Practice trade</span></Link><Link href="/activity" className="wallet-quick-action"><span className="wallet-action-icon"><ArrowRight size={19}/></span><span>Activity</span></Link></nav>}
+			<section className="wallet-activity-panel">
+				<div className="wallet-section-heading"><div><span className="wallet-eyebrow">ACCOUNT RECORD</span><h2>Recent activity</h2></div><Link href="/wallet/transactions">View all <ArrowRight size={14}/></Link></div>
+				{loading?<p className="wallet-empty" role="status">Loading recent activity…</p>:recentActivity.length?recentActivity.map(item=><Link className="wallet-activity-row" href={item.link||'/activity'} key={`${item.source}:${item.id}`}><span className={`wallet-activity-icon ${item.source==='ledger'?'is-ledger':''}`}>{item.source==='funding'?<WalletCards size={16}/>:item.source==='ledger'&&!item.action.toLowerCase().includes('debit')?<ArrowDownLeft size={16}/>:<ArrowUpRight size={16}/>}</span><span className="wallet-activity-copy"><strong>{item.action}</strong><small>{item.asset} · {new Date(item.timestamp).toLocaleDateString()} · {item.status}</small></span><span className="wallet-activity-amount">{balanceVisible?item.amount||'Details':'••••••'}<small>{item.source==='funding'?'Request':item.source==='ledger'?'Ledger':'Activity'}</small></span></Link>):<p className="wallet-empty">No recent wallet activity is recorded for this account mode.</p>}
+			</section>
+			{data.accountMode==='REAL'&&<details className="wallet-settings">
+				<summary><span><span className="wallet-eyebrow">PREFERENCES</span><strong>Display settings</strong></span><span className="wallet-settings-current">{displayCurrency} <span aria-hidden="true">⌄</span></span></summary>
+				<div className="wallet-settings-content"><label>Preferred display currency<select className="input" value={displayCurrency} onChange={event=>void updateDisplayCurrency(event.target.value)}>{SUPPORTED_CURRENCIES.map(code=><option key={code}>{code}</option>)}</select></label><div className="wallet-rate-copy" aria-live="polite">{displayCurrency==='USD'?<p>Original ledger amounts remain in USD. This preference never exchanges funds.</p>:currentDisplayRate!==null?<><p>Reference rate: 1 USD = {currentDisplayRate.toLocaleString(undefined,{maximumSignificantDigits:10})} {displayCurrency}</p>{data.balance!==null&&<p>Approximate display: {balanceVisible?new Intl.NumberFormat(undefined,{style:'currency',currency:displayCurrency}).format(Number(data.balance)*currentDisplayRate):`•••••• ${displayCurrency}`} · Ledger balance: {balanceVisible?money(Number(data.balance),'USD'):'•••••• USD'}</p>}<small>{currencyRate?.status==='INTERNAL'?'Internal reference rate · ':currencyRate?.status==='STALE'?'Last known rate · may be outdated · ':''}Rate source: {currencyRate?.source} · {currencyRate?.observedAt?`Updated ${new Date(currencyRate.observedAt).toLocaleString()}`:'no provider timestamp'}. Display only; no ledger conversion.</small></>:<p className="wallet-rate-error">{currencyError||'A reference exchange rate is unavailable.'}</p>}{currencyError&&displayCurrency!=='USD'&&<p className="wallet-rate-error" role="alert">{currencyError}</p>}</div></div>
+			</details>}
+			{data.accountMode==='REAL'&&(data.transactions.length>0||data.adminLedgerReceipts.length>0)&&<details className="wallet-ledger-records">
+				<summary>Funding requests and receipts <span>{data.transactions.length+data.adminLedgerReceipts.length} records</span></summary>
+				{data.transactions.length>0&&<div className="wallet-receipt-list">{data.transactions.slice(0,10).map(transaction=>{
+					const name=transaction.user?.name||session?.user?.name||'';
+					const email=transaction.user?.email||session?.user?.email||'';
+					const common={id:transaction.id,accountMode:transaction.accountMode,accountReference:`USER:${session?.user?.id||'account'}:${transaction.accountMode}:${transaction.currency}`,createdAt:transaction.createdAt,name,email,amount:transaction.amount,currency:transaction.currency,creditedAmount:transaction.creditedAmount??undefined,creditedCurrency:transaction.creditedCurrency,method:formatFundingMethodLabel(transaction.method),externalReference:transaction.type==='WITHDRAWAL'?transaction.processingReference:transaction.transactionReference,processingReference:transaction.processingReference,recipientName:transaction.withdrawalDestination?.nickname,recipientNumber:transaction.withdrawalDestination?.maskedLabel,purpose:transaction.note,simulated:transaction.type==='DEPOSIT'||transaction.accountMode==='DEMO',previousBalance:transaction.previousBalance,resultingBalance:transaction.resultingBalance,adminNote:transaction.adminNote};
+					return <details key={transaction.id} className="wallet-receipt-item"><summary>{transaction.type} · {money(Number(transaction.amount),transaction.currency)} · {statuses[transaction.status]||transaction.status}</summary><div className="wallet-receipt-content"><ReceiptGenerator receipt={{...common,reference:transaction.settlementReference||transaction.id,status:receiptStatus(transaction.status),type:transaction.type,completedAt:transaction.settledAt,reviewedAt:transaction.reviewedAt,reviewedBy:transaction.reviewedBy}}/></div></details>;
+				})}</div>}
+				{data.adminLedgerReceipts.length>0&&<div className="wallet-receipt-list">{data.adminLedgerReceipts.map(transaction=><details key={transaction.id} className="wallet-receipt-item"><summary>Administrator {transaction.type.toLowerCase()} · {money(Number(transaction.amount),transaction.currency)} · {new Date(transaction.createdAt).toLocaleString()}</summary><div className="wallet-receipt-content"><ReceiptGenerator receipt={{id:transaction.id,reference:transaction.reference,status:'COMPLETED',type:transaction.type==='CREDIT'?'CREDIT':'DEBIT',accountMode:data.accountMode,simulated:false,createdAt:transaction.createdAt,name:session?.user?.name||'',email:session?.user?.email||'',amount:transaction.amount,currency:transaction.currency,method:transaction.description}}/></div></details>)}</div>}
+			</details>}
+		</>}
+		{workflow&&<Link className="wallet-back-link" href="/wallet"><ArrowRight size={15}/> Back to wallet overview</Link>}
+		{workflow&&<>
 		{data.accountMode==='REAL'&&type==='DEPOSIT'&&!realKycApproved&&<div className="account-callout account-mode-notice"><span>{translate('verificationRequired')}</span><Link className="text-link" href="/kyc">{translate('openVerification')}</Link></div>}
 		{realWithdrawalBlocked&&<div className="account-callout account-mode-notice"><span>{profile?.accountRestricted?translate('accountRestrictedNotice'):translate('withdrawalDisabled')}{profile?.restrictionReason?` ${profile.restrictionReason}`:''}</span><Link className="text-link" href="/support">{translate('contactSupportAction')}</Link></div>}
 		{type==='DEPOSIT'&&profile?.depositEnabled===false&&<div className="account-callout account-mode-notice" role="status"><span>Deposits are disabled for your account. Contact an administrator for assistance.</span></div>}
@@ -365,5 +413,6 @@ export default function WalletExperience(){
 				{loading?<div className="account-empty" role="status">{translate('loadingWallet')}</div>:!hasWalletData?<div className="account-empty transaction-history-error" role="status">Transaction history is unavailable until wallet data can be loaded.</div>:data.transactions.length?<div className="account-table-wrap"><table className="account-table"><thead><tr><th>{translate('request')}</th><th>{translate('amount')}</th><th>{translate('status')}</th><th>{translate('receipt')}</th></tr></thead><tbody>{data.transactions.map(transaction=><tr key={transaction.id}><td><Link className="transaction-kind" href={`/wallet/transactions/${encodeURIComponent(transaction.id)}`}>{transaction.type==='DEPOSIT'?<ArrowDownLeft size={13}/>:<ArrowUpRight size={13}/>} {transaction.type}<small className="transaction-method">{formatFundingMethodLabel(transaction.method)}{transaction.withdrawalDestination?` · ${transaction.withdrawalDestination.maskedLabel}`:''}</small><small className="transaction-method">{transaction.id}</small></Link></td><td>{money(Number(transaction.amount),transaction.currency)}</td><td><span className="status-pill">{statuses[transaction.status]||transaction.status}</span>{transaction.type==='WITHDRAWAL'&&['PENDING','PENDING_REVIEW','APPROVED'].includes(transaction.status)&&<button type="button" className="text-link" disabled={submitting} onClick={()=>void cancelWithdrawal(transaction)}>Cancel request</button>}</td><td>{data.accountMode==='DEMO'?'Deposits and withdrawals are available in REAL Mode only.':transaction.type==='DEPOSIT'&&reserves.includes(transaction.status)?<div className="grid min-w-40 gap-1"><input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" aria-label={translate('chooseReceipt',{id:transaction.id})} onChange={event=>setReceiptFiles(current=>({...current,[transaction.id]:event.target.files?.[0]}))}/><button type="button" className="btn min-h-11 bg-white/5" disabled={!receiptFiles[transaction.id]||receiptBusy===transaction.id} onClick={()=>void uploadReceipt(transaction)}>{receiptBusy===transaction.id?translate('uploading'):translate('uploadReceipt')}</button>{transaction.hasReceipt&&<button type="button" className="text-link" onClick={()=>void openReceipt(transaction.id)}>{translate('viewPrivateReceipt')}</button>}</div>:transaction.hasReceipt?<button type="button" className="text-link" onClick={()=>void openReceipt(transaction.id)}>{translate('viewPrivateReceipt')}</button>:'Not available'}</td></tr>)}</tbody></table></div>:<div className="account-empty" role="status">No funding transactions have been submitted yet.</div>}
 			</section>
 		</div>
+		</>}
 	</main></>;
 }

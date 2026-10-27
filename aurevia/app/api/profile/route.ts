@@ -33,8 +33,9 @@ function nameParts(name:string|null){
 function profileResponse(profile:ProfileRecord){
 	const {avatarKey,kyc,kycDocuments,...safeProfile}=profile;
 	const {firstName,lastName}=nameParts(profile.name);
-	const tier=getAccountTier({accountMode:profile.accountMode as AccountMode,kycStatus:profile.kycStatus,verificationDocuments:kycDocuments.length,verificationSubmitted:!!kyc?.submittedAt,approvedTier:profile.approvedTier});
-	return {...safeProfile,firstName,lastName,address:kyc?.address||null,hasAvatar:!!avatarKey,profileLocked:isProfileLocked(profile.verifiedAt),profileLockAt:profileEditDeadline(profile.verifiedAt),twoFactorEnabled:false,twoFactorAvailable:false,documents:kycDocuments.length,verificationProfileSubmitted:!!kyc?.submittedAt,...tier};
+	const realAccount=profile.accountMode===AccountMode.REAL;
+	const tier=getAccountTier({accountMode:profile.accountMode as AccountMode,kycStatus:realAccount?profile.kycStatus:'PENDING',verificationDocuments:realAccount?kycDocuments.length:0,verificationSubmitted:realAccount&&!!kyc?.submittedAt,approvedTier:realAccount?profile.approvedTier??undefined:undefined});
+	return {...safeProfile,firstName,lastName,address:realAccount?kyc?.address||null:null,hasAvatar:!!avatarKey,profileLocked:realAccount&&isProfileLocked(profile.verifiedAt),profileLockAt:realAccount?profileEditDeadline(profile.verifiedAt):null,twoFactorEnabled:false,twoFactorAvailable:false,documents:realAccount?kycDocuments.length:0,verificationProfileSubmitted:realAccount&&!!kyc?.submittedAt,...(realAccount?{}:{approvedTier:null,kycStatus:'NOT_AVAILABLE',verifiedAt:null,verifiedChannel:null,phoneVerified:false}),...tier};
 }
 
 function safeErrorDetails(error:unknown){
@@ -47,11 +48,10 @@ function safeErrorDetails(error:unknown){
 export async function GET(){
 	try{
 		const user=await requireUser();
-		const [profile,completedInvestment]=await Promise.all([
-			db.user.findUnique({where:{id:user.id},select:profileSelect}),
-			db.investmentRequest.findFirst({where:{userId:user.id,accountMode:user.accountMode,status:{in:[InvestmentStatus.COMPLETED,InvestmentStatus.SETTLED]}},select:{id:true}}),
-		]);
+		const profile=await db.user.findUnique({where:{id:user.id},select:profileSelect});
 		if(!profile)return NextResponse.json({error:'Profile not found.'},{status:404});
+		if(profile.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		const completedInvestment=profile.accountMode===AccountMode.REAL?await db.investmentRequest.findFirst({where:{userId:user.id,accountMode:profile.accountMode,status:{in:[InvestmentStatus.COMPLETED,InvestmentStatus.SETTLED]}},select:{id:true}}):null;
 		return NextResponse.json({...profileResponse(profile),canWithdraw:profile.accountMode===AccountMode.REAL||Boolean(completedInvestment)},{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});

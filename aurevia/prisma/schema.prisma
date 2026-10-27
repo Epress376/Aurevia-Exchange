@@ -56,9 +56,11 @@ enum OrderType {
 enum OrderStatus {
   OPEN
   PARTIALLY_FILLED
+  PENDING_CANCEL
   FILLED
   CANCELLED
   REJECTED
+  EXPIRED
 }
 
 enum PositionStatus {
@@ -257,6 +259,7 @@ model User {
   supportConversations             SupportConversation[]
   supportMessages                  SupportMessage[]
   notifications                    Notification[]
+  activityVisibilityPreferences    ActivityVisibilityPreference[]
   pushPreference                   PushPreference?
   pushSubscriptions                PushSubscription[]
   pushOutbox                       PushOutbox[]
@@ -318,6 +321,8 @@ model Notification {
   title         String
   message       String
   isRead        Boolean          @default(false)
+  archivedAt    DateTime?
+  accountMode   AccountMode?
   relatedEntity String?
   relatedId     String?
   actionUrl     String?
@@ -326,7 +331,24 @@ model Notification {
   pushOutbox    PushOutbox?
 
   @@index([userId, isRead, createdAt])
+  @@index([userId, archivedAt, createdAt])
+  @@index([userId, accountMode, createdAt])
   @@index([userId, createdAt])
+}
+
+model ActivityVisibilityPreference {
+  id          String      @id @default(cuid())
+  userId      String
+  user        User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountMode AccountMode
+  sourceType  String      @db.VarChar(32)
+  sourceId    String      @db.VarChar(128)
+  archivedAt  DateTime?
+  hiddenAt    DateTime?
+  updatedAt   DateTime    @updatedAt
+
+  @@unique([userId, accountMode, sourceType, sourceId])
+  @@index([userId, accountMode, archivedAt, hiddenAt])
 }
 
 model PushPreference {
@@ -503,6 +525,7 @@ model Order {
   averageFillPrice       Decimal?    @db.Decimal(30, 10)
   fee                    Decimal     @default(0) @db.Decimal(30, 10)
   idempotencyKey         String?     @unique
+  providerClientOrderId  String?     @unique
   providerName           String?
   providerAccountId      String?
   providerOrderId        String?     @unique
@@ -549,11 +572,13 @@ model Position {
   margin       Decimal        @default(0) @db.Decimal(30, 10)
   status       PositionStatus @default(OPEN)
   accountMode  AccountMode    @default(DEMO)
+  providerName String?
   openedAt     DateTime       @default(now())
   closedAt     DateTime?
 
   @@index([userId, status])
   @@index([userId, instrumentId, accountMode, side, status])
+  @@index([userId, accountMode, providerName, status])
 }
 
 model LedgerAccount {

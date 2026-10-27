@@ -1,3 +1,4 @@
+import 'server-only';
 import type {
   ExecutionProvider,
   ProviderBalance,
@@ -45,10 +46,12 @@ type NormalizedAlpacaOrder = {
 
 function normalizeState(value: string | undefined): ProviderOrderState {
   const status = value?.toLowerCase();
-  if (status === 'accepted' || status === 'pending' || status === 'pending_new' || status === 'new' || status === 'accepted_for_bidding' || status === 'done_for_day' || status === 'pending_cancel' || status === 'pending_replace' || status === 'stopped' || status === 'suspended' || status === 'calculated') return 'ACCEPTED';
+  if (status === 'accepted' || status === 'pending' || status === 'pending_new' || status === 'new' || status === 'accepted_for_bidding' || status === 'done_for_day' || status === 'pending_replace' || status === 'stopped' || status === 'suspended' || status === 'calculated') return 'ACCEPTED';
+  if (status === 'pending_cancel') return 'PENDING_CANCEL';
   if (status === 'partially_filled') return 'PARTIALLY_FILLED';
   if (status === 'filled') return 'FILLED';
-  if (status === 'canceled' || status === 'cancelled' || status === 'expired' || status === 'replaced') return 'CANCELLED';
+  if (status === 'expired') return 'EXPIRED';
+  if (status === 'canceled' || status === 'cancelled' || status === 'replaced') return 'CANCELLED';
   if (status === 'rejected' || status === 'invalid') return 'REJECTED';
   return 'FAILED';
 }
@@ -266,21 +269,47 @@ export class IndividualAlpacaTradingProvider implements ExecutionProvider {
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
-    const response = await this.fetcher(`${this.baseUrl}${path}`, {
-      ...init,
-      signal: init.signal ?? AbortSignal.timeout(10_000),
-      headers: {
-        'APCA-API-KEY-ID': this.apiKey,
-        'APCA-API-SECRET-KEY': this.apiSecret,
-        'content-type': 'application/json',
-        ...(init.headers ?? {}),
-      },
-    });
-    if (!response.ok) {
-      throw new AlpacaTradingApiError(response.status);
+    const method=(init.method??'GET').toUpperCase();
+    const maxAttempts=method==='GET'?3:1;
+    for(let attempt=0;attempt<maxAttempts;attempt++){
+      try{
+        const response=await this.fetcher(`${this.baseUrl}${path}`,{
+          ...init,
+          signal:init.signal??AbortSignal.timeout(10_000),
+          headers:{
+            'APCA-API-KEY-ID':this.apiKey,
+            'APCA-API-SECRET-KEY':this.apiSecret,
+            'content-type':'application/json',
+            ...(init.headers??{}),
+          },
+        });
+        if(!response.ok){
+          const error=new AlpacaTradingApiError(response.status);
+          if(method==='GET'&&attempt+1<maxAttempts&&(response.status===408||response.status===429||response.status>=500)){
+            await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));
+            continue;
+          }
+          throw error;
+        }
+        if(response.status===204)return undefined as T;
+        try{return await response.json() as T}
+        catch{throw new Error('ALPACA_TRADING_API_INVALID_RESPONSE')}
+      }catch(error){
+        if(error instanceof AlpacaTradingApiError){
+          if(method==='GET'&&attempt+1<maxAttempts&&(error.status===408||error.status===429||error.status>=500)){
+            await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));
+            continue;
+          }
+          throw error;
+        }
+        if(method==='GET'&&attempt+1<maxAttempts){
+          await new Promise(resolve=>setTimeout(resolve,100*(attempt+1)));
+          continue;
+        }
+        throw error;
+      }
     }
-    if (response.status === 204) return undefined as T;
-    return response.json() as Promise<T>;
+    throw new Error('ALPACA_TRADING_API_UNAVAILABLE');
   }
 
   async getAccount():Promise<AlpacaTradingAccount> {
@@ -299,7 +328,8 @@ export class IndividualAlpacaTradingProvider implements ExecutionProvider {
   async getAsset(symbol:string):Promise<AlpacaTradingAsset>{
     const asset=await this.request<AlpacaTradingAsset>(`/v2/assets/${encodeURIComponent(symbol)}`);
     if(!asset||typeof asset.id!=='string'||asset.symbol?.toUpperCase()!==symbol.toUpperCase()||
-      typeof asset.class!=='string'||typeof asset.status!=='string'||typeof asset.tradable!=='boolean'){
+      typeof asset.class!=='string'||typeof asset.status!=='string'||typeof asset.tradable!=='boolean'||
+      (asset.class.toLowerCase()==='us_equity'&&typeof asset.fractionable!=='boolean')){
       throw new Error('ALPACA_TRADING_API_INVALID_ASSET_RESPONSE');
     }
     return asset;
@@ -376,7 +406,10 @@ export class IndividualAlpacaTradingProvider implements ExecutionProvider {
     const items=await this.request<Array<{symbol:string;qty:string;avg_entry_price:string;market_value:string;unrealized_pl:string;asset_class?:string}>>('/v2/positions');
     if(!Array.isArray(items))throw new Error('ALPACA_TRADING_API_INVALID_POSITIONS_RESPONSE');
     const asOf=new Date().toISOString();
-    return items.map(item=>({symbol:item.symbol,quantity:item.qty,averagePrice:item.avg_entry_price,marketValue:item.market_value,unrealizedPnl:item.unrealized_pl,currency:'USD',asOf}));
+    return items.map(item=>{
+      if(typeof item.symbol!=='string'||!item.symbol||![item.qty,item.avg_entry_price,item.market_value,item.unrealized_pl].every(value=>typeof value==='string'&&/^-?\d+(\.\d+)?$/.test(value)&&Number.isFinite(Number(value))))throw new Error('ALPACA_TRADING_API_INVALID_POSITIONS_RESPONSE');
+      return {symbol:item.symbol,quantity:item.qty,averagePrice:item.avg_entry_price,marketValue:item.market_value,unrealizedPnl:item.unrealized_pl,currency:'USD',asOf};
+    });
   }
 
   async getBalances(_accountId: string): Promise<ProviderBalance[]> {
@@ -413,7 +446,7 @@ export class AlpacaTradingApiError extends Error {
 
 type AlpacaTradingOrderResponse={
   id?:string;account_id?:string;status?:string;client_order_id?:string;created_at?:string;updated_at?:string;
-  filled_qty?:string;filled_avg_price?:string;
+  filled_qty?:string;filled_avg_price?:string|null;
 };
 
 type AlpacaTradingAccount={
@@ -422,7 +455,7 @@ type AlpacaTradingAccount={
 };
 
 type AlpacaTradingAsset={
-  id:string;symbol:string;class:string;status:string;tradable:boolean;
+  id:string;symbol:string;class:string;status:string;tradable:boolean;fractionable?:boolean;
 };
 
 function normalizeIndividualOrder(
@@ -430,6 +463,7 @@ function normalizeIndividualOrder(
   expectedClientOrderId?: string,
 ): ProviderOrder {
   if(!response.id||!response.status||!response.client_order_id||(expectedClientOrderId!==undefined&&response.client_order_id!==expectedClientOrderId)||!response.created_at||!response.updated_at||normalizeState(response.status)==='FAILED')throw new Error('ALPACA_TRADING_API_INVALID_ORDER_RESPONSE');
+  if(typeof response.filled_qty!=='string')throw new Error('ALPACA_TRADING_API_INVALID_ORDER_RESPONSE');
   for(const value of [response.filled_qty,response.filled_avg_price]){
     if(value!==undefined&&value!==null&&(!/^\d+(\.\d+)?$/.test(value)||!Number.isFinite(Number(value))))throw new Error('ALPACA_TRADING_API_INVALID_ORDER_RESPONSE');
   }
@@ -444,8 +478,8 @@ function normalizeIndividualOrder(
     acceptedAt: response.created_at,
     updatedAt: response.updated_at,
     executions: [],
-    ...(response.filled_qty===undefined?{}:{filledQuantity:response.filled_qty}),
-    ...(response.filled_avg_price===undefined?{}:{averageFillPrice:response.filled_avg_price}),
+    filledQuantity:response.filled_qty,
+    ...(response.filled_avg_price===undefined||response.filled_avg_price===null?{}:{averageFillPrice:response.filled_avg_price}),
   };
 }
 
@@ -472,6 +506,7 @@ export async function getAlpacaPaperAccountHealth() {
     config.alpacaTradingApiSecret,
   );
   let status: 'AVAILABLE' | 'AUTHENTICATION_FAILED' | 'UNAVAILABLE' | 'NOT_CONFIGURED' | 'NOT_SELECTED' | 'MISCONFIGURED';
+  let diagnosticCode:string|null=null;
   let account:AlpacaTradingAccount|null=null;
 
   if (!hasAlpacaConfiguration) {
@@ -490,6 +525,7 @@ export async function getAlpacaPaperAccountHealth() {
         status=account.status==='ACTIVE'&&!account.account_blocked&&!account.trading_blocked&&!account.trade_suspended_by_user?'AVAILABLE':'UNAVAILABLE';
       }catch(error){
         status=error instanceof AlpacaTradingApiError&&(error.status===401||error.status===403)?'AUTHENTICATION_FAILED':'UNAVAILABLE';
+        diagnosticCode=error instanceof AlpacaTradingApiError?`HTTP_${error.status}`:error instanceof Error&&error.message.startsWith('ALPACA_TRADING_API_')?error.message:'NETWORK_OR_PROVIDER_ERROR';
       }
     }
   }
@@ -503,6 +539,7 @@ export async function getAlpacaPaperAccountHealth() {
     executionEnabled: paperOrdersEnabled,
     paperOrdersEnabled,
     liveTradingEnabled: false as const,
+    diagnosticCode,
     account:account?{
       accountId:account.id,
       status:account.status,

@@ -1,7 +1,7 @@
 import {describe,expect,it} from 'vitest';
 import {filterPerformanceSnapshots} from '../lib/portfolio-timeframes';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '../lib/portfolio-metrics';
-import {calculateRealWithdrawableBalance} from '../lib/real-withdrawals';
+import {calculateRealWithdrawableBalance,getRealWithdrawableBalance} from '../lib/real-withdrawals';
 import {recordedInvestmentPnl} from '../lib/investment-policy';
 import {Prisma} from '@prisma/client';
 
@@ -57,5 +57,25 @@ describe('portfolio metrics',()=>{
 			ledgerBalance:'20',
 			pendingWithdrawals:'30',
 		}).toFixed(2)).toBe('0.00');
+	});
+
+	it('withholds paper-order cost basis and open buy reservations from REAL withdrawals',async()=>{
+		const tx={
+			fundingRequest:{aggregate:async()=>({_sum:{amount:new Prisma.Decimal('100')}})},
+			order:{findMany:async()=>[
+				{
+					instrumentId:'BTC/USD',side:'BUY',quantity:new Prisma.Decimal('3'),filledQuantity:new Prisma.Decimal('2'),
+					averageFillPrice:new Prisma.Decimal('100'),providerReservedAmount:new Prisma.Decimal('300'),
+					status:'PENDING_CANCEL',createdAt:new Date('2026-10-20T10:00:00Z'),
+				},
+				{
+					instrumentId:'BTC/USD',side:'SELL',quantity:new Prisma.Decimal('1'),filledQuantity:new Prisma.Decimal('1'),
+					averageFillPrice:new Prisma.Decimal('120'),providerReservedAmount:null,
+					status:'FILLED',createdAt:new Date('2026-10-20T11:00:00Z'),
+				},
+			]},
+		} as unknown as Parameters<typeof getRealWithdrawableBalance>[0];
+
+		expect((await getRealWithdrawableBalance(tx,'user-1',new Prisma.Decimal('1000'))).toFixed(2)).toBe('700.00');
 	});
 });

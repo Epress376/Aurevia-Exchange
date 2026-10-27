@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {NotificationType,TierUpgradeStatus} from '@prisma/client';
+import {AccountMode,NotificationType,TierUpgradeStatus} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
@@ -15,6 +15,9 @@ const openStatuses:TierUpgradeStatus[]=[TierUpgradeStatus.PENDING_REVIEW,TierUpg
 export async function GET(){
 	try{
 		const user=await requireUser();
+		const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+		if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		if(activeUser.accountMode!==AccountMode.REAL)return NextResponse.json({error:'Tier reviews are available in REAL mode only.'},{status:403});
 		const [profile,requests]=await Promise.all([
 			db.user.findUnique({where:{id:user.id},select:{id:true,accountMode:true,approvedTier:true,kycStatus:true,name:true,country:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT'},select:{id:true,status:true}}}}),
 			db.tierUpgradeRequest.findMany({where:{userId:user.id},orderBy:{createdAt:'desc'},select:{id:true,currentTier:true,requestedTier:true,status:true,userMessage:true,adminReason:true,reviewedAt:true,createdAt:true,updatedAt:true}}),
@@ -34,6 +37,7 @@ export async function POST(request:Request){
 		const input=schema.parse(await request.json());
 		const result=await db.$transaction(async tx=>{
 			const profile=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{id:true,accountMode:true,approvedTier:true,kycStatus:true,name:true,country:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT'},select:{id:true,status:true}}}});
+			if(profile.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
 			const tier=getAccountTier({accountMode:profile.accountMode,kycStatus:profile.kycStatus,verificationDocuments:profile.kycDocuments.filter(item=>item.status==='APPROVED').length,verificationSubmitted:!!profile.kyc?.submittedAt,approvedTier:profile.approvedTier});
 			const currentTier=Number(tier.label.at(-1));
 			if(currentTier>=3)throw new Error('MAXIMUM_TIER');
@@ -51,6 +55,7 @@ export async function POST(request:Request){
 	}catch(error){
 		if(error instanceof ZodError)return NextResponse.json({error:'Provide a valid optional note of at most 1,000 characters.'},{status:400});
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
+		if(error instanceof Error&&error.message==='REAL_MODE_REQUIRED')return NextResponse.json({error:'Tier reviews are available in REAL mode only.'},{status:403});
 		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'You have submitted several tier requests recently. Try again later.'},{status:429});
 		const messages:Record<string,string>={MAXIMUM_TIER:'You are already at the highest available tier.',PROFILE_INCOMPLETE:'Complete your name and country in Profile before requesting a tier review.',VERIFICATION_MISSING:'Submit your identity details and upload an identity document before requesting Tier 3 review.',REQUEST_PENDING:'A tier request is already awaiting review.'};
 		if(error instanceof Error&&messages[error.message])return NextResponse.json({error:messages[error.message]},{status:409});
@@ -67,6 +72,9 @@ export async function PATCH(request:Request){
 		rateLimit(`tier-request-reply:${user.id}`,3,60*60_000);
 		const input=replySchema.parse(await request.json());
 		const result=await db.$transaction(async tx=>{
+			const activeUser=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{accountMode:true,status:true}});
+			if(activeUser.status!=='ACTIVE')throw new Error('ACCOUNT_UNAVAILABLE');
+			if(activeUser.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
 			const current=await tx.tierUpgradeRequest.findFirst({where:{id:input.id,userId:user.id,status:TierUpgradeStatus.NEEDS_INFORMATION}});
 			if(!current)throw new Error('REQUEST_NOT_FOUND');
 			const updated=await tx.tierUpgradeRequest.update({where:{id:current.id},data:{userMessage:input.message,status:TierUpgradeStatus.PENDING_REVIEW,reviewedById:null,reviewedAt:null}});
@@ -79,6 +87,8 @@ export async function PATCH(request:Request){
 	}catch(error){
 		if(error instanceof ZodError)return NextResponse.json({error:'Provide a response of at least 3 and at most 1,000 characters.'},{status:400});
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
+		if(error instanceof Error&&error.message==='REAL_MODE_REQUIRED')return NextResponse.json({error:'Tier reviews are available in REAL mode only.'},{status:403});
+		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'You have submitted several tier responses recently. Try again later.'},{status:429});
 		if(error instanceof Error&&error.message==='REQUEST_NOT_FOUND')return NextResponse.json({error:'No tier request is waiting for your information.'},{status:404});
 		return NextResponse.json({error:'Unable to submit tier review information.'},{status:503});

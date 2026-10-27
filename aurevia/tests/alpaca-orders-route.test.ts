@@ -5,6 +5,7 @@ const mocks=vi.hoisted(()=>({
 	requireUser:vi.fn(),
 	findUnique:vi.fn(),
 	placeOrder:vi.fn(),
+	submitAlpacaPaperOrder:vi.fn(),
 }));
 
 vi.mock('@/lib/auth',()=>({requireUser:mocks.requireUser}));
@@ -13,6 +14,7 @@ vi.mock('@/lib/orders',()=>({placeOrder:mocks.placeOrder}));
 vi.mock('@/lib/notifications',()=>({createNotification:vi.fn()}));
 vi.mock('@/lib/alpaca-paper-orders',()=>({
 	cancelAlpacaPaperOrder:vi.fn(),
+	submitAlpacaPaperOrder:mocks.submitAlpacaPaperOrder,
 	ALPACA_PAPER_PROVIDER:'alpaca-paper',
 	AlpacaPaperOrderError:class extends Error{code='';httpStatus=409},
 }));
@@ -28,6 +30,7 @@ describe('order route mode separation',()=>{
 		mocks.requireUser.mockResolvedValue({id:'user-1',accountMode:AccountMode.DEMO});
 		mocks.findUnique.mockResolvedValue({accountMode:AccountMode.DEMO,status:'ACTIVE',role:'USER'});
 		mocks.placeOrder.mockResolvedValue({id:'demo-order'});
+		mocks.submitAlpacaPaperOrder.mockResolvedValue({id:'paper-order'});
 	});
 
 	it('keeps DEMO orders on Aurevia simulated execution',async()=>{
@@ -37,13 +40,14 @@ describe('order route mode separation',()=>{
 		expect(mocks.placeOrder).toHaveBeenCalledWith('user-1',AccountMode.DEMO,expect.objectContaining({instrumentId:'instrument-1'}),'route-order-key-001');
 	});
 
-	it('routes the database-confirmed REAL mode to isolated Aurevia paper execution',async()=>{
+	it('routes the database-confirmed REAL mode to Alpaca Paper execution',async()=>{
 		mocks.requireUser.mockResolvedValue({id:'user-1',accountMode:AccountMode.DEMO});
 		mocks.findUnique.mockResolvedValue({accountMode:AccountMode.REAL,status:'ACTIVE',role:'USER'});
 
 		const response=await POST(request());
 
 		expect(response.status).toBe(201);
-		expect(mocks.placeOrder).toHaveBeenCalledWith('user-1',AccountMode.REAL,expect.objectContaining({instrumentId:'instrument-1'}),'route-order-key-001');
+		expect(mocks.submitAlpacaPaperOrder).toHaveBeenCalledWith('user-1',expect.objectContaining({instrumentId:'instrument-1'}),'route-order-key-001');
+		expect(mocks.placeOrder).not.toHaveBeenCalled();
 	});
 });

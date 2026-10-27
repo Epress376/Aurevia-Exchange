@@ -4,6 +4,7 @@ import {balance,ensureSystemAccount,ensureUserLedger,postDoubleEntry,roundUsdAmo
 import {AccountMode,NotificationType,OrderSide,OrderStatus,OrderType,Prisma} from '@prisma/client';
 import {createNotification} from '@/lib/notifications';
 import {assertFreshQuote,assertSellableQuantity,averageEntryPrice,realizedSpotPnl} from '@/lib/trading-policy';
+import {getDemoAiConfig} from '@/lib/demo-ai-config';
 
 export type PlaceOrderInput={instrumentId:string;side:OrderSide;type:OrderType;quantity:number;price?:number;stopPrice?:number;expectedPrice:number;observedAt:string};
 
@@ -20,11 +21,21 @@ export function matchesOrder(order:Awaited<ReturnType<typeof db.order.findUnique
 export async function executeOrderTx(tx:Prisma.TransactionClient,orderId:string,fill:number){
  const order=await tx.order.findUnique({where:{id:orderId},include:{instrument:true}});
  if(!order||order.status!==OrderStatus.OPEN)throw new Error('ORDER_NOT_OPEN');
+ if(order.providerName==='alpaca-paper')throw new Error('EXTERNAL_PROVIDER_ORDER');
  const quantity=order.quantity.minus(order.filledQuantity); if(quantity.lte(0))throw new Error('ORDER_FILLED');
- const fillPrice=new Prisma.Decimal(fill);
+ let fillPrice=new Prisma.Decimal(fill);
  if(fillPrice.lte(0))throw new Error('INVALID_PRICE');
+ if(order.accountMode===AccountMode.DEMO){
+  const config=getDemoAiConfig();
+  const marketCostBps=config.slippageBps+config.spreadBps/2;
+  const factor=new Prisma.Decimal(marketCostBps).div(10_000);
+  fillPrice=fillPrice.mul(order.side===OrderSide.BUY?new Prisma.Decimal(1).plus(factor):new Prisma.Decimal(1).minus(factor)).toDecimalPlaces(10,Prisma.Decimal.ROUND_HALF_UP);
+  if(fillPrice.lte(0))throw new Error('INVALID_PRICE');
+ }
  const notional=roundUsdAmount(fillPrice.mul(quantity));
- const fee=roundUsdAmount(notional.mul(order.instrument.takerFee));
+ const configuredDemoFee=order.accountMode===AccountMode.DEMO?new Prisma.Decimal(getDemoAiConfig().feeRate):new Prisma.Decimal(0);
+ const feeRate=Prisma.Decimal.max(order.instrument.takerFee,configuredDemoFee);
+ const fee=roundUsdAmount(notional.mul(feeRate));
  const userAcct=await ensureUserLedger(tx,order.userId,order.accountMode);
  const fees=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:FEES`,'Simulated trading fees','USD',order.accountMode);
  const clearing=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:CLEARING`,'Simulated spot clearing','USD',order.accountMode);
@@ -66,6 +77,7 @@ export async function executeOrderTx(tx:Prisma.TransactionClient,orderId:string,
 export async function closeSimulatedPositionTx(tx:Prisma.TransactionClient,userId:string,positionId:string,actorId=userId,accountMode?:AccountMode){
  const position=await tx.position.findFirst({where:{id:positionId,userId,status:'OPEN',...(accountMode?{accountMode}:{})},include:{instrument:true}});
  if(!position)throw new Error('POSITION_NOT_FOUND');
+ if(position.providerName==='alpaca-paper')throw new Error('PROVIDER_POSITION_REQUIRES_PROVIDER_ORDER');
  const price=position.instrument.price;
  if(price.lte(0))throw new Error('INVALID_PRICE');
  const userAccount=await ensureUserLedger(tx,userId,position.accountMode);
@@ -122,7 +134,17 @@ export async function placeOrder(userId:string,accountMode:AccountMode,input:Pla
    if(prior){if(!matchesOrder(prior,userId,accountMode,input))throw new Error('IDEMPOTENCY_KEY_REUSED');return prior;}
    const inst=await tx.instrument.findUnique({where:{id:input.instrumentId}}); if(!inst||!inst.enabled)throw new Error('INSTRUMENT_UNAVAILABLE');
    if(inst.updatedAt.getTime()>Date.now()+5_000)throw new Error('STALE_MARKET_QUOTE');
+   if(accountMode===AccountMode.DEMO&&Date.now()-inst.updatedAt.getTime()>getDemoAiConfig().maxQuoteAgeMs)throw new Error('STALE_MARKET_QUOTE');
    const market=Number(inst.price); const price=input.price===undefined?undefined:Number(input.price); const stop=input.stopPrice===undefined?undefined:Number(input.stopPrice);
+   if(accountMode===AccountMode.DEMO&&input.side===OrderSide.BUY){
+    const config=getDemoAiConfig();
+    const existingPosition=await tx.position.findFirst({where:{userId,instrumentId:inst.id,accountMode,status:'OPEN',side:OrderSide.BUY},select:{quantity:true}});
+    const currentExposure=(existingPosition?.quantity??new Prisma.Decimal(0)).mul(inst.price);
+    const executionCostBps=config.slippageBps+config.spreadBps/2;
+    const proposedExecutionPrice=inst.price.mul(new Prisma.Decimal(1).plus(new Prisma.Decimal(executionCostBps).div(10_000)));
+    const proposedExposure=new Prisma.Decimal(input.quantity).mul(proposedExecutionPrice);
+    if(currentExposure.plus(proposedExposure).gt(config.maxPositionUsd))throw new Error('DEMO_POSITION_LIMIT');
+   }
    if(input.side===OrderSide.SELL){
     const position=await tx.position.findFirst({where:{userId,instrumentId:inst.id,accountMode,status:'OPEN',side:OrderSide.BUY}});
     const reservations=await tx.order.aggregate({where:{userId,instrumentId:inst.id,accountMode,side:OrderSide.SELL,status:OrderStatus.OPEN},_sum:{quantity:true}});
@@ -146,7 +168,7 @@ export async function placeOrder(userId:string,accountMode:AccountMode,input:Pla
 }
 
 export async function processOpenOrders(){
- const orders=await db.order.findMany({where:{status:OrderStatus.OPEN,accountMode:{in:[AccountMode.DEMO,AccountMode.REAL]}},include:{instrument:true},take:500,orderBy:{createdAt:'asc'}});
+ const orders=await db.order.findMany({where:{status:OrderStatus.OPEN,providerName:null,accountMode:{in:[AccountMode.DEMO,AccountMode.REAL]}},include:{instrument:true},take:500,orderBy:{createdAt:'asc'}});
  for(const o of orders){
    const p=Number(o.instrument.price); const hit=executable(o.type,o.side,p,o.price===null?undefined:Number(o.price),o.stopPrice===null?undefined:Number(o.stopPrice));
    if(!hit)continue;

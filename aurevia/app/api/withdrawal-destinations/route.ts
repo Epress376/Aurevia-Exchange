@@ -10,8 +10,8 @@ const idSchema=z.object({id:z.string().min(1).max(64)});
 const busyStatuses=[FundingStatus.PENDING,FundingStatus.PENDING_REVIEW,FundingStatus.APPROVED,FundingStatus.PROCESSING];
 
 async function activeRealUser(userId:string){
-	const user=await db.user.findUnique({where:{id:userId},select:{accountMode:true,status:true}});
-	if(!user||user.status!=='ACTIVE')throw new Error('ACCOUNT_UNAVAILABLE');
+	const user=await db.user.findUnique({where:{id:userId},select:{accountMode:true,status:true,role:true}});
+	if(!user||user.status!=='ACTIVE'||user.role!=='USER')throw new Error('ACCOUNT_UNAVAILABLE');
 	if(user.accountMode!==AccountMode.REAL)throw new Error('REAL_MODE_REQUIRED');
 	return user;
 }

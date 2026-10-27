@@ -25,16 +25,18 @@ async function optionalData<T>(operation:string,load:()=>Promise<T>,fallback:T):
 export async function GET(){
   try{
     const user=await requireUser();
-    const mode=user.accountMode as AccountMode;
+    const currentUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
+    if(!currentUser||currentUser.status!=='ACTIVE')return NextResponse.json({error:'Unauthorized'},{status:401});
+    const mode:AccountMode=currentUser.accountMode;
     const [account,positions,orders,investments,notifications,profile,kyc,verificationDocuments,marketInstruments]=await Promise.all([
       optionalData('ledger account',()=>db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${mode}:USD`},select:{id:true}}),null),
       optionalData('positions',()=>db.position.findMany({where:{userId:user.id,accountMode:mode,status:'OPEN'},include:{instrument:true},orderBy:{openedAt:'desc'},take:8}),[]),
       optionalData('orders',()=>db.order.findMany({where:{userId:user.id,accountMode:mode},include:{instrument:{select:{symbol:true,name:true}}},orderBy:{createdAt:'desc'},take:8}),[]),
-      optionalData('investments',()=>db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode},include:{opportunity:{select:{title:true,category:true,riskLevel:true,assetSymbol:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:6}),[]),
-      optionalData('notifications',()=>db.notification.findMany({where:{userId:user.id},orderBy:{createdAt:'desc'},take:6}),[]),
+      mode===AccountMode.REAL?optionalData('investments',()=>db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode},include:{opportunity:{select:{title:true,category:true,riskLevel:true,assetSymbol:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:6}),[]):Promise.resolve([]),
+      optionalData('notifications',()=>db.notification.findMany({where:{userId:user.id,archivedAt:null,OR:[{accountMode:mode},{accountMode:null}]},orderBy:{createdAt:'desc'},take:6}),[]),
       optionalData('profile',()=>db.user.findUnique({where:{id:user.id},select:{id:true,email:true,name:true,avatarKey:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,verifiedAt:true,verifiedChannel:true,phoneVerified:true,phone:true,country:true,createdAt:true}}),null),
-      optionalData('KYC profile',()=>db.kycProfile.findUnique({where:{userId:user.id},select:{submittedAt:true}}),null),
-      optionalData('verification documents',()=>db.kycDocument.count({where:{userId:user.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}),0),
+      mode===AccountMode.REAL?optionalData('KYC profile',()=>db.kycProfile.findUnique({where:{userId:user.id},select:{submittedAt:true}}),null):Promise.resolve(null),
+      mode===AccountMode.REAL?optionalData('verification documents',()=>db.kycDocument.count({where:{userId:user.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}),0):Promise.resolve(0),
       optionalData('market instruments',()=>db.instrument.findMany({where:{enabled:true},orderBy:{symbol:'asc'},take:12}),[]),
     ]);
     const validPositions=positions.filter(position=>!!position.instrument);
@@ -47,8 +49,8 @@ export async function GET(){
     const unrealized=validPositions.reduce((sum,p)=>sum.plus((p.side==='BUY'?p.instrument.price.minus(p.entryPrice):p.entryPrice.minus(p.instrument.price)).mul(p.quantity)),new Prisma.Decimal(0));
     const activity=await optionalData('recent activity',()=>getUserActivity(user.id,mode,'all',8),{items:[],total:0,hasMore:false,cursor:null});
     const recentActivity=activity.items.map(item=>({id:item.id,category:item.category,action:item.action,timestamp:item.timestamp,asset:item.asset,amount:item.amount,status:item.status,source:item.sourceLabel,pnl:item.pnl,adminInitiated:item.adminInitiated,link:item.link}));
-    const tier=getAccountTier({accountMode:mode,kycStatus:profile?.kycStatus||'PENDING',verificationDocuments,verificationSubmitted:!!kyc?.submittedAt,approvedTier:profile?.approvedTier});
-    const safeProfile={id:user.id,email:profile?.email??user.email??null,name:profile?.name??user.name??null,hasAvatar:!!profile?.avatarKey,role:profile?.role??user.role??'USER',status:profile?.status??null,accountMode:mode,approvedTier:profile?.approvedTier??null,kycStatus:profile?.kycStatus??null,verifiedAt:profile?.verifiedAt??null,verifiedChannel:profile?.verifiedChannel??null,phoneVerified:profile?.phoneVerified??false,phone:profile?.phone??null,country:profile?.country??null,createdAt:profile?.createdAt??null,...tier};
+    const tier=getAccountTier({accountMode:mode,kycStatus:mode===AccountMode.REAL?profile?.kycStatus||'PENDING':'PENDING',verificationDocuments,verificationSubmitted:mode===AccountMode.REAL&&!!kyc?.submittedAt,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??undefined:undefined});
+    const safeProfile={id:user.id,email:profile?.email??user.email??null,name:profile?.name??user.name??null,hasAvatar:!!profile?.avatarKey,role:profile?.role??user.role??'USER',status:profile?.status??null,accountMode:mode,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??null:null,kycStatus:mode===AccountMode.REAL?profile?.kycStatus??null:null,verifiedAt:mode===AccountMode.REAL?profile?.verifiedAt??null:null,verifiedChannel:mode===AccountMode.REAL?profile?.verifiedChannel??null:null,phoneVerified:mode===AccountMode.REAL?profile?.phoneVerified??false:false,phone:mode===AccountMode.REAL?profile?.phone??null:null,country:mode===AccountMode.REAL?profile?.country??null:null,createdAt:profile?.createdAt??null,...tier};
     return NextResponse.json(jsonSafe({accountMode:mode,cash,financialDataAvailable:cash!==null,positionValue,invested,unrealized,portfolioValue:cash?.plus(positionValue).plus(invested)??null,openOrders:validOrders.filter(o=>o.status==='OPEN').length,activePositions:validPositions.length,activity:recentActivity,orders:validOrders,positions:validPositions,investments:validInvestments,notifications,profile:safeProfile,marketInstruments:supportedMarketInstruments.map(i=>({id:i.id,symbol:i.symbol,name:i.name,price:Number(i.price),changePercent:0,updatedAt:i.updatedAt.toISOString()}))}),{headers:{'Cache-Control':'private, no-store'}});
   }catch(error){
     const unauthorized=error instanceof Error&&error.message==='UNAUTHORIZED';

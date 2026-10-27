@@ -24,6 +24,9 @@ export async function POST(request:Request){
 	try{
 		const user=await requireUser();
 		ownerId=user.id;
+		const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true,role:true}});
+		if(!activeUser||activeUser.status!=='ACTIVE'||activeUser.role!=='USER')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		const mode=activeUser.accountMode;
 		const contentLength=Number(request.headers.get('content-length')||0);
 		if(contentLength>maxAttachmentBytes+64*1024)return NextResponse.json({error:'Attachment must be 5 MB or smaller.'},{status:413});
 		const form=await request.formData();
@@ -44,7 +47,7 @@ export async function POST(request:Request){
 		const isComplaint=input.action==='complaint';
 		const subject=isComplaint?`[Complaint: ${input.category}] ${input.subject}`:input.subject;
 		if(input.transactionId){
-			const funding=await db.fundingRequest.findFirst({where:{id:input.transactionId,userId:user.id,accountMode:user.accountMode},select:{id:true}});
+			const funding=await db.fundingRequest.findFirst({where:{id:input.transactionId,userId:user.id,accountMode:mode},select:{id:true}});
 			if(!funding)return NextResponse.json({error:'Transaction not found.'},{status:404});
 		}
 		if(bytes&&contentType){
@@ -52,18 +55,23 @@ export async function POST(request:Request){
 			await uploadPrivateObject('support',user.id,attachmentKey,bytes,contentType);
 		}
 		const conversation=await db.$transaction(async tx=>{
-			const created=await tx.supportConversation.create({data:{userId:user.id,accountMode:user.accountMode,subject,category:input.category,isComplaint,transactionId:input.transactionId||null,attachmentKey:attachmentKey||null,status:SupportStatus.OPEN,messages:{create:{authorType:SupportAuthor.USER,authorId:user.id,body:input.message}}},select:{id:true,subject:true,status:true,createdAt:true}});
+			const current=await tx.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true,role:true}});
+			if(!current||current.status!=='ACTIVE'||current.role!=='USER')throw new Error('ACCOUNT_UNAVAILABLE');
+			if(current.accountMode!==mode)throw new Error('ACCOUNT_MODE_CHANGED');
+			const created=await tx.supportConversation.create({data:{userId:user.id,accountMode:mode,subject,category:input.category,isComplaint,transactionId:input.transactionId||null,attachmentKey:attachmentKey||null,status:SupportStatus.OPEN,messages:{create:{authorType:SupportAuthor.USER,authorId:user.id,body:input.message}}},select:{id:true,subject:true,status:true,createdAt:true}});
 			await createNotification(tx,{userId:user.id,type:NotificationType.SUPPORT,title:isComplaint?'Complaint received':'Support request sent to admin',message:`Your ${isComplaint?'complaint':'support conversation'} “${created.subject}” is awaiting administrator review.`,dedupeKey:`support:${created.id}:created`,relatedEntity:'SUPPORT',relatedId:created.id,actionUrl:'/support'});
 			await notifyActiveAdmins(tx,{type:NotificationType.SUPPORT,title:isComplaint?'New complaint':'New support escalation',message:`A ${isComplaint?'complaint':'support request'} is awaiting administrator review.`,dedupeKey:`support:${created.id}:admin`,relatedEntity:'SUPPORT',relatedId:created.id,actionUrl:'/admin/support'});
-			await tx.auditLog.create({data:{actorId:user.id,action:isComplaint?'COMPLAINT_SUBMITTED':'SUPPORT_ESCALATED',entity:'SUPPORT',entityId:created.id,metadata:{category:input.category,hasAttachment:!!attachmentKey,accountMode:user.accountMode}}});
+			await tx.auditLog.create({data:{actorId:user.id,action:isComplaint?'COMPLAINT_SUBMITTED':'SUPPORT_ESCALATED',entity:'SUPPORT',entityId:created.id,metadata:{category:input.category,hasAttachment:!!attachmentKey,accountMode:mode}}});
 			return created;
 		});
-		const delivery=await (isComplaint?sendComplaintEmail:sendSupportEmail)(subject,[`Ticket: ${conversation.id}`,`User: ${user.id}`,`Account mode: ${user.accountMode}`,`Category: ${input.category}`,`Attachment: ${attachmentKey?'available in the authenticated admin inbox':'none'}`,`\n${input.message}`].join('\n'));
+		const delivery=await (isComplaint?sendComplaintEmail:sendSupportEmail)(subject,[`Ticket: ${conversation.id}`,`User: ${user.id}`,`Account mode: ${mode}`,`Category: ${input.category}`,`Attachment: ${attachmentKey?'available in the authenticated admin inbox':'none'}`,`\n${input.message}`].join('\n'));
 		return NextResponse.json({...conversation,isComplaint,hasAttachment:!!attachmentKey,emailDelivery:delivery.sent?'sent':delivery.reason||'failed'},{status:201});
 	}catch(error){
 		if(attachmentKey&&ownerId)await deletePrivateObject('support',ownerId,attachmentKey);
 		if(error instanceof ZodError)return NextResponse.json({error:'Check the ticket category, subject, and message.'},{status:400});
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Sign in to open a private support ticket.'},{status:401});
+		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
+		if(error instanceof Error&&error.message==='ACCOUNT_MODE_CHANGED')return NextResponse.json({error:'Your active account mode changed. Refresh and retry.'},{status:409});
 		if(error instanceof PrivateStorageError)return NextResponse.json({error:error.message},{status:error.status});
 		const code=error&&typeof error==='object'&&'code' in error?String(error.code):'';
 		if(['P1001','P1002','P1017'].includes(code))return NextResponse.json({error:'Support is temporarily unavailable.'},{status:503});

@@ -4,7 +4,7 @@ import {beforeEach,describe,expect,it,vi} from 'vitest';
 const mocks=vi.hoisted(()=>({
 	requireAdmin:vi.fn(),transaction:vi.fn(),ensureUserLedger:vi.fn(),ensureSystemAccount:vi.fn(),
 	postDoubleEntry:vi.fn(),balance:vi.fn(),createNotification:vi.fn(),rateLimit:vi.fn(),
-	decryptWithdrawalDestination:vi.fn(),
+	decryptWithdrawalDestination:vi.fn(),getRealWithdrawableBalance:vi.fn(),
 }));
 
 vi.mock('@/lib/auth',()=>({requireAdmin:mocks.requireAdmin}));
@@ -14,6 +14,7 @@ vi.mock('@/lib/notifications',()=>({createNotification:mocks.createNotification}
 vi.mock('@/lib/rate-limit',()=>({rateLimit:mocks.rateLimit}));
 vi.mock('@/lib/serializers',()=>({jsonSafe:(value:unknown)=>value}));
 vi.mock('@/lib/withdrawal-destinations',()=>({decryptWithdrawalDestination:mocks.decryptWithdrawalDestination}));
+vi.mock('@/lib/real-withdrawals',()=>({getRealWithdrawableBalance:mocks.getRealWithdrawableBalance}));
 
 import {POST} from '@/app/api/admin/funding/withdrawal/route';
 
@@ -65,6 +66,7 @@ beforeEach(()=>{
 	mocks.postDoubleEntry.mockResolvedValue(undefined);
 	mocks.balance.mockResolvedValue(new Prisma.Decimal('100.00'));
 	mocks.createNotification.mockResolvedValue(undefined);
+	mocks.getRealWithdrawableBalance.mockResolvedValue(new Prisma.Decimal('100.00'));
 	mocks.decryptWithdrawalDestination.mockReturnValue({type:'BANK_TRANSFER',network:null});
 });
 
@@ -95,6 +97,17 @@ describe('administrator withdrawal lifecycle',()=>{
 			reference:`FUNDING:${withdrawalId}:EXTERNAL_WITHDRAWAL`,debitAccountId:'user-ledger',
 			creditAccountId:'withdrawal-clearing',amount:new Prisma.Decimal('25.00'),
 		}));
+		expect(mocks.getRealWithdrawableBalance).toHaveBeenCalledWith(tx,'user-1',new Prisma.Decimal('100.00'),withdrawalId);
+	});
+
+	it('does not complete a withdrawal that would consume paper-trading collateral',async()=>{
+		current.status=FundingStatus.PROCESSING;
+		mocks.getRealWithdrawableBalance.mockResolvedValue(new Prisma.Decimal('10.00'));
+
+		const response=await POST(request('COMPLETE',{processingReference:'bank-ref-123',confirmExternalProcessing:true}));
+
+		expect(response.status).toBe(409);
+		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
 	});
 
 	it('rejects invalid state transitions and crypto confirmations without a transaction hash',async()=>{
@@ -121,7 +134,7 @@ describe('administrator withdrawal lifecycle',()=>{
 
 	it('uses a serializable transaction and prevents completion when other reservations consume the balance',async()=>{
 		current.status=FundingStatus.PROCESSING;
-		tx.fundingRequest.aggregate.mockResolvedValue({_sum:{amount:new Prisma.Decimal('90.00')}});
+		mocks.getRealWithdrawableBalance.mockResolvedValue(new Prisma.Decimal('10.00'));
 		const response=await POST(request('COMPLETE',{processingReference:'bank-ref-123',confirmExternalProcessing:true}));
 		expect(response.status).toBe(409);
 		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();

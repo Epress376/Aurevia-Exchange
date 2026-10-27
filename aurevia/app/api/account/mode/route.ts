@@ -13,7 +13,8 @@ export async function PATCH(req:Request){
 		const user=await requireUser();
 		const {accountMode}=schema.parse(await req.json());
 		const updated=await db.$transaction(async tx=>{
-			const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{accountMode:true}});
+			const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{accountMode:true,status:true,role:true}});
+			if(current.status!=='ACTIVE'||current.role!=='USER')throw new Error('ACCOUNT_UNAVAILABLE');
 			const paperAccountInitialized=await initializePaperAccount(tx,user.id,accountMode);
 			const changed=await tx.user.update({where:{id:user.id},data:{accountMode},select:{accountMode:true,updatedAt:true}});
 			if(current.accountMode!==accountMode||paperAccountInitialized){
@@ -27,6 +28,7 @@ export async function PATCH(req:Request){
 		if(error instanceof ZodError)return NextResponse.json({error:'Select a valid account mode.'},{status:400});
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
 		if(error instanceof Error&&error.message==='FORBIDDEN')return NextResponse.json({error:'Forbidden'},{status:403});
+		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		if(error&&typeof error==='object'&&'code'in error&&String(error.code)==='P2034')return NextResponse.json({error:'The account changed while switching modes. Retry the request.'},{status:409});
 		console.error('Account mode update failed.',error&&typeof error==='object'&&'code'in error?String(error.code):error instanceof Error?error.name:'UnknownError');
 		return NextResponse.json({error:'Unable to update account mode.'},{status:503});

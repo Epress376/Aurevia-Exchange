@@ -41,6 +41,7 @@ const groups=[
 		{href:'/admin/receipts',label:'Receipt review',icon:ReceiptText},
 	]},
 	{title:'System',links:[
+		{href:'/admin/activity',label:'Activity Management',icon:Activity},
 		{href:'/admin/audit-logs',label:'Notifications & audit',icon:Bell},
 		{href:'/admin/settings',label:'Settings',icon:SlidersHorizontal},
 		{href:'/admin/deleted-items',label:'Deleted items',icon:Trash2},

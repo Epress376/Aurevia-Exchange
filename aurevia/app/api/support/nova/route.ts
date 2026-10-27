@@ -1,5 +1,5 @@
 import {NextResponse} from 'next/server';
-import {FundingType,Prisma} from '@prisma/client';
+import {AccountMode,FundingType,Prisma,UserStatus} from '@prisma/client';
 import {z,ZodError} from 'zod';
 import {getServerSession} from 'next-auth';
 import {authOptions} from '@/lib/auth-options';
@@ -43,6 +43,8 @@ export async function POST(request:Request){
 		const session=await getServerSession(authOptions);
 		const userId=session?.user?.id;
 		rateLimit(userId?`nova-user:${userId}`:`nova-ip:${clientIp(request)}`,30,60_000);
+		const user=userId?await db.user.findUnique({where:{id:userId},select:{id:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}}):null;
+		if(userId&&(!user||user.status!==UserStatus.ACTIVE||user.role!=='USER'))return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		const orderIntent=parseDemoOrderIntent(input.question);
 		const orderIntentRequested=hasDemoOrderIntent(input.question);
 		let orderDraft:{instrumentId:string;symbol:string;side:'BUY'|'SELL';type:'MARKET';quantity:number;expectedPrice:number;observedAt:string;estimatedValue:number;accountMode:'DEMO'}|undefined;
@@ -54,11 +56,9 @@ export async function POST(request:Request){
 				orderAnswer='To prepare a DEMO market-order preview, specify exactly a side, positive quantity, and listed symbol—for example, “prepare demo order: buy 2 AAPL”. No order has been created.';
 			}else if(!userId){
 				orderAnswer='Sign in to prepare an order preview. No order has been created.';
-			}else{
-				const user=await db.user.findUnique({where:{id:userId},select:{accountMode:true}});
-				if(user?.accountMode!=='DEMO'){
+			}else if(user?.accountMode!==AccountMode.DEMO){
 					orderAnswer='Nova order preparation is available only in DEMO mode. REAL trading is not available through Nova; use Trade only if the verified REAL execution workflow is enabled. No order has been created.';
-				}else{
+			}else{
 					const instrument=await db.instrument.findFirst({where:{symbol:orderIntent.symbol,enabled:true},select:{id:true,symbol:true,price:true}});
 					if(!instrument){
 						orderAnswer=`${orderIntent.symbol} is not an enabled instrument in the DEMO market. No order has been created. Open Markets to check the available symbols.`;
@@ -94,7 +94,6 @@ export async function POST(request:Request){
 					}
 				}
 			}
-		}
 		const normalized=input.question.toUpperCase();
 		const asset=MARKET_ASSETS.find(item=>new RegExp(`(^|[^A-Z0-9])${item.id.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')}([^A-Z0-9]|$)`).test(normalized));
 		let quoteAnswer:string|undefined;
@@ -120,20 +119,18 @@ export async function POST(request:Request){
 			const plan=parsed?calculateTradePlan(parsed):null;
 			tradePlanAnswer=plan?formatTradePlan(plan):missingTradePlanInputs(input.question);
 			if(userId&&plan){
-				await db.auditLog.create({data:{actorId:userId,action:'NOVA_TRADE_PLAN_CALCULATED',entity:'NOVA_ACTIVITY',entityId:input.conversationId||null,metadata:{eventTypes:['TRADE_PLAN_CALCULATED'],accountMode:session?.user?.accountMode==='REAL'?'REAL':'DEMO',externalAction:false,providerResult:'not-applicable'}}});
+				await db.auditLog.create({data:{actorId:userId,action:'NOVA_TRADE_PLAN_CALCULATED',entity:'NOVA_ACTIVITY',entityId:input.conversationId||null,metadata:{eventTypes:['TRADE_PLAN_CALCULATED'],accountMode:user?.accountMode||AccountMode.DEMO,externalAction:false,providerResult:'not-applicable'}}});
 				auditAction='trade-plan-calculation';
 			}
 		}
-		if(userId&&/\b(i|my|mine|account|balance|wallet|portfolio|positions?|holdings?|orders?|trades?|investments?|watchlists?|tickets?|tiers?|kyc|verification|notifications?|deposits?|withdrawals?|payments?)\b/i.test(input.question)){
-			const user=await db.user.findUnique({where:{id:userId},select:{id:true,accountMode:true,approvedTier:true,kycStatus:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}});
-			if(user){
+		if(user&&/\b(i|my|mine|account|balance|wallet|portfolio|positions?|holdings?|orders?|trades?|investments?|watchlists?|tickets?|tiers?|kyc|verification|notifications?|deposits?|withdrawals?|payments?)\b/i.test(input.question)){
 				const requested=input.question.toLowerCase();
 				const answers:string[]=[];
 				const eventTypes:string[]=[];
 				if(/\b(balance|wallet)\b/.test(requested)){
 					const ledger=await db.ledgerAccount.findUnique({where:{code:`USER:${user.id}:${user.accountMode}:USD`},select:{id:true}});
 					if(ledger){
-						const [current,reserved]=await Promise.all([balance(db,ledger.id),reservedWithdrawalAmount(db,user.id,user.accountMode,'USD')]);
+						const [current,reserved]=await Promise.all([balance(db,ledger.id),user.accountMode===AccountMode.REAL?reservedWithdrawalAmount(db,user.id,user.accountMode,'USD'):Promise.resolve(new Prisma.Decimal(0))]);
 						const available=Prisma.Decimal.max(new Prisma.Decimal(0),current.minus(reserved));
 						answers.push(`${user.accountMode} USD ledger balance: ${current.toString()} USD. Pending withdrawals reserve ${reserved.toString()} USD, leaving ${available.toString()} USD available before other account restrictions. Pending deposits are not included until approved. This is simulated ledger data.`);
 					}
@@ -164,15 +161,18 @@ export async function POST(request:Request){
 					eventTypes.push('ORDER_HISTORY_LOOKUP');
 				}
 				if(/\binvestments?\b/.test(requested)){
-					const eligibility=user.accountMode==='DEMO'?{demoEligible:true}:{realEligible:true};
-					const [count,investments,opportunities]=await Promise.all([
-						db.investmentRequest.count({where:{userId:user.id,accountMode:user.accountMode}}),
-						db.investmentRequest.findMany({where:{userId:user.id,accountMode:user.accountMode},orderBy:{requestedAt:'desc'},take:5,select:{amount:true,status:true,requestedAt:true,activatedAt:true,maturesAt:true,simulatedPayout:true,opportunity:{select:{title:true}}}}),
-						db.investmentOpportunity.findMany({where:{status:'AVAILABLE',...eligibility},orderBy:{createdAt:'desc'},take:5,select:{title:true,minimumAmount:true,durationDays:true,targetReturnPercent:true}}),
-					]);
-					const recent=investments.map(item=>`${item.opportunity.title}: ${item.amount.toString()} USD · ${item.status.replaceAll('_',' ')}${item.maturesAt?` · matures ${item.maturesAt.toISOString()}`:''}${item.status==='SETTLED'&&item.simulatedPayout?` · virtual payout ${item.simulatedPayout.toString()} USD`:''}`).join('; ');
-					const plans=opportunities.map(item=>`${item.title} · minimum ${item.minimumAmount.toString()} USD · ${item.durationDays} days${item.targetReturnPercent===null?'':` · configured simulation target ${item.targetReturnPercent.toString()}%`}`).join('; ');
-					answers.push(`Your ${user.accountMode} account has ${count} simulated investment request${count===1?'':'s'}${recent?`. Recent activity: ${recent}`:'. No investment requests are recorded.'}${plans?` Available simulated plans: ${plans}.`:''} Any configured target and payout are virtual simulation results, not guaranteed or external investment returns.`);
+					if(user.accountMode===AccountMode.DEMO){
+						answers.push('Investment allocations are not available in DEMO mode. The DEMO workspace is limited to virtual cash, simulated orders, positions, trading history, and profit/loss.');
+					}else{
+						const [count,investments,opportunities]=await Promise.all([
+							db.investmentRequest.count({where:{userId:user.id,accountMode:user.accountMode}}),
+							db.investmentRequest.findMany({where:{userId:user.id,accountMode:user.accountMode},orderBy:{requestedAt:'desc'},take:5,select:{amount:true,status:true,requestedAt:true,activatedAt:true,maturesAt:true,simulatedPayout:true,opportunity:{select:{title:true}}}}),
+							db.investmentOpportunity.findMany({where:{status:'AVAILABLE',realEligible:true},orderBy:{createdAt:'desc'},take:5,select:{title:true,minimumAmount:true,durationDays:true,targetReturnPercent:true}}),
+						]);
+						const recent=investments.map(item=>`${item.opportunity.title}: ${item.amount.toString()} USD · ${item.status.replaceAll('_',' ')}${item.maturesAt?` · matures ${item.maturesAt.toISOString()}`:''}${item.status==='SETTLED'&&item.simulatedPayout?` · virtual payout ${item.simulatedPayout.toString()} USD`:''}`).join('; ');
+						const plans=opportunities.map(item=>`${item.title} · minimum ${item.minimumAmount.toString()} USD · ${item.durationDays} days${item.targetReturnPercent===null?'':` · configured simulation target ${item.targetReturnPercent.toString()}%`}`).join('; ');
+						answers.push(`Your REAL account has ${count} simulated investment request${count===1?'':'s'}${recent?`. Recent activity: ${recent}`:'. No investment requests are recorded.'}${plans?` Available simulated plans: ${plans}.`:''} Any configured target and payout are virtual simulation results, not guaranteed or external investment returns.`);
+					}
 					eventTypes.push('INVESTMENT_CONTEXT_LOOKUP');
 				}
 				if(/\bwatchlist\b/.test(requested)){
@@ -180,12 +180,12 @@ export async function POST(request:Request){
 					eventTypes.push('WATCHLIST_SOURCE_UNAVAILABLE');
 				}
 				if(/\btiers?\b/.test(requested)){
-					const tier=getAccountTier({accountMode:user.accountMode,kycStatus:user.kycStatus,verificationDocuments:user.kycDocuments.length,verificationSubmitted:!!user.kyc?.submittedAt,approvedTier:user.approvedTier});
+					const tier=getAccountTier({accountMode:user.accountMode,kycStatus:user.accountMode===AccountMode.REAL?user.kycStatus:'PENDING',verificationDocuments:user.accountMode===AccountMode.REAL?user.kycDocuments.length:0,verificationSubmitted:user.accountMode===AccountMode.REAL&&!!user.kyc?.submittedAt,approvedTier:user.accountMode===AccountMode.REAL?user.approvedTier??undefined:undefined});
 					answers.push(`Current account tier: ${tier.label}. Tier approval does not enable REAL trading.`);
 					eventTypes.push('TIER_STATUS_LOOKUP');
 				}
 				if(/\bkyc|verification\b/.test(requested)){
-					answers.push(`Recorded identity review status: ${user.kycStatus}; identity profile submitted: ${user.kyc?.submittedAt?'yes':'no'}; approved identity documents on file: ${user.kycDocuments.length}. Nova cannot approve identity checks.`);
+					answers.push(user.accountMode===AccountMode.DEMO?'Identity verification is a REAL account workflow and is unavailable in DEMO mode.':`Recorded identity review status: ${user.kycStatus}; identity profile submitted: ${user.kyc?.submittedAt?'yes':'no'}; approved identity documents on file: ${user.kycDocuments.length}. Nova cannot approve identity checks.`);
 					eventTypes.push('KYC_STATUS_LOOKUP');
 				}
 				if(/\btickets?\b/.test(requested)){
@@ -194,20 +194,23 @@ export async function POST(request:Request){
 					eventTypes.push('SUPPORT_STATUS_LOOKUP');
 				}
 				if(/\bnotifications?\b/.test(requested)){
-					const unread=await db.notification.count({where:{userId:user.id,isRead:false}});
+					const unread=await db.notification.count({where:{userId:user.id,isRead:false,OR:[{accountMode:user.accountMode},{accountMode:null}] }});
 					answers.push(`You have ${unread} unread notification${unread===1?'':'s'}. Open Notifications to review them.`);
 					eventTypes.push('NOTIFICATION_SUMMARY_LOOKUP');
 				}
 				if(/\b(deposits?|withdrawals?|payments?|payouts?)\b/.test(requested)){
-					const requests=await db.fundingRequest.findMany({where:{userId:user.id,accountMode:user.accountMode,type:{in:[FundingType.DEPOSIT,FundingType.WITHDRAWAL]}},orderBy:{createdAt:'desc'},take:5,select:{type:true,status:true,amount:true,currency:true}});
-					const recent=requests.map(item=>`${item.type.toLowerCase()} ${item.amount.toString()} ${item.currency} · ${item.status.toLowerCase().replaceAll('_',' ')}`).join('; ');
-					answers.push(`Your ${user.accountMode} account supports internal simulated deposit and withdrawal requests in Wallet. ${recent?`Recent requests: ${recent}.`:'No funding requests are recorded.'} An authorized Aurevia administrator reviews requests and any ledger changes; no payment provider, bank, broker, or crypto network is contacted. A request or evidence attachment is not proof of a real payment.`);
+					if(user.accountMode===AccountMode.DEMO){
+						answers.push('Deposits, withdrawals, and payment requests are unavailable in DEMO mode. DEMO funds are virtual and remain separate from REAL account balances.');
+					}else{
+						const requests=await db.fundingRequest.findMany({where:{userId:user.id,accountMode:AccountMode.REAL,type:{in:[FundingType.DEPOSIT,FundingType.WITHDRAWAL]}},orderBy:{createdAt:'desc'},take:5,select:{type:true,status:true,amount:true,currency:true}});
+						const recent=requests.map(item=>`${item.type.toLowerCase()} ${item.amount.toString()} ${item.currency} · ${item.status.toLowerCase().replaceAll('_',' ')}`).join('; ');
+						answers.push(`Your REAL account supports internal deposit and withdrawal requests in Wallet. ${recent?`Recent requests: ${recent}.`:'No funding requests are recorded.'} An authorized Aurevia administrator reviews requests and any ledger changes; no payment provider, bank, broker, or crypto network is contacted. A request or evidence attachment is not proof of a real payment.`);
+					}
 					eventTypes.push('PAYMENT_INSTRUCTIONS_LOOKUP');
 				}
 				accountAnswer=answers.join(' ');
 				if(eventTypes.length)await db.auditLog.create({data:{actorId:user.id,action:'NOVA_USER_CONTEXT_LOOKUP',entity:'NOVA_ACTIVITY',entityId:input.conversationId||null,metadata:{eventTypes,accountMode:user.accountMode,externalAction:false}}});
 				auditAction=eventTypes.length?'account-context':undefined;
-			}
 		}
 		if(userId&&quoteAudit)await db.auditLog.create({data:{actorId:userId,action:'NOVA_MARKET_DATA_LOOKUP',entity:'NOVA_ACTIVITY',entityId:input.conversationId||null,metadata:quoteAudit}});
 		const contact=getSupportContact();

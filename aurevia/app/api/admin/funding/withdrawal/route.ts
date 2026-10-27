@@ -7,6 +7,7 @@ import {balance,ensureSystemAccount,ensureUserLedger,postDoubleEntry} from '@/li
 import {createNotification} from '@/lib/notifications';
 import {rateLimit} from '@/lib/rate-limit';
 import {jsonSafe} from '@/lib/serializers';
+import {getRealWithdrawableBalance} from '@/lib/real-withdrawals';
 import {decryptWithdrawalDestination} from '@/lib/withdrawal-destinations';
 
 const schema=z.object({
@@ -86,10 +87,12 @@ export async function POST(request:Request){
 					if(details?.type==='CRYPTOCURRENCY'&&(!/^[0-9a-f]{64}$/i.test(input.processingReference||'')))throw new Error('CRYPTO_REFERENCE_REQUIRED');
 					const account=await ensureUserLedger(tx,current.userId,AccountMode.REAL,current.currency);
 					const ledgerBalance=await balance(tx,account.id);
-					const available=await (async()=>{
-						const others=await tx.fundingRequest.aggregate({where:{userId:current.userId,accountMode:AccountMode.REAL,currency:current.currency,type:FundingType.WITHDRAWAL,status:{in:reservingStatuses},id:{not:current.id}},_sum:{amount:true}});
-						return ledgerBalance.minus(others._sum.amount??new Prisma.Decimal(0));
-					})();
+					const available=current.currency==='USD'
+						?await getRealWithdrawableBalance(tx,current.userId,ledgerBalance,current.id)
+						:await (async()=>{
+							const others=await tx.fundingRequest.aggregate({where:{userId:current.userId,accountMode:AccountMode.REAL,currency:current.currency,type:FundingType.WITHDRAWAL,status:{in:reservingStatuses},id:{not:current.id}},_sum:{amount:true}});
+							return ledgerBalance.minus(others._sum.amount??new Prisma.Decimal(0));
+						})();
 					if(available.lt(current.amount))throw new Error('INSUFFICIENT_WITHDRAWABLE_FUNDS');
 					const system=await ensureSystemAccount(tx,`SYSTEM:MANUAL_WITHDRAWAL:REAL:${current.currency}`,`Administrator-recorded external withdrawal clearing`,current.currency,AccountMode.REAL);
 					await postDoubleEntry(tx,{reference:`FUNDING:${current.id}:EXTERNAL_WITHDRAWAL`,description:'Administrator-confirmed external withdrawal; internal ledger debit',debitAccountId:account.id,creditAccountId:system.id,amount:current.amount});
