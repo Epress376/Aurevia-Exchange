@@ -28,6 +28,13 @@ const publicRoutes=['/','/login','/register','/markets','/client-stories','/abou
 const authenticatedRoutes=['/dashboard','/trade','/markets','/portfolio','/orders','/investments','/broadcasts','/wallet','/wallet/transactions','/kyc','/tier','/settings','/support','/notifications','/activity','/wallet/convert'];
 const adminRoutes=['/admin/login','/admin','/admin/users','/admin/content','/admin/positions','/admin/settings','/admin/deleted-items','/admin/broadcasts','/admin/investments','/admin/payments','/admin/approved-deposits','/admin/approved-withdrawals','/admin/settlements','/admin/kyc','/admin/support','/admin/waitlist','/admin/providers','/admin/operations','/admin/receipts','/admin/nova','/admin/audit-logs','/admin/tiers','/admin/verified-accounts','/admin/markets'];
 
+test.afterEach(async()=>{
+	await db.user.updateMany({
+		where:{email:{in:[fixture('USER_EMAIL'),fixture('LEGACY_USER_EMAIL'),fixture('INVESTOR_EMAIL')]},status:'ACTIVE'},
+		data:{accountMode:'DEMO'},
+	});
+});
+
 function fixture(name:string){
 	const value=process.env[`AUREVIA_E2E_${name}`];
 	if(!value)throw new Error(`Playwright fixture ${name} is unavailable.`);
@@ -64,7 +71,10 @@ async function selectAccountMode(page:import('@playwright/test').Page,accountMod
 	await expect(mode).toBeVisible();
 	const selected=mode.getByRole('button',{name:accountMode==='DEMO'?'Demo':'Real',exact:true});
 	if(await selected.getAttribute('aria-pressed')!=='true')await selected.click();
-	if(options.waitForCompletion!==false)await expect(selected).toHaveAttribute('aria-pressed','true');
+	if(options.waitForCompletion!==false){
+		await expect(selected).toHaveAttribute('aria-pressed','true');
+		await expect(mode.getByRole('button',{name:accountMode==='DEMO'?'Real':'Demo',exact:true})).toBeEnabled();
+	}
 }
 
 test.describe('public routes and responsive layout',()=>{
@@ -389,6 +399,7 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 	}
 	expect(await page.getByRole('navigation',{name:'Administrator navigation'}).count()).toBe(0);
 	await expect(navigation.getByRole('link',{name:'Home'})).toHaveClass(/is-active/);
+	await selectAccountMode(page,'REAL');
 	await moreButton.click();
 	const moreMenu=page.getByRole('dialog',{name:'More'});
 	await expect(moreMenu).toBeVisible();
@@ -399,6 +410,7 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 	await expect(page).toHaveURL(/\/wallet\/transactions/);
 	await expect(moreButton).toHaveAttribute('aria-expanded','false');
 	await expect(moreButton).toHaveClass(/is-active/);
+	await selectAccountMode(page,'DEMO');
 });
 
 test('global chat support persists its position and exchanges private admin messages',async({browser,page})=>{
@@ -696,36 +708,40 @@ test('registration skips contact verification and platform health remains availa
 	const patchRequest=await profilePatchRequest;
 	const patchResponse=await profilePatchResponse;
 	expect(patchRequest.postDataJSON()).toMatchObject({firstName:'Edited',lastName:'Persistent Owner',phone:'+447400123457',country:'United Kingdom',address:'42 Persistent Test Road'});
-	expect(await patchResponse.json()).toMatchObject({name:'Edited Persistent Owner',firstName:'Edited',lastName:'Persistent Owner',phone:'+447400123457',country:'United Kingdom',address:'42 Persistent Test Road'});
+	expect(await patchResponse.json()).toMatchObject({name:'Edited Persistent Owner',firstName:'Edited',lastName:'Persistent Owner',phone:'+447400123457',country:'United Kingdom',address:null});
 	await expect(page.getByRole('status')).toContainText('Profile saved successfully.');
 	await page.reload();
 	await expect(page.getByLabel('First name')).toHaveValue('Edited');
 	await expect(page.getByLabel('Last name')).toHaveValue('Persistent Owner');
 	await expect(page.getByLabel('Phone')).toHaveValue('+447400123457');
 	await expect(page.getByLabel('Country')).toHaveValue('United Kingdom');
-	await expect(page.getByLabel('Address (optional)')).toHaveValue('42 Persistent Test Road');
+	await expect(page.getByLabel('Address (optional)')).toHaveValue('');
 	await page.goto('/dashboard');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
 	const profileResponse=await page.request.get('/api/profile');
 	expect(profileResponse.ok()).toBeTruthy();
 	const profile=await profileResponse.json();
-	expect(profile).toMatchObject({name:'Edited Persistent Owner',firstName:'Edited',lastName:'Persistent Owner',phone:'+447400123457',country:'United Kingdom',address:'42 Persistent Test Road'});
+	expect(profile).toMatchObject({name:'Edited Persistent Owner',firstName:'Edited',lastName:'Persistent Owner',phone:'+447400123457',country:'United Kingdom',address:null});
 	expect(profile.phoneVerified).toBe(false);
 	expect(profile).not.toHaveProperty('dob');
 	expect(profile).not.toHaveProperty('dateOfBirth');
 	const kycResponse=await page.request.get('/api/kyc');
-	expect((await kycResponse.json()).dob).toBe('2000-02-29T00:00:00.000Z');
+	expect(kycResponse.status()).toBe(403);
 	const demoWallet=await page.request.get('/api/wallet');
 	expect(Number((await demoWallet.json()).balance)).toBe(5000);
 	await selectAccountMode(page,'REAL');
+	await page.goto('/settings');
+	await expect(page.getByLabel('Address (optional)')).toHaveValue('42 Persistent Test Road');
+	expect(await page.request.get('/api/profile').then(response=>response.json())).toMatchObject({address:'42 Persistent Test Road'});
+	expect((await page.request.get('/api/kyc').then(response=>response.json())).dob).toBe('2000-02-29T00:00:00.000Z');
 	await page.goto('/dashboard');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.locator('.portfolio-heading .status-pill')).toContainText('REAL');
+	await expect(page.locator('.user-mode-pill')).toContainText('REAL ACCOUNT');
 	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(0);
 	await selectAccountMode(page,'DEMO');
 	await page.goto('/dashboard');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.locator('.portfolio-heading .status-pill')).toContainText('DEMO');
+	await expect(page.locator('.user-mode-pill')).toContainText('DEMO MODE · VIRTUAL');
 	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(5000);
 	await logout(page);
 	const healthAfterLogout=await page.request.get('/api/health');
@@ -733,7 +749,7 @@ test('registration skips contact verification and platform health remains availa
 	expect(await healthAfterLogout.json()).toMatchObject({ok:true,database:'ok'});
 	await loginAs(page,email,password);
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	expect(await page.request.get('/api/profile').then(response=>response.json())).toMatchObject({name:'Edited Persistent Owner',address:'42 Persistent Test Road'});
+	expect(await page.request.get('/api/profile').then(response=>response.json())).toMatchObject({name:'Edited Persistent Owner',address:null});
 	await page.goto('/');
 	await expect(page.getByRole('link',{name:/Dashboard/}).first()).toBeVisible();
 	await expect(page.getByRole('button',{name:/Notifications/})).toBeVisible();
@@ -742,6 +758,7 @@ test('registration skips contact verification and platform health remains availa
 	await expect(page.getByRole('button',{name:/Notifications/})).toBeVisible();
 	await logout(page);
 	await expect(page).toHaveURL(/\/login/);
+	await page.setViewportSize({width:390,height:844});
 	await page.goto('/');
 	await page.getByRole('button',{name:'Open navigation'}).click();
 	const primaryNavigation=page.getByRole('navigation',{name:'Primary navigation'});
@@ -829,7 +846,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	const mode=page.locator('.user-mode-control');
 	const demoMode=mode.getByRole('button',{name:'Demo',exact:true});
 	const realMode=mode.getByRole('button',{name:'Real',exact:true});
-	await page.goto('/wallet');
+	await page.goto('/wallet?action=DEPOSIT');
 	await expect(page.locator('.wallet-page-heading .wallet-eyebrow')).toContainText('DEMO ACCOUNT');
 	await expect(page.locator('.wallet-page-heading .status-pill')).toContainText('DEMO');
 	let releaseModeUpdate!:()=>void;
@@ -876,7 +893,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await expect(page.getByRole('button').filter({hasText:subject})).toBeVisible();
 });
 
-test('REAL internal funding and trading stay isolated when external brokerage is disabled',async({browser,page})=>{
+test('REAL funding remains available while trading stays disabled without brokerage',async({browser,page})=>{
 	await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 	expect((await page.request.get('/api/admin/providers/status')).status()).toBe(403);
 	expect((await page.request.post('/api/webhooks/broker/unconfigured',{data:{eventId:'synthetic-test-event'}})).status()).toBe(503);
@@ -893,7 +910,8 @@ test('REAL internal funding and trading stay isolated when external brokerage is
 		const configuredRate=await page.request.get('/api/currency-rates?to=GBP').then(response=>response.json());
 		expect(configuredRate).toMatchObject({rate:'0.8',source:'E2E configured rate',status:'CURRENT'});
 		await page.goto('/wallet');
-		await expect(page.getByText('Exchange rate: 1 USD = 0.8 GBP')).toBeVisible();
+		await page.locator('details.wallet-settings > summary').click();
+		await expect(page.getByText('Reference rate: 1 USD = 0.8 GBP')).toBeVisible();
 		await expect(page.getByText(/Approximate display: £0\.00/)).toBeVisible();
 	}finally{
 		await page.request.patch('/api/currency-preference',{data:{currency:'USD'}});
@@ -902,9 +920,9 @@ test('REAL internal funding and trading stay isolated when external brokerage is
 	}
 	const instruments=await page.request.get('/api/market').then(response=>response.json());
 	const isolatedOrder=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:instruments[0].id,side:'BUY',type:'LIMIT',quantity:1,price:0.01,expectedPrice:Number(instruments[0].price),observedAt:instruments[0].lastUpdatedAt||instruments[0].updatedAt}});
-	expect(isolatedOrder.status()).toBe(201);
-	expect((await isolatedOrder.json()).accountMode).toBe('REAL');
-	expect(await page.request.get('/api/orders').then(response=>response.json())).toHaveLength(1);
+	expect(isolatedOrder.status()).toBe(403);
+	expect((await isolatedOrder.json()).error).toContain('Alpaca Paper orders are disabled');
+	expect(await page.request.get('/api/orders').then(response=>response.json())).toHaveLength(0);
 
 	const adminContext=await browser.newContext();
 	try{
@@ -926,34 +944,33 @@ test('REAL internal funding and trading stay isolated when external brokerage is
 		expect(depositApproval.status()).toBe(200);
 		expect(Number((await depositApproval.json()).creditedAmount)).toBe(125);
 		const withdrawalApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_WITHDRAWAL_ID'),decision:'APPROVED'}});
-		expect(withdrawalApproval.status()).toBe(200);
-		expect(await withdrawalApproval.json()).toMatchObject({status:'COMPLETED',settlementReference:`INTERNAL-WITHDRAWAL:${fixture('REAL_WITHDRAWAL_ID')}`});
-		expect(await db.ledgerTransaction.findUnique({where:{reference:`FUNDING:${fixture('REAL_WITHDRAWAL_ID')}:APPROVED`}})).not.toBeNull();
+		expect(withdrawalApproval.status()).toBe(409);
+		expect((await withdrawalApproval.json()).error).toContain('audited approve, process, and externally confirmed completion workflow');
+		expect(await db.ledgerTransaction.findUnique({where:{reference:`FUNDING:${fixture('REAL_WITHDRAWAL_ID')}:APPROVED`}})).toBeNull();
+		expect(await db.fundingRequest.findUniqueOrThrow({where:{id:fixture('REAL_WITHDRAWAL_ID')},select:{status:true}})).toMatchObject({status:'PENDING_REVIEW'});
 		const duplicateApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_DEPOSIT_ID'),decision:'APPROVED'}});
 		expect(duplicateApproval.status()).toBe(409);
 		const fundingHistory=await adminPage.request.get('/api/admin/funding?history=true').then(response=>response.json());
 		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_DEPOSIT_ID'))).toMatchObject({status:'APPROVED',accountMode:'REAL',creditedAmount:'125'});
-		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_WITHDRAWAL_ID'))).toMatchObject({status:'COMPLETED',accountMode:'REAL'});
+		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_WITHDRAWAL_ID'))).toMatchObject({status:'PENDING_REVIEW',accountMode:'REAL'});
 	}finally{await adminContext.close();}
 
-	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(175);
+	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(200);
 	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).withdrawableBalance)).toBe(175);
 	const fundedInstrument=(await page.request.get('/api/market').then(response=>response.json())).find((item:{price:number})=>Number(item.price)<100);
-	expect(fundedInstrument,'approved REAL deposits should provide enough funds for a simulated trade').toBeTruthy();
+	expect(fundedInstrument,'approved REAL deposits should provide an affordable market instrument').toBeTruthy();
 	if(!fundedInstrument)throw new Error('No affordable instrument is available after the simulated REAL deposits.');
 	const fundedBuy=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:fundedInstrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(fundedInstrument.price),observedAt:fundedInstrument.lastUpdatedAt||fundedInstrument.updatedAt}});
-	expect(fundedBuy.status()).toBe(201);
-	expect((await fundedBuy.json()).accountMode).toBe('REAL');
-	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBeLessThan(175);
-	const realPositions=await page.request.get('/api/positions').then(response=>response.json()) as Array<{id:string}>;
-	expect(realPositions).toHaveLength(1);
+	expect(fundedBuy.status()).toBe(403);
+	expect((await fundedBuy.json()).error).toContain('Alpaca Paper orders are disabled');
+	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(200);
+	expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(0);
+	expect(await page.request.get('/api/orders').then(response=>response.json())).toHaveLength(0);
 	await selectAccountMode(page,'DEMO');
 	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(5000);
 	expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(0);
-	const inactivePositionClose=await page.request.post('/api/positions',{data:{positionId:realPositions[0].id}});
-	expect(inactivePositionClose.status()).toBe(404);
 	await selectAccountMode(page,'REAL');
-	expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(1);
+	expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(0);
 });
 
 test('Wallet shows the internal funding workflow only in REAL Mode and survives API failures',async({browser,page})=>{
@@ -967,30 +984,32 @@ test('Wallet shows the internal funding workflow only in REAL Mode and survives 
 		await page.goto('/wallet');
 		await expect(page.getByRole('heading',{name:/wallet|funding/i}).first()).toBeVisible();
 		await expect(page.locator('.wallet-balance-value')).toHaveText('$5,000.00');
-		await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
+		await expect(page.locator('.wallet-page-heading')).toContainText('DEMO · VIRTUAL');
+		await expect(page.locator('.wallet-balance-foot')).toContainText('Practice account · no real funds');
 		await expect(page.getByLabel('Payment method')).toHaveCount(0);
 		await expect(page.locator('.wallet-type-switch')).toHaveCount(0);
 		await expect(page.getByLabel('Amount',{exact:true})).toHaveCount(0);
-		await page.getByRole('button',{name:'Hide balances'}).click();
-		await expect(page.getByRole('button',{name:'Show balances'})).toBeVisible();
-		await page.getByRole('button',{name:'Show balances'}).click();
+		await page.getByRole('button',{name:'Hide balance'}).click();
+		await expect(page.getByRole('button',{name:'Show balance'})).toBeVisible();
+		await page.getByRole('button',{name:'Show balance'}).click();
 		await page.route('**/api/payment-methods',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Payment methods are temporarily unavailable.'})}));
-		await page.getByRole('button',{name:'Refresh wallet history'}).click();
+		await page.getByRole('button',{name:'Refresh wallet'}).click();
 		await expect(page.getByText('Loading wallet data…')).toHaveCount(0);
 		await expect(page.locator('.wallet-balance-value')).toHaveText('$5,000.00');
-		await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
+		await expect(page.locator('.wallet-page-heading')).toContainText('DEMO · VIRTUAL');
+		await expect(page.locator('.wallet-balance-foot')).toContainText('Practice account · no real funds');
 		await page.unroute('**/api/payment-methods');
 		await page.route('**/api/wallet',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Wallet data is temporarily unavailable.'})}));
-		await page.getByRole('button',{name:'Refresh wallet history'}).click();
+		await page.getByRole('button',{name:'Refresh wallet'}).click();
 		await expect(page.getByText('Loading wallet data…')).toHaveCount(0);
 		await expect(page.locator('.wallet-balance-value')).toHaveText('Unavailable');
 		await expect(page.getByRole('alert').filter({hasText:'Wallet data is temporarily unavailable.'})).toBeVisible();
 		await expect(page.getByLabel('Amount',{exact:true})).toHaveCount(0);
 		await page.unroute('**/api/wallet');
-		await page.getByRole('button',{name:'Refresh wallet history'}).click();
+		await page.getByRole('button',{name:'Refresh wallet'}).click();
 		await expect(page.locator('.wallet-balance-value')).toHaveText('$5,000.00');
 		await selectAccountMode(page,'REAL');
-		await page.goto('/wallet');
+		await page.goto('/wallet?action=DEPOSIT');
 		const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
 		expect(methods).toMatchObject({methods:[],fundingStatus:'AVAILABLE',simulationAvailable:true,realFundingAvailable:true,realWithdrawalAvailable:true,manualDepositReviewAvailable:true,externalPaymentProcessing:'DISABLED',internalLedgerOnly:true});
 		await expect(page.getByText(/internal REAL ledger credit request/i)).toBeVisible();
@@ -1048,8 +1067,8 @@ test('DEMO trading supports cash-backed buy and owned-unit sell execution',async
 		const freshMarkets=await tradePage.request.get('/api/market').then(response=>response.json());
 		const freshInstrument=freshMarkets.find((item:{symbol:string})=>item.symbol===symbol);
 		const oversell=await tradePage.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:freshInstrument.id,side:'SELL',type:'MARKET',quantity:1,expectedPrice:Number(freshInstrument.price),observedAt:freshInstrument.lastUpdatedAt}});
-		expect(oversell.status()).toBe(400);
-		expect((await oversell.json()).error).toContain('INSUFFICIENT_POSITION');
+		expect(oversell.status()).toBe(409);
+		expect((await oversell.json()).error).toContain('sell quantity exceeds your available DEMO position');
 		const privateActivity=await tradePage.request.get('/api/market/activity').then(response=>response.json());
 		expect(privateActivity.source).toBe('DEMO simulated execution records');
 		expect(privateActivity.activity.filter((event:{instrument:string;accountMode:string})=>event.instrument===symbol&&event.accountMode==='DEMO')).toHaveLength(2);
@@ -1182,7 +1201,7 @@ test('administrative balance adjustments require authorization and confirmation 
 
 		const receiptUser=await createIsolatedDemoUser('admin-fund-receipt');
 		await adminPage.goto('/admin/users');
-		await adminPage.getByPlaceholder('Search accounts').fill(receiptUser.email);
+		await adminPage.locator('.admin-users-page').getByPlaceholder('Search accounts').fill(receiptUser.email);
 		const receiptUserCard=adminPage.locator('article').filter({hasText:receiptUser.email}).first();
 		await expect(receiptUserCard).toBeVisible();
 		await receiptUserCard.getByText('Account controls, verification, and ledger').click();
@@ -1190,7 +1209,8 @@ test('administrative balance adjustments require authorization and confirmation 
 		await receiptUserCard.getByLabel('Reason',{exact:true}).fill('E2E printable admin funding receipt');
 		await receiptUserCard.getByRole('button',{name:'Record ledger adjustment'}).click();
 		await expect(receiptUserCard.getByRole('heading',{name:'Direct funding receipt'})).toBeVisible();
-		await expect(receiptUserCard.getByText('INTERNAL PAPER LEDGER RECORD')).toBeVisible();
+		await expect(receiptUserCard.getByText('OFFICIAL RECEIPT')).toBeVisible();
+		await expect(receiptUserCard.getByText('DEMO · VIRTUAL ACCOUNT RECORD')).toBeVisible();
 		const receiptDownload=adminPage.waitForEvent('download');
 		await receiptUserCard.getByRole('button',{name:'Download PDF'}).click();
 		expect((await receiptDownload).suggestedFilename()).toContain('credit-completed');
@@ -1387,11 +1407,10 @@ test('Nova escalation reaches admin and admin response appears with notification
 	expect((await notificationReply.json()).answer).toMatch(/\d+ unread notification/);
 	const investmentReply=await page.request.post('/api/support/nova',{data:{question:'What are my investment requests and available plans?',conversationId:randomUUID()}});
 	expect(investmentReply.status()).toBe(200);
-	expect((await investmentReply.json()).answer).toContain('simulated investment request');
-	expect((await investmentReply.json()).answer).toContain('virtual simulation results');
+	expect((await investmentReply.json()).answer).toContain('Investment allocations are not available in DEMO mode');
 	const paymentReply=await page.request.post('/api/support/nova',{data:{question:'How do I make a deposit?',conversationId:randomUUID()}});
 	expect((await paymentReply.json()).answer).toContain('DEMO');
-	expect((await paymentReply.json()).answer).toContain('no payment provider');
+	expect((await paymentReply.json()).answer).toContain('DEMO funds are virtual and remain separate from REAL account balances.');
 	const supportContact=await page.request.get('/api/support/contact').then(response=>response.json());
 	if(supportContact.email)await expect(page.getByRole('link',{name:new RegExp(supportContact.email.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'))})).toBeVisible();
 	else await expect(page.getByText('Direct email is not configured. Authenticated support tickets remain available.')).toBeVisible();
@@ -1442,6 +1461,7 @@ test('Nova escalation reaches admin and admin response appears with notification
 
 test('tier requests require an administrator decision and never enable real execution',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+	await selectAccountMode(page,'REAL');
 	await page.goto('/tier');
 	await expect(page.getByRole('heading',{name:'Tier and verification'})).toBeVisible();
 	const state=await page.request.get('/api/tier-requests').then(response=>response.json());
@@ -1466,7 +1486,11 @@ test('tier requests require an administrator decision and never enable real exec
 	const updated=await page.request.get('/api/tier-requests').then(response=>response.json());
 	expect(updated.currentTier).toBe(2);
 	await page.goto('/tier');
-	await expect(page.getByText(/REAL execution remains separately controlled/i)).toBeVisible();
+	await expect(page.getByText('Step-by-step reviews with no invented financial limits or automatic upgrades.')).toBeVisible();
+	const instrument=(await page.request.get('/api/market').then(response=>response.json()))[0];
+	const realOrder=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:instrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(instrument.price),observedAt:instrument.lastUpdatedAt||instrument.updatedAt}});
+	expect(realOrder.status()).toBe(403);
+	expect((await realOrder.json()).error).toContain('Alpaca Paper orders are disabled');
 });
 
 test('administrator email sign-in persists through refresh and logout removes admin access',async({page})=>{
@@ -1477,17 +1501,17 @@ test('administrator email sign-in persists through refresh and logout removes ad
 	await page.getByRole('checkbox',{name:/Replace another active Aurevia session/}).check();
 	await page.getByRole('button',{name:'Enter control center'}).click();
 	await page.waitForURL(/\/admin$/);
-	await expect(page.getByRole('heading',{name:'Aurevia administration'})).toBeVisible();
-	await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Control room'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
+	await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard'})).toBeVisible();
 	await page.setViewportSize({width:390,height:844});
 	await page.getByRole('banner').getByRole('button',{name:'Open admin menu'}).click();
 	const adminNavigation=page.getByRole('navigation',{name:'Administrator navigation'});
-	await expect(adminNavigation.getByRole('link',{name:'Control room'})).toBeVisible();
+	await expect(adminNavigation.getByRole('link',{name:'Dashboard'})).toBeVisible();
 	await expect(adminNavigation.getByRole('link',{name:'Verified accounts'})).toBeVisible();
-	await expect(adminNavigation.getByRole('link',{name:'Payments'})).toBeVisible();
+	await expect(adminNavigation.getByRole('link',{name:'Funding'})).toBeVisible();
 	expect(await page.getByRole('navigation',{name:'Primary navigation'}).count()).toBe(0);
 	await page.reload();
-	await expect(page.getByRole('heading',{name:'Aurevia administration'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
 	await page.setViewportSize({width:1440,height:900});
 	await logout(page);
 	await expect(page).toHaveURL(/\/login/);
@@ -1557,35 +1581,40 @@ test('administrator sessions stay in the isolated console and cannot use custome
 	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
 	await page.goto('/dashboard');
 	await expect(page).toHaveURL(/\/admin$/);
-	await expect(page.getByRole('heading',{name:'Aurevia administration'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
 	await expect(page.getByRole('link',{name:'User portal'})).toHaveCount(0);
 	expect((await page.request.get('/api/profile')).status()).toBe(403);
 	await page.goto('/wallet');
 	await expect(page).toHaveURL(/\/admin$/);
 });
 
-test('verified personal details become read-only after three calendar months',async({page})=>{
-	const user=await db.user.findUniqueOrThrow({where:{email:fixture('USER_EMAIL')},select:{id:true,name:true}});
+test('verified personal details remain read-only during the two-month lock window',async({page})=>{
+	const user=await db.user.findUniqueOrThrow({where:{email:fixture('USER_EMAIL')},select:{id:true,name:true,kycStatus:true,verifiedAt:true}});
 	const verifiedAt=new Date();
-	verifiedAt.setUTCMonth(verifiedAt.getUTCMonth()-4);
-	await db.user.update({where:{id:user.id},data:{kycStatus:'APPROVED',verifiedAt}});
-	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	await page.goto('/settings');
-	await expect(page.getByRole('status').filter({hasText:'Verified profile details are locked'})).toBeVisible();
-	await expect(page.getByLabel('First name')).toBeDisabled();
-	await expect(page.getByRole('button',{name:'Save profile'})).toBeDisabled();
-	const update=await page.request.patch('/api/profile',{data:{name:'Changed Name',country:'Test',address:'Changed address'}});
-	expect(update.status()).toBe(423);
-	expect((await update.json()).error).toContain('locked');
-	expect((await db.user.findUniqueOrThrow({where:{id:user.id},select:{name:true}})).name).toBe(user.name);
+	verifiedAt.setUTCMonth(verifiedAt.getUTCMonth()-1);
+	try{
+		await db.user.update({where:{id:user.id},data:{kycStatus:'APPROVED',verifiedAt}});
+		await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+		await selectAccountMode(page,'REAL');
+		await page.goto('/settings');
+		await expect(page.getByRole('status').filter({hasText:'Verified profile details are locked'})).toBeVisible();
+		await expect(page.getByLabel('First name')).toBeDisabled();
+		await expect(page.getByRole('button',{name:'Save profile'})).toBeDisabled();
+		const update=await page.request.patch('/api/profile',{data:{name:'Changed Name',country:'Test',address:'Changed address'}});
+		expect(update.status()).toBe(423);
+		expect((await update.json()).error).toContain('locked');
+		expect((await db.user.findUniqueOrThrow({where:{id:user.id},select:{name:true}})).name).toBe(user.name);
+	}finally{
+		await db.user.update({where:{id:user.id},data:{kycStatus:user.kycStatus,verifiedAt:user.verifiedAt}});
+	}
 });
 
 test('administrator user and KYC actions persist and report protected actions',async({page})=>{
 	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
 	await page.goto('/admin');
-	await expect(page.getByRole('heading',{name:'Aurevia administration'})).toBeVisible();
-	const workspaceLinks=['User accounts','Client stories','Investment operations','Payments','Open positions','Market management','System settings','Pending verification','Orders and ledger','Support inbox','Audit log'];
-	for(const label of workspaceLinks)await expect(page.locator('main').getByRole('link',{name:new RegExp(label)})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
+	const shortcuts=page.getByRole('navigation',{name:'Administrator dashboard shortcuts'});
+	for(const label of ['Users','KYC verification','Funding','Investments','Orders and ledger','Settings'])await expect(shortcuts.getByRole('link',{name:label})).toBeVisible();
 	const users=await page.request.get('/api/admin/users').then(response=>response.json());
 	const user=users.find((item:{email:string})=>item.email===fixture('USER_EMAIL'));
 	const investor=users.find((item:{email:string})=>item.email===fixture('INVESTOR_EMAIL'));
@@ -1662,7 +1691,7 @@ test('administrator user and KYC actions persist and report protected actions',a
 	expect(verifiedResults.items[0]).toMatchObject({id:investor.id,email:fixture('INVESTOR_EMAIL'),kycStatus:'APPROVED',approvedTier:1,approval:{reviewedBy:{email:fixture('ADMIN_EMAIL')}}});
 	await page.goto('/admin/verified-accounts');
 	await expect(page.getByRole('heading',{name:'Verified Accounts'})).toBeVisible();
-	await page.getByLabel('Search').fill(fixture('INVESTOR_EMAIL'));
+	await page.getByRole('textbox',{name:'Search',exact:true}).fill(fixture('INVESTOR_EMAIL'));
 	await expect(page.getByText(fixture('INVESTOR_EMAIL'),{exact:true})).toBeVisible();
 	await page.getByText(fixture('INVESTOR_EMAIL'),{exact:true}).click();
 	await expect(page.getByText(fixture('ADMIN_EMAIL'),{exact:false})).toBeVisible();
@@ -1733,18 +1762,23 @@ test('Nova activity is redacted and visible only to administrators',async({page}
 });
 
 for(const viewport of viewports){
-	for(const route of adminRoutes){
-		test(`admin ${route} renders without overflow at ${viewport.width}px`,async({page})=>{
-			await page.setViewportSize(viewport);
-			await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+	test(`admin routes render without overflow at ${viewport.width}px`,async({page})=>{
+		await page.setViewportSize(viewport);
+		const loginResponse=await page.goto('/admin/login');
+		expect(loginResponse?.status(),'/admin/login').toBe(200);
+		await expect(page.locator('h1').first(),'/admin/login').toBeVisible();
+		await expectNoHorizontalOverflow(page);
+
+		await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+		for(const route of adminRoutes.filter(path=>path!=='/admin/login')){
 			const response=await page.goto(route);
 			expect(response?.status(),route).toBe(200);
 			await expect(page.locator('h1').first(),route).toBeVisible();
-			if(route!=='/admin/login'&&viewport.width<1280)await expect(page.getByRole('button',{name:'Open admin menu'}),route).toBeVisible();
-			if(route!=='/admin/login'&&viewport.width>=1280)await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard',exact:true}),route).toBeVisible();
+			if(viewport.width<=1020)await expect(page.getByRole('button',{name:'Open admin menu'}),route).toBeVisible();
+			else await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard',exact:true}),route).toBeVisible();
 			await expectNoHorizontalOverflow(page);
-		});
-	}
+		}
+	});
 }
 
 test('DEMO order idempotency prevents duplicate fills and user history stays isolated',async({browser,page})=>{
@@ -1814,13 +1848,12 @@ test('DEMO deposits and withdrawals are unavailable in the wallet and rejected b
 	const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
 	expect(methods).toMatchObject({btcAddress:null,fundingStatus:'DISABLED',realFundingAvailable:false,realWithdrawalAvailable:false});
 	const fundingCount=await db.fundingRequest.count({where:{userId:user.id,accountMode:'DEMO'}});
-	await page.goto('/wallet?type=DEPOSIT');
+	await page.goto('/wallet?action=DEPOSIT');
 	await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
 	await expect(page.getByRole('button',{name:/Deposit|Withdrawal/})).toHaveCount(0);
 	await expect(page.getByLabel('Bitcoin address')).toHaveCount(0);
 	await expect(page.locator('input[type="file"]')).toHaveCount(0);
 	await page.goto('/dashboard');
-	await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
 	await expect(page.getByRole('link',{name:'Deposit'})).toHaveCount(0);
 	await expect(page.getByRole('link',{name:'Request withdrawal'})).toHaveCount(0);
 
@@ -1838,7 +1871,7 @@ test('DEMO deposits and withdrawals are unavailable in the wallet and rejected b
 	expect(Number(walletAfter.balance)).toBe(Number(walletBefore.balance));
 });
 
-test('REAL withdrawal requests reserve balance until administrator approval debits once',async({browser,page})=>{
+test('REAL withdrawal requests reserve balance until an attested payout debits once',async({browser,page})=>{
 	const isolated=await createIsolatedDemoUser('real-withdrawal');
 	const user=await db.user.findUniqueOrThrow({where:{email:isolated.email}});
 	await db.user.update({where:{id:user.id},data:{accountMode:'REAL',kycStatus:'APPROVED',verifiedAt:new Date(),depositEnabled:true,withdrawalEnabled:true,accountRestricted:false}});
@@ -1853,6 +1886,12 @@ test('REAL withdrawal requests reserve balance until administrator approval debi
 		await selectAccountMode(page,'REAL');
 		const walletBefore=await page.request.get('/api/wallet').then(response=>response.json());
 		expect(walletBefore).toMatchObject({accountMode:'REAL',balance:'0',withdrawableBalance:'0'});
+		const destinationResponse=await page.request.post('/api/withdrawal-destinations',{data:{
+			type:'BANK_TRANSFER',nickname:'E2E test destination',countryCode:'US',bankName:'Test Bank',
+			beneficiaryName:'E2E REAL Withdrawal User',accountNumber:'123456789',accountType:'CHECKING',routingNumber:'123456789',
+		}});
+		expect(destinationResponse.status()).toBe(201);
+		const destination=await destinationResponse.json().then(body=>body.destination);
 		const deposit=await page.request.post('/api/wallet',{headers:{'Idempotency-Key':randomUUID()},data:{type:'DEPOSIT',amount:100,currency:'USD'}});
 		expect(deposit.status()).toBe(201);
 		const depositRequest=await deposit.json();
@@ -1868,7 +1907,7 @@ test('REAL withdrawal requests reserve balance until administrator approval debi
 		await selectAccountMode(page,'REAL');
 		const submission=await page.request.post('/api/wallet',{
 			headers:{'Idempotency-Key':randomUUID()},
-			data:{type:'WITHDRAWAL',amount:25,currency:'USD',accountMode:'DEMO',destinationInfo:'E2E test destination'},
+			data:{type:'WITHDRAWAL',amount:25,currency:'USD',withdrawalDestinationId:destination.id,destinationConfirmed:true},
 		});
 		expect(submission.status()).toBe(201);
 		const request=await submission.json();
@@ -1884,9 +1923,22 @@ test('REAL withdrawal requests reserve balance until administrator approval debi
 		await expect(adminPage.getByRole('heading',{name:'Withdrawal review'})).toBeVisible();
 		const requestRow=adminPage.locator('.admin-funding-row').filter({hasText:user.email});
 		await expect(requestRow).toBeVisible();
-		await requestRow.getByRole('button',{name:'Approve and debit internal ledger'}).click();
-		await expect(adminPage.getByRole('status').filter({hasText:'Internal REAL withdrawal request approved'})).toBeVisible();
-		expect(await db.ledgerTransaction.findUnique({where:{reference:`FUNDING:${request.id}:APPROVED`}})).not.toBeNull();
+		await requestRow.getByRole('button',{name:'Approve · reserve funds'}).click();
+		await expect(adminPage.getByRole('status').filter({hasText:'Withdrawal approved; amount remains reserved and no payment is confirmed.'})).toBeVisible();
+		const walletReserved=await page.request.get('/api/wallet').then(response=>response.json());
+		expect(Number(walletReserved.balance)).toBe(100);
+		expect(Number(walletReserved.withdrawableBalance)).toBe(75);
+
+		const processingKey=randomUUID();
+		const processing=await adminPage.request.post('/api/admin/funding/withdrawal',{headers:{'Idempotency-Key':processingKey},data:{id:request.id,action:'PROCESS'}});
+		expect(processing.status()).toBe(200);
+		const completionKey=randomUUID();
+		const payout={id:request.id,action:'COMPLETE',processingReference:`E2E-${randomUUID()}`,confirmExternalProcessing:true};
+		const completed=await adminPage.request.post('/api/admin/funding/withdrawal',{headers:{'Idempotency-Key':completionKey},data:payout});
+		expect(completed.status()).toBe(200);
+		const replay=await adminPage.request.post('/api/admin/funding/withdrawal',{headers:{'Idempotency-Key':completionKey},data:payout});
+		expect(replay.status()).toBe(200);
+		expect(await db.ledgerTransaction.count({where:{reference:`FUNDING:${request.id}:EXTERNAL_WITHDRAWAL`}})).toBe(1);
 		const walletApproved=await page.request.get('/api/wallet').then(response=>response.json());
 		expect(Number(walletApproved.balance)).toBe(75);
 		expect(Number(walletApproved.withdrawableBalance)).toBe(75);
@@ -1912,7 +1964,7 @@ test('DEMO users cannot access configured legacy address details or receipt uplo
 		const inaccessibleRealRequest=await db.fundingRequest.create({data:{userId:user.id,type:'DEPOSIT',method:'E2E REAL funding record',amount:10,currency:'USD',accountMode:'REAL',status:'PENDING_REVIEW',idempotencyKey:randomUUID()}});
 		const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
 		expect(methods).toMatchObject({btcAddress:null,externalPaymentProcessing:'DISABLED',fundingStatus:'DISABLED'});
-		await page.goto('/wallet');
+		await page.goto('/wallet?action=DEPOSIT');
 		await expect(page.getByRole('status').filter({hasText:'Deposits and withdrawals are available in REAL Mode only.'})).toBeVisible();
 		await expect(page.getByText(address,{exact:true})).toHaveCount(0);
 		await expect(page.getByRole('img',{name:'QR code for the administrator-configured Bitcoin address'})).toHaveCount(0);
@@ -1923,7 +1975,7 @@ test('DEMO users cannot access configured legacy address details or receipt uplo
 		uploadBody.append('file',new Blob([PNG.sync.write(new PNG({width:1,height:1}))],{type:'image/png'}),'proof.png');
 		const receiptUpload=await page.request.post(`/api/wallet/${inaccessibleRealRequest.id}/receipt`,{multipart:uploadBody});
 		expect(receiptUpload.status()).toBe(403);
-		expect((await receiptUpload.json()).error).toBe('Deposits and withdrawals are available in REAL Mode only.');
+		expect((await receiptUpload.json()).error).toBe('Receipt management is available in REAL mode only.');
 		const directDeposit=await page.request.post('/api/wallet',depositPostOptions(randomUUID(),{type:'DEPOSIT',amount:20,currency:'USD',accountMode:'REAL',simulatedBitcoinAddress:address,simulatedBitcoinAddressAcknowledged:true}));
 		expect(directDeposit.status()).toBe(403);
 		expect(await db.fundingRequest.count({where:{userId:user.id,accountMode:'DEMO'}})).toBe(fundingCount);
@@ -1951,9 +2003,6 @@ test('display currency preference persists across account and activity surfaces 
 	await expect(page.getByLabel('Preferred display currency')).toHaveValue('GBP');
 	await page.getByLabel('Preferred display currency').selectOption('EUR');
 	await expect.poll(async()=>(await page.request.get('/api/currency-preference').then(response=>response.json())).currency).toBe('EUR');
-	await page.goto('/dashboard');
-	await expect(page.getByLabel('Preferred display currency')).toHaveValue('EUR');
-	await expect(page.getByText(/Internal reference rate/)).toBeVisible();
 	await page.goto('/activity');
 	await expect(page.getByLabel('Preferred display currency')).toHaveValue('EUR');
 	await page.goto('/wallet/transactions');
@@ -1995,17 +2044,17 @@ test('REAL internal deposit request remains uncredited until administrator appro
 		await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 		await selectAccountMode(page,'REAL');
 		const before=await page.request.get('/api/wallet').then(response=>response.json());
-		await page.goto('/wallet');
+		await page.goto('/wallet?action=DEPOSIT');
 		await expect(page.getByText(/internal REAL ledger credit request/i)).toBeVisible();
 		await expect(page.getByRole('heading',{name:'Administrator Review'})).toBeVisible();
-		await expect(page.getByText(/No external payment, blockchain verification, bank payout, or cryptocurrency transfer is processed/)).toBeVisible();
+		await expect(page.getByText(/no external payment is processed/i)).toBeVisible();
 		await expect(page.getByLabel('Bitcoin address')).toHaveCount(0);
 		await expect(page.getByRole('img',{name:/Bitcoin address/})).toHaveCount(0);
 		await page.getByLabel('Amount',{exact:true}).fill('20.00');
 		await page.getByLabel('Request reference (optional)').fill(`E2E-${randomUUID()}`);
 		await page.getByRole('button',{name:'Submit internal credit request'}).click();
 		await expect(page.getByRole('heading',{name:'Confirm deposit request'})).toBeVisible();
-		await expect(page.getByText(/No external payment or transfer will occur/)).toBeVisible();
+		await expect(page.getByText(/This is an internal ledger request only; no external payment occurs/)).toBeVisible();
 		await page.getByRole('button',{name:'Confirm request'}).click();
 		await expect(page.getByText(/The ledger has not been posted/)).toBeVisible();
 		const after=await page.request.get('/api/wallet').then(response=>response.json());
@@ -2046,13 +2095,13 @@ test('external payment methods cannot be configured or exposed to users',async({
 		expect(await adminPage.request.get('/api/admin/payment-methods').then(response=>response.json())).toEqual([]);
 		await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 		await selectAccountMode(page,'REAL');
-		await page.goto('/wallet');
+		await page.goto('/wallet?action=DEPOSIT');
 		const methods=await page.request.get('/api/payment-methods').then(response=>response.json());
 		expect(methods).toMatchObject({methods:[],externalPaymentProcessing:'DISABLED'});
 		await expect(page.getByLabel('Request reference (optional)')).toBeVisible();
-		await expect(page.getByLabel('Optional attachment for administrator review')).toBeVisible();
+		await expect(page.getByLabel('Optional supporting attachment')).toBeVisible();
 		await expect(page.getByLabel('Bitcoin transaction reference')).toHaveCount(0);
-		await expect(page.getByText(/no external payment, blockchain verification, bank payout, or cryptocurrency transfer is processed/i)).toBeVisible();
+		await expect(page.getByText(/no external payment is processed/i)).toBeVisible();
 	}finally{await adminContext.close();}
 });
 
@@ -2136,11 +2185,11 @@ test('approved internal deposit receipts show the requested ledger credit and re
 		expect(transaction).toMatchObject({status:'APPROVED',creditedAmount:'100',reviewedBy:{email:fixture('ADMIN_EMAIL')}});
 		expect(transaction.reviewedAt).toBeTruthy();
 		await page.goto('/wallet');
-		const receiptDetails=page.locator('details').filter({hasText:request.id}).first();
+		await page.locator('.wallet-ledger-records > summary').click();
+		const receiptDetails=page.locator('.wallet-receipt-list > details').filter({hasText:request.id}).first();
 		await receiptDetails.locator('summary').click();
 		await expect(receiptDetails.getByText('$100.00',{exact:true}).first()).toBeVisible();
-		await receiptDetails.getByRole('button',{name:'Transaction details'}).click();
-		await expect(receiptDetails.getByText('Reviewed by',{exact:true})).toBeVisible();
+		await expect(receiptDetails.getByRole('heading',{name:'Transaction Details'})).toBeVisible();
 		await expect(receiptDetails.getByText(fixture('ADMIN_EMAIL'),{exact:true})).toHaveCount(0);
 		const downloadPromise=page.waitForEvent('download');
 		await receiptDetails.getByRole('button',{name:'Download PDF'}).click();
@@ -2163,7 +2212,7 @@ test('KYC access is owner-scoped and unavailable signed Storage access fails clo
 	const documentId=fixture('KYC_DOCUMENT_ID');
 	const pendingUser=await createIsolatedDemoUser('kyc-access');
 	await loginAs(page,pendingUser.email,pendingUser.password);
-	expect((await page.request.get(`/api/kyc/documents/${documentId}`)).status()).toBe(404);
+	expect((await page.request.get(`/api/kyc/documents/${documentId}`)).status()).toBe(403);
 	expect((await page.request.get(`/api/admin/kyc/documents/${documentId}`)).status()).toBe(403);
 
 	const unauthenticatedContext=await browser.newContext();
@@ -2176,6 +2225,7 @@ test('KYC access is owner-scoped and unavailable signed Storage access fails clo
 	try{
 		const investorPage=await investorContext.newPage();
 		await loginAs(investorPage,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
+		await selectAccountMode(investorPage,'REAL');
 		const documents=await investorPage.request.get('/api/kyc/documents').then(response=>response.json());
 		expect(documents.map((document:{id:string})=>document.id)).toContain(documentId);
 		const ownerAccess=await investorPage.request.get(`/api/kyc/documents/${documentId}`);
@@ -2189,6 +2239,7 @@ test('KYC access is owner-scoped and unavailable signed Storage access fails clo
 		expect(approvedUpload.status()).toBe(409);
 		expect((await investorPage.request.get('/api/kyc/documents').then(response=>response.json()))).toHaveLength(documents.length);
 	}finally{await investorContext.close();}
+	await db.user.update({where:{email:pendingUser.email},data:{accountMode:'REAL'}});
 	const pendingDocuments=await page.request.get('/api/kyc/documents').then(response=>response.json());
 	const upload=await page.request.post('/api/kyc/documents',{multipart:{
 		kind:'IDENTITY_DOCUMENT',
@@ -2378,29 +2429,16 @@ test('admin investment initiation is idempotent and reconciles against reserved 
 		const userId=await userPage.request.get('/api/profile').then(response=>response.json().then(profile=>profile.id));
 		const before=Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance);
 		const initialEligible=await userPage.request.get('/api/investments').then(response=>response.json());
-		const availableBefore=new Prisma.Decimal(initialEligible.availableBalance);
+		expect(initialEligible).toMatchObject({accountMode:'DEMO',availableBalance:'0',opportunities:[],requests:[]});
 		await db.fundingRequest.create({data:{userId,type:'WITHDRAWAL',method:'E2E reserved withdrawal',amount:500,currency:'USD',accountMode:'DEMO',status:'PENDING_REVIEW'}});
-		const userOverdraw=await userPage.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:opportunity.id,amount:availableBefore.minus(500).plus(1).toNumber()}});
-		expect(userOverdraw.status()).toBe(400);
-		const expectedAvailable=availableBefore.minus(500).toString();
-		expect((await userPage.request.get('/api/investments').then(response=>response.json())).availableBalance).toBe(expectedAvailable);
+		const userOverdraw=await userPage.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:opportunity.id,amount:100}});
+		expect(userOverdraw.status()).toBe(403);
+		expect((await userOverdraw.json()).error).toContain('unavailable in DEMO');
+		const expectedAvailable=Prisma.Decimal.max(0,new Prisma.Decimal(before).minus(500)).toString();
+		expect((await userPage.request.get('/api/investments').then(response=>response.json())).availableBalance).toBe('0');
 		const eligibleUsers=await page.request.get(`/api/admin/investments/users?search=${encodeURIComponent(demoUser.email)}`).then(response=>response.json());
 		expect(eligibleUsers.items.find((item:{id:string})=>item.id===userId).availableBalances.DEMO).toBe(expectedAvailable);
-		await userPage.setViewportSize({width:390,height:844});
-		await userPage.goto('/investments');
-		const opportunityCard=userPage.locator('.investment-opportunity').filter({hasText:'E2E admin initiated plan'});
-		await expect(opportunityCard).toBeVisible();
-		await opportunityCard.locator('input[type="number"]').fill('100');
-		await opportunityCard.getByRole('button',{name:'Review allocation'}).click();
-		await expect(opportunityCard.getByRole('group',{name:'Review E2E admin initiated plan allocation'})).toBeVisible();
-		await opportunityCard.getByRole('button',{name:'Confirm simulated allocation'}).click();
-		await expect(userPage.getByRole('status').filter({hasText:'simulated investment request recorded'})).toBeVisible();
-		await opportunityCard.locator('input[type="number"]').fill('50');
-		await opportunityCard.getByRole('button',{name:'Review allocation'}).click();
-		await opportunityCard.getByRole('button',{name:'Confirm simulated allocation'}).click();
-		await expect.poll(()=>db.investmentRequest.count({where:{userId,opportunityId:opportunity.id,accountMode:'DEMO'}})).toBe(2);
-		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-150);
-		await expectNoHorizontalOverflow(userPage);
+		expect((await userPage.request.get('/api/investments').then(response=>response.json())).opportunities).toEqual([]);
 		const idempotencyKey=randomUUID();
 		const startsAt=new Date(Date.now()-1000);
 		const maturesAt=new Date(startsAt.getTime()+30*86_400_000);
@@ -2415,8 +2453,8 @@ test('admin investment initiation is idempotent and reconciles against reserved 
 		const mismatchedReplay=await page.request.post('/api/admin/investments',{headers:{'Idempotency-Key':idempotencyKey},data:{...payload,amount:300}});
 		expect(mismatchedReplay.status()).toBe(409);
 		expect(await db.ledgerTransaction.count({where:{reference:`INVESTMENT:${investment.id}:RESERVE`}})).toBe(1);
-		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-400);
-		expect((await userPage.request.get('/api/investments').then(response=>response.json())).requests.some((request:{id:string})=>request.id===investment.id)).toBe(true);
+		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-250);
+		expect((await userPage.request.get('/api/investments').then(response=>response.json())).requests).toEqual([]);
 
 		const scheduledStart=new Date(Date.now()+60_000);
 		const scheduledEnd=new Date(scheduledStart.getTime()+7*86_400_000);
@@ -2426,14 +2464,14 @@ test('admin investment initiation is idempotent and reconciles against reserved 
 		expect(scheduled.status).toBe('APPROVED');
 		await settleMaturedSimulatedInvestments(new Date(scheduledStart.getTime()+1));
 		expect((await db.investmentRequest.findUniqueOrThrow({where:{id:scheduled.id}})).status).toBe('ACTIVE');
-		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-500);
+		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-350);
 		await db.investmentRequest.update({where:{id:scheduled.id},data:{maturesAt:new Date(Date.now()-1000)}});
 		await settleMaturedSimulatedInvestments(new Date());
 		const settled=await db.investmentRequest.findUniqueOrThrow({where:{id:scheduled.id}});
 		expect(settled.status).toBe('SETTLED');
 		expect(settled.simulatedPayout?.toFixed(2)).toBe('108.00');
 		expect(await db.ledgerTransaction.count({where:{reference:`INVESTMENT:${scheduled.id}:SIMULATED_RETURN`}})).toBe(0);
-		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-392);
+		expect(Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(before-242);
 
 		const currentBalance=Number((await userPage.request.get('/api/wallet').then(response=>response.json())).balance);
 		const overBalance=await page.request.post('/api/admin/investments',{headers:{'Idempotency-Key':randomUUID()},data:{...payload,amount:currentBalance+1}});
