@@ -118,7 +118,7 @@ export const authOptions:NextAuthOptions={
       if(!user.id)return;
       const bucket=Math.floor(Date.now()/300_000);
       try{
-        await createNotification(db,{userId:user.id,type:NotificationType.SECURITY,title:'New sign-in',message:'A successful sign-in to your Aurevia Invest account was recorded.',dedupeKey:`security:${user.id}:signin:${bucket}`,actionUrl:'/settings#security'});
+        await createNotification(db,{userId:user.id,type:NotificationType.SECURITY,title:'New sign-in',message:'A successful sign-in to your Aurevia Exchange account was recorded.',dedupeKey:`security:${user.id}:signin:${bucket}`,actionUrl:'/settings#security'});
       }catch{
         console.warn('Unable to persist sign-in notification.');
       }

@@ -182,12 +182,12 @@ export default function ReceiptGenerator({receipt}:{receipt:ReceiptData}){
 					<p>{description}</p>
 					<p className="receipt-record-source">Record source: {gateway}</p>
 					{currentReceipt.externalReference&&<p className="receipt-user-reference"><b>User-provided reference · unverified</b><span>{currentReceipt.externalReference}</span></p>}
-					<p className="receipt-thank-you">Thank you for choosing Aurevia Invest.</p>
+					<p className="receipt-thank-you">Thank you for choosing Aurevia Exchange.</p>
 					<div className="receipt-security"><ShieldCheck size={19}/><div><strong>Secure · Encrypted · Trusted</strong><small>Your transaction details are presented from the authorized account record. Keep this receipt private.</small></div></div>
 				</section>
 				<footer className="receipt-footer">
 					<p>Your Future. Our Priority.</p>
-					<div className="receipt-seal" aria-label="Aurevia Invest seal"><Image src="/aurevia-logo.png" alt="" width={44} height={44}/><span>AUREVIA<br/>INVEST</span></div>
+					<div className="receipt-seal" aria-label="Aurevia Exchange seal"><Image src="/aurevia-logo.png" alt="" width={44} height={44}/><span>AUREVIA<br/>EXCHANGE</span></div>
 					<small>{currentReceipt.accountMode==='REAL'?'REAL · INTERNAL LEDGER RECORD':currentReceipt.accountMode==='DEMO'?'DEMO · VIRTUAL ACCOUNT RECORD':'AUREVIA ACCOUNT RECORD'}</small>
 				</footer>
 			</div>

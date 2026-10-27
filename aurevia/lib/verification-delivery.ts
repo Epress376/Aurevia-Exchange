@@ -59,8 +59,8 @@ export async function deliverVerificationCode(channel:VerificationChannel,contac
 	if(!configured)return false;
 	const destination=channel===VerificationChannel.EMAIL?contact.email:contact.phone;
 	if(!destination)return false;
-	const subject='Verify your Aurevia Invest account';
-	const text=`Your Aurevia Invest verification code is ${code}. It expires in ${verificationConfig.expiresInMinutes} minutes. If you did not request it, you can ignore this message.`;
+	const subject='Verify your Aurevia Exchange account';
+	const text=`Your Aurevia Exchange verification code is ${code}. It expires in ${verificationConfig.expiresInMinutes} minutes. If you did not request it, you can ignore this message.`;
 	try{
 		const response=await fetch(configured.url,{method:'POST',headers:{authorization:`Bearer ${configured.key}`,'content-type':'application/json'},body:JSON.stringify({channel:channel.toLowerCase(),to:destination,name:contact.name,subject,text}),signal:AbortSignal.timeout(8000)});
 		return response.ok;

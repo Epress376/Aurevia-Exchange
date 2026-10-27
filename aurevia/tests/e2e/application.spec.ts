@@ -514,7 +514,7 @@ test('startup releases page interaction if session initialization is delayed',as
 		await route.fulfill({status:200,contentType:'application/json',body:'{}'});
 	});
 	await page.goto('/login');
-	const startup=page.getByRole('status',{name:'Loading Aurevia Invest'});
+	const startup=page.getByRole('status',{name:'Loading Aurevia Exchange'});
 	if(await startup.count())await expect(startup).toBeHidden({timeout:5000});
 	const email=page.getByLabel('Email or administrator username');
 	await email.fill('qa@example.invalid');

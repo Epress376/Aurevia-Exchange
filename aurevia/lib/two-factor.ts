@@ -5,7 +5,7 @@ export function generateTotpSecret() {
   return generateSecret();
 }
 
-export function buildTotpUri(secret: string, email: string, issuer = 'Aurevia Invest') {
+export function buildTotpUri(secret: string, email: string, issuer = 'Aurevia Exchange') {
   return generateURI({ issuer, label: email, secret });
 }
 

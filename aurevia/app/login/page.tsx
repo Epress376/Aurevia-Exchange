@@ -4,7 +4,6 @@ import {FormEvent,useEffect,useState} from 'react';
 import {signIn,useSession} from 'next-auth/react';
 import {useRouter} from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import {Eye,EyeOff,LoaderCircle,ShieldCheck} from 'lucide-react';
 import Nav from '@/components/Nav';
 import {useLocale} from '@/lib/i18n-context';
@@ -42,7 +41,7 @@ export default function Login(){
 	}
 
 	return <><Nav/><main className="auth-scene"><section className="auth-card" aria-labelledby="signin-title">
-		<div className="auth-brand"><Image src="/aurevia-logo.png" alt="" width={52} height={52} priority/><span>AUREVIA <b>INVEST</b></span></div>
+		<div className="auth-brand"><span className="brand-mark" aria-hidden="true">A</span><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></div>
 		<p className="account-kicker">{translate('secureAccess')}</p>
 		<h1 id="signin-title" className="auth-heading">{translate('welcomeBack')}</h1>
 		<p className="auth-subtitle">{translate('signIn')}</p>

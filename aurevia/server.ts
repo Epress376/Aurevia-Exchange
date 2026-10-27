@@ -105,7 +105,7 @@ async function startServer(){
   });
 
   http.listen(port,'0.0.0.0',()=>{
-    console.log(`Aurevia Invest HTTP server listening on 0.0.0.0:${port}`);
+    console.log(`Aurevia Exchange HTTP server listening on 0.0.0.0:${port}`);
     void prepareApplication();
   });
 }

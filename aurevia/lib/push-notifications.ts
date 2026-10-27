@@ -101,7 +101,7 @@ function safePayload(notification:{id:string;type:NotificationType;relatedEntity
 			?'There is an update to your investments.'
 			:'There is a new update to your account.';
 	const tag=`aurevia-${createHash('sha256').update(notification.id).digest('hex').slice(0,16)}`;
-	return JSON.stringify({title:'Aurevia Invest',body,url:safeActionUrl(notification.actionUrl),tag});
+	return JSON.stringify({title:'Aurevia Exchange',body,url:safeActionUrl(notification.actionUrl),tag});
 }
 
 function deliveryError(error:unknown){

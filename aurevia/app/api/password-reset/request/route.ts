@@ -38,7 +38,7 @@ export async function POST(request:Request){
 			await tx.passwordResetToken.updateMany({where:{userId:user.id,consumedAt:null},data:{consumedAt:new Date()}});
 			await tx.passwordResetToken.create({data:{userId:user.id,tokenHash,expiresAt}});
 		});
-		const delivery=await sendEmail({to:user.email,subject:'Aurevia Invest password recovery',text:`Use this one-time link to reset your password. It expires in 30 minutes.\n\n${resetUrl}?token=${encodeURIComponent(token)}\n\nIf you did not request this, ignore this email.`});
+		const delivery=await sendEmail({to:user.email,subject:'Aurevia Exchange password recovery',text:`Use this one-time link to reset your password. It expires in 30 minutes.\n\n${resetUrl}?token=${encodeURIComponent(token)}\n\nIf you did not request this, ignore this email.`});
 		if(!delivery.sent){
 			await db.passwordResetToken.updateMany({where:{tokenHash,consumedAt:null},data:{consumedAt:new Date()}});
 			return NextResponse.json(genericResponse,{status:202});

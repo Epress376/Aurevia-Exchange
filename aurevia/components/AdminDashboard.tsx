@@ -245,7 +245,7 @@ export default function AdminDashboard(){
 
 	return <main className="account-page admin-dashboard-page">
 		<header className="admin-dashboard-heading">
-			<div><p className="admin-eyebrow">AUREVIA INVEST · CONTROL ROOM</p><h1>Good to see you.</h1><p>Live platform performance and operational activity.</p></div>
+			<div><p className="admin-eyebrow">AUREVIA EXCHANGE · CONTROL ROOM</p><h1>Good to see you.</h1><p>Live platform performance and operational activity.</p></div>
 			<div className="admin-dashboard-header-actions">
 				<nav className="admin-dashboard-shortcuts" aria-label="Administrator dashboard shortcuts">
 					<Link href="/admin/users" title="Users" aria-label="Users"><UsersRound size={15}/></Link>

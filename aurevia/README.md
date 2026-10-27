@@ -1,6 +1,6 @@
-# Aurevia Invest
+# Aurevia Exchange
 
-Aurevia Invest is a Next.js 14 application using TypeScript, PostgreSQL, Prisma, NextAuth, Socket.IO, Zustand, Tailwind CSS, Recharts and Lightweight Charts. Trading and market prices used by the trading engine remain internal simulations; the `/markets` dashboard separately displays live-provider quotes and history. This repository does not connect to a live broker, exchange, bank, or payment network.
+Aurevia Exchange is a Next.js application using TypeScript, PostgreSQL, Prisma, NextAuth, Socket.IO, Zustand, Tailwind CSS, Recharts and Lightweight Charts. Trading and market prices used by the trading engine remain internal simulations; the `/markets` dashboard separately displays live-provider quotes and history. This repository does not connect to a live broker, exchange, bank, or payment network.
 
 ## What is implemented
 

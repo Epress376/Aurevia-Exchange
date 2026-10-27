@@ -3,7 +3,6 @@
 import {FormEvent,useState} from 'react';
 import {useRouter} from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import {ArrowRight,ShieldCheck} from 'lucide-react';
 import type {CountryCode} from 'libphonenumber-js';
 import Nav from '@/components/Nav';
@@ -62,7 +61,7 @@ export default function RegistrationExperience(){
 	}
 
 	return <><Nav/><main className="auth-scene"><section className="auth-card auth-register-card" aria-labelledby="registration-title">
-		<div className="auth-brand"><Image src="/aurevia-logo.png" alt="" width={48} height={48}/><span>AUREVIA <b>INVEST</b></span></div>
+		<div className="auth-brand"><span className="brand-mark" aria-hidden="true">A</span><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></div>
 			<h1 id="registration-title" className="auth-heading">{translate('createAccountTitle')}</h1>
 			<nav className="register-section-jump" aria-label="Registration sections"><a href="#register-profile">{translate('personalInformation')}</a><a href="#register-contact">{translate('contactInformation')}</a><a href="#register-security">{translate('security')}</a><a href="#register-account">{translate('accountType')}</a></nav>
 			<form onSubmit={submit} className="register-form space-y-4">

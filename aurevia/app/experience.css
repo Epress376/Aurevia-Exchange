@@ -8,20 +8,21 @@
 @media(max-width:600px){.market-depth-canvas{opacity:.36}}
 @media(prefers-reduced-motion:reduce){.market-depth-canvas{opacity:.28}}
 :root{
-  --a-ink:#07110e;
-  --a-forest:#0a1711;
-  --a-forest-soft:#102019;
-  --a-panel:#101b16;
-  --a-panel-raised:#14251b;
-  --a-surface-raised:rgba(17,35,24,.96);
-  --a-surface-deep:rgba(8,19,12,.98);
-  --a-line:rgba(218,228,218,.12);
-  --a-muted:#93a19b;
-  --a-paper:#f0f2ed;
-  --a-brass:#d4a72c;
-  --a-brass-soft:#e8cc78;
-  --a-positive:#80bf88;
-  --a-negative:#d98577;
+  --a-ink:#0b0f1a;
+  --a-forest:#0f172a;
+  --a-forest-soft:#172238;
+  --a-panel:#1e293b;
+  --a-panel-raised:#26344a;
+  --a-surface-raised:rgba(30,41,59,.96);
+  --a-surface-deep:rgba(11,15,26,.98);
+  --a-line:rgba(148,163,184,.16);
+  --a-muted:#94a3b8;
+  --a-paper:#f8fafc;
+  --a-brass:#d4af37;
+  --a-brass-soft:#f0c040;
+  --a-blue:#3b82f6;
+  --a-positive:#34d399;
+  --a-negative:#f87171;
   --a-radius-sm:5px;
   --a-radius-md:9px;
   --a-radius-lg:13px;
@@ -3493,4 +3494,140 @@ button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allo
 
 @media(prefers-reduced-motion:reduce){
 	*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
+/* Aurevia Exchange visual system */
+:root{
+	--a-ink:#0b0f1a;
+	--a-forest:#0f172a;
+	--a-forest-soft:#172238;
+	--a-panel:#1e293b;
+	--a-panel-raised:#26344a;
+	--a-surface-raised:rgba(30,41,59,.96);
+	--a-surface-deep:rgba(11,15,26,.98);
+	--a-line:rgba(148,163,184,.16);
+	--a-muted:#94a3b8;
+	--a-paper:#f8fafc;
+	--a-brass:#d4af37;
+	--a-brass-soft:#f0c040;
+	--a-blue:#3b82f6;
+	--a-positive:#34d399;
+	--a-negative:#f87171;
+}
+html,body{background:var(--a-ink);color:var(--a-paper)}
+body{background:radial-gradient(ellipse at 50% -18%,rgba(59,130,246,.09),transparent 42%),var(--a-ink)}
+.scene-depth{background:radial-gradient(ellipse at 68% 12%,rgba(59,130,246,.1),transparent 40%),var(--a-ink)}
+.site-nav,.site-nav-user-shell{background:rgba(11,15,26,.94);border-color:var(--a-line)}
+.nav-links,.nav-links.nav-open{background-color:#0f172a}
+.dropdown-panel,.language-menu{background:#172238;border-color:var(--a-line)}
+.card,.account-panel,.account-page .card,.admin-panel,.admin-metric-card,.user-dashboard-panel,.user-market-card{
+	border-color:rgba(212,175,55,.16);
+	background:linear-gradient(145deg,rgba(30,41,59,.96),rgba(15,23,42,.98));
+	box-shadow:0 20px 54px rgba(0,0,0,.26),inset 0 1px rgba(255,255,255,.035);
+}
+.account-page .input,.account-page input,.account-page select,.account-page textarea,.admin-shell-chrome input,.admin-shell-chrome select,.admin-shell-chrome textarea{
+	border-color:rgba(148,163,184,.23);background:#0f172a;color:#f8fafc;
+}
+.account-page .input:focus,.account-page input:focus,.account-page select:focus,.account-page textarea:focus,.admin-shell-chrome input:focus,.admin-shell-chrome select:focus,.admin-shell-chrome textarea:focus{
+	border-color:var(--a-brass);box-shadow:0 0 0 3px rgba(212,175,55,.14);
+}
+.account-table th,.admin-table th{color:#f0c040}
+.account-table tbody tr:hover,.admin-table tbody tr:hover{background:rgba(59,130,246,.07)}
+.portfolio-page,.portfolio-page:has(.portfolio-hero){--portfolio-bg:#0b0f1a;background:radial-gradient(ellipse at 15% 0,rgba(59,130,246,.1),transparent 42%),#0b0f1a}
+.portfolio-hero,.portfolio-premium-grid>.account-panel,.portfolio-page>.account-panel{background:linear-gradient(145deg,rgba(30,41,59,.97),rgba(15,23,42,.99))}
+.live-market-page{
+	--lm-bg:#0b0f1a;--lm-panel:#172238;--lm-panel-soft:#1e293b;--lm-line:rgba(148,163,184,.16);
+	--lm-muted:#94a3b8;--lm-text:#f8fafc;--lm-cyan:#60a5fa;--lm-up:#34d399;--lm-down:#f87171;
+	background:radial-gradient(ellipse at 50% -16%,rgba(59,130,246,.1),transparent 39%),linear-gradient(180deg,#0b0f1a,#0f172a 55%,#0b0f1a);
+}
+.live-sidebar,.live-chart-card,.live-right-card,.live-comparison-card{background:linear-gradient(145deg,#172238,#0f172a)}
+.live-ticker,.live-source-status{background:rgba(23,34,56,.9)}
+.admin-sidebar{background:linear-gradient(180deg,#172238,#0b0f1a)}
+.wallet-signature-card{
+	border-color:rgba(212,175,55,.36);
+	background:radial-gradient(ellipse at 83% 14%,rgba(59,130,246,.22),transparent 42%),linear-gradient(137deg,#1e293b 0%,#111827 52%,#0b0f1a 100%);
+	box-shadow:0 28px 68px rgba(0,0,0,.38),inset 0 1px rgba(255,255,255,.1),inset 0 -18px 34px rgba(0,0,0,.2);
+}
+.wallet-signature-card:before{background:radial-gradient(circle at 35% 30%,#fff0b0,#d4af37 44%,#725719 78%);box-shadow:inset 1px 1px 3px rgba(255,255,255,.6),0 4px 14px rgba(0,0,0,.38)}
+.wallet-quick-action,.wallet-activity-panel,.wallet-settings,.wallet-ledger-records{
+	border-color:rgba(148,163,184,.17);background:linear-gradient(145deg,rgba(30,41,59,.92),rgba(15,23,42,.97));
+}
+.wallet-quick-action:hover{border-color:rgba(212,175,55,.45);background:linear-gradient(145deg,#26344a,#172238);color:#f0c040}
+.wallet-action-icon{border-color:rgba(212,175,55,.32);background:linear-gradient(145deg,rgba(212,175,55,.17),rgba(59,130,246,.1));color:#f0c040;box-shadow:inset 0 1px rgba(255,255,255,.12),0 4px 12px rgba(0,0,0,.2)}
+.wallet-activity-icon{border-color:rgba(148,163,184,.22);color:#93c5fd}
+.wallet-activity-icon.is-ledger{border-color:rgba(212,175,55,.3);color:#f0c040}
+.wallet-currency-mark,.wallet-eyebrow,.wallet-section-heading>a{color:#f0c040}
+.aurevia-card--signature{
+	background:radial-gradient(120% 80% at 10% 0%,rgba(59,130,246,.22),transparent 48%),linear-gradient(155deg,#1e293b 0%,#0f172a 47%,#0b0f1a 100%);
+	border-color:rgba(212,175,55,.45);
+}
+.aurevia-card--gold{background:radial-gradient(120% 80% at 90% 0%,rgba(240,192,64,.18),transparent 50%),linear-gradient(155deg,#29251a,#111827 50%,#172238);border-color:rgba(240,192,64,.5)}
+.aurevia-card--black{background:radial-gradient(100% 70% at 50% 0%,rgba(59,130,246,.16),transparent 55%),linear-gradient(155deg,#1e293b,#0b0f1a 55%,#172238);border-color:rgba(212,175,55,.3)}
+.aurevia-card{display:block;padding:0;transform-style:preserve-3d}
+.aurevia-card-face{position:absolute;inset:0;display:flex;flex-direction:column;justify-content:space-between;padding:clamp(16px,4vw,24px);backface-visibility:hidden;transition:transform .55s cubic-bezier(.2,.7,.25,1)}
+.aurevia-card-face-front{transform:rotateY(0)}
+.aurevia-card-face-back{transform:rotateY(180deg);background:radial-gradient(ellipse at 90% 85%,rgba(59,130,246,.12),transparent 45%),linear-gradient(145deg,#172238,#0b0f1a)}
+.aurevia-card.is-flipped .aurevia-card-face-front{transform:rotateY(-180deg)}
+.aurevia-card.is-flipped .aurevia-card-face-back{transform:rotateY(0)}
+.aurevia-card-magnetic-stripe{height:clamp(35px,8vw,48px);margin:clamp(10px,4vw,20px) calc(clamp(16px,4vw,24px) * -1) 0;background:linear-gradient(180deg,#080b12,#03050a 50%,#111827);box-shadow:0 1px 0 rgba(255,255,255,.12),0 4px 16px rgba(0,0,0,.35)}
+.aurevia-card-back-details{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:8px}
+.aurevia-card-signature{display:grid;min-width:0;flex:1;gap:5px;padding:8px 11px;border-radius:4px;background:linear-gradient(90deg,#f8fafc,#e2e8f0 70%,#cbd5e1);color:#172033}
+.aurevia-card-signature span{font-size:7px;letter-spacing:.13em}
+.aurevia-card-signature b{font-size:12px;letter-spacing:.13em}
+.aurevia-card-hologram{display:grid;width:44px;height:44px;flex:none;place-items:center;border:1px solid rgba(240,192,64,.55);border-radius:50%;background:conic-gradient(from 25deg,rgba(59,130,246,.55),rgba(240,192,64,.5),rgba(147,197,253,.45),rgba(212,175,55,.5),rgba(59,130,246,.55));color:#fff;font-size:19px;font-weight:800;text-shadow:0 1px 6px #000}
+.aurevia-card-back-brand{display:flex;align-items:baseline;gap:8px;color:#f0c040;letter-spacing:.16em}
+.aurevia-card-back-brand strong{font-size:12px}
+.aurevia-card-back-brand span{font-size:8px}
+.aurevia-card-back-note{margin:0;color:#94a3b8;font-size:9px}
+.aurevia-card-flip{display:inline-flex;min-height:40px;align-items:center;justify-content:center;gap:7px;margin:12px auto 0;padding:8px 12px;border:1px solid rgba(148,163,184,.22);border-radius:999px;background:rgba(30,41,59,.8);color:#cbd5e1;font-size:11px;cursor:pointer}
+.aurevia-card-flip:hover{border-color:rgba(212,175,55,.5);color:#f0c040}
+.aurevia-card-flip:focus-visible{outline:2px solid #f0c040;outline-offset:3px}
+.brand{gap:10px;letter-spacing:normal}
+.brand-mark{position:relative;display:grid;width:38px;height:38px;flex:none;place-items:center;isolation:isolate;border:1px solid rgba(240,192,64,.55);border-radius:11px;background:linear-gradient(145deg,rgba(240,192,64,.2),rgba(212,175,55,.04) 60%,rgba(59,130,246,.12));box-shadow:inset 0 1px rgba(255,255,255,.17),0 6px 16px rgba(0,0,0,.28);color:transparent;font-size:20px;font-weight:800;line-height:1}
+.brand-mark:before{position:absolute;inset:0;z-index:-1;background:linear-gradient(145deg,#fff1ad 6%,#f0c040 43%,#9b7317 86%);background-clip:text;-webkit-background-clip:text;content:"A";filter:drop-shadow(0 1px 2px rgba(0,0,0,.45))}
+.brand-copy{display:grid;gap:1px;line-height:1}
+.brand-copy strong{color:#f8fafc;font-size:15px;font-weight:750;letter-spacing:.015em}
+.brand-copy small{color:#f0c040;font-size:8px;font-weight:700;letter-spacing:.24em}
+.brand b{color:#f0c040}
+.brand-mark~span{font-size:inherit}
+.home-brand-lockup,.footer-logo{gap:12px}
+.home-brand-lockup .brand-mark{width:46px;height:46px}
+.home-brand-lockup .brand-copy strong,.footer-logo .brand-copy strong{font-size:17px}
+.home-brand-lockup .brand-copy small,.footer-logo .brand-copy small{font-size:9px}
+.footer-logo{display:inline-flex;align-items:center}
+.nav-links svg,.user-bottom-navigation svg,.user-more-groups svg,.principle-item>svg,.asset-icon svg,.wallet-action-icon svg,.wallet-activity-icon svg,.home-hero-actions svg{
+	filter:drop-shadow(0 2px 3px rgba(0,0,0,.35));
+}
+.user-bottom-navigation svg,.user-more-groups svg,.nav-links svg{color:#93c5fd}
+.principle-item>svg,.asset-icon svg{color:#f0c040}
+.user-bottom-navigation a.is-active svg,.nav-links a[aria-current=page] svg{color:#f0c040}
+.home-brand-lockup .brand-copy strong{color:#f8fafc}
+.market-ribbon,.market-ribbon+section{border-color:var(--a-line)}
+.home-hero:before{background:radial-gradient(ellipse at 77% 42%,rgba(59,130,246,.13),transparent 42%),linear-gradient(120deg,#0b0f1a 2%,#101a2d 55%,#0b0f1a)}
+.experience-section,.preview-section{border-color:var(--a-line);background:linear-gradient(110deg,#0f172a,#131f35 53%,#0f172a)}
+.preview-window,.preview-window-bar{background:#111827}
+.preview-chart-path{border-bottom-color:rgba(212,175,55,.75);background:linear-gradient(180deg,rgba(212,175,55,.21),rgba(212,175,55,.01))}
+.preview-side-note{border-color:var(--a-line);background:rgba(23,34,56,.96)}
+.asset-icon{border-color:rgba(212,175,55,.3);background:linear-gradient(145deg,rgba(212,175,55,.11),rgba(59,130,246,.06));box-shadow:inset 0 1px rgba(255,255,255,.07),0 5px 16px rgba(0,0,0,.2)}
+.experience-steps:before{background:linear-gradient(90deg,transparent,rgba(212,175,55,.4) 14%,rgba(212,175,55,.4) 86%,transparent)}
+.step-number{border-color:rgba(212,175,55,.45);background:#172238}
+.auth-card,.waitlist-card{border-color:rgba(212,175,55,.2);background:linear-gradient(145deg,rgba(30,41,59,.97),rgba(11,15,26,.99))}
+.auth-brand .brand-copy strong,.waitlist-brand .brand-copy strong{font-size:15px;letter-spacing:.015em}
+.auth-brand .brand-copy small,.waitlist-brand .brand-copy small{font-size:8px;letter-spacing:.24em}
+.admin-login-logo{width:72px;height:72px;border-radius:20px;font-size:40px}
+.auth-input,.input{border-color:rgba(148,163,184,.24);background:#0f172a;color:#f8fafc}
+.auth-input:focus,.input:focus{border-color:var(--a-brass);box-shadow:0 0 0 3px rgba(212,175,55,.14)}
+.auth-submit{background:linear-gradient(135deg,#f0c040,#d4af37);color:#111827}
+.auth-submit:hover:not(:disabled){background:linear-gradient(135deg,#f7d36d,#e0ba46)}
+.home-brand-lockup .brand-copy small,.footer-logo .brand-copy small{color:#f0c040}
+.user-dashboard-panel,.user-market-card{background:linear-gradient(145deg,rgba(30,41,59,.96),rgba(15,23,42,.98))}
+@media(max-width:640px){
+	.site-nav-user-shell .brand{gap:6px}
+	.site-nav-user-shell .brand-mark{width:30px;height:30px;border-radius:9px;font-size:16px}
+	.site-nav-user-shell .brand-copy strong{font-size:12px}
+	.site-nav-user-shell .brand-copy small{font-size:6px}
+	.aurevia-card-face{padding:16px}
+}
+@media(prefers-reduced-motion:reduce){
+	.aurevia-card-face{transition:none}
 }

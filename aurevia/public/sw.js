@@ -1,6 +1,6 @@
 'use strict';
 
-const fallback={title:'Aurevia Invest',body:'There is a new update to your account.',url:'/dashboard'};
+const fallback={title:'Aurevia Exchange',body:'There is a new update to your account.',url:'/dashboard'};
 
 self.addEventListener('push',event=>{
 	let payload=fallback;

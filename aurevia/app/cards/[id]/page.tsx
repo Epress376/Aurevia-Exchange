@@ -46,7 +46,7 @@ export default function CardDetailPage(){
 						<div className="flex justify-between"><dt className="muted">Application</dt><dd className="font-mono">{card.application?.reference}</dd></div>
 						<div className="flex justify-between"><dt className="muted">Order price (snapshot)</dt><dd>{card.application?.priceSnapshot} {card.application?.currencySnapshot}</dd></div>
 					</dl>
-					<p className="card-disclosure">Aurevia platform card for use within this application. Not a payment-network product. Terms were accepted at application.</p>
+					<p className="card-disclosure">Virtual account card for use within Aurevia Exchange. Terms were accepted at application.</p>
 				</section>
 			)}
 		</main>

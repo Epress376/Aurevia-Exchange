@@ -218,7 +218,7 @@ export default function UserDashboardExperience(){
 		{error&&<div className="user-dashboard-error" role="alert"><span>{error}</span><button type="button" onClick={()=>void load(true)}>Retry</button></div>}
 		{overview&&<>
 			<header className="user-dashboard-welcome">
-				<div><span className="user-dashboard-eyebrow">AUREVIA INVEST · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
+				<div><span className="user-dashboard-eyebrow">AUREVIA EXCHANGE · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
 				<div className="user-dashboard-welcome-actions">
 					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
 						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
