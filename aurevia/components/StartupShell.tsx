@@ -13,7 +13,7 @@ const MarketDepthScene=dynamic(()=>import('@/components/MarketDepthScene'),{ssr:
 const startupKey='aurevia-startup-complete';
 const exitDurationMs=180;
 const maximumStartupWaitMs=1200;
-const pageTransitionDurationMs=3000;
+const pageTransitionDurationMs=220;
 
 export default function StartupShell({children}:{children:ReactNode}){
 	const {status}=useSession();
@@ -49,6 +49,10 @@ export default function StartupShell({children}:{children:ReactNode}){
 	useLayoutEffect(()=>{
 		if(currentPath.current===pathname)return;
 		currentPath.current=pathname;
+		if(window.matchMedia('(prefers-reduced-motion: reduce)').matches){
+			setShowPageTransition(false);
+			return;
+		}
 		setShowPageTransition(true);
 		if(pageTransitionTimer.current!==undefined)window.clearTimeout(pageTransitionTimer.current);
 		pageTransitionTimer.current=window.setTimeout(()=>setShowPageTransition(false),pageTransitionDurationMs);

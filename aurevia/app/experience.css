@@ -3439,3 +3439,46 @@ html{background:var(--a-ink)}
 	.card,.account-page .btn,.admin-shell-chrome .btn{transition:none!important}
 	.account-page .btn:hover:not(:disabled),.admin-shell-chrome .btn:hover:not(:disabled){transform:none}
 }
+
+:root{
+	--a-font-body:14px;
+	--a-font-label:12px;
+	--a-font-caption:11px;
+}
+
+body{font-size:var(--a-font-body)}
+.account-page{font-size:13px}
+.account-heading p,.account-panel-subtitle,.account-callout,.account-empty{font-size:13px;line-height:1.6}
+.account-kicker,.admin-eyebrow{font-size:10px}
+.account-label{font-size:var(--a-font-label);line-height:1.45}
+.account-page .btn,.site-nav+main.max-w-7xl .card .btn{font-size:12px}
+.account-table,.admin-table{font-size:12px}
+.account-table th,.admin-table th{font-size:10px}
+.account-table td,.admin-table td{font-size:12px}
+.admin-panel-heading p:not(.admin-eyebrow){font-size:12px;line-height:1.55}
+.admin-sidebar .admin-command-group a{font-size:12px}
+.info-back,.info-contents a,.info-home-link{font-size:12px}
+.info-article section p{font-size:13px}
+.info-note strong,.info-note p{font-size:12px}
+button:disabled,input:disabled,select:disabled,textarea:disabled{cursor:not-allowed}
+.user-dashboard-page{font-size:13px}
+.user-dashboard-eyebrow{font-size:10px}
+.user-dashboard-welcome p,.user-dashboard-panel-heading p,.user-dashboard-real-note{font-size:12px}
+.user-mode-pill,.user-market-assets-heading>small,.user-market-quote>span{font-size:11px}
+.user-dashboard-metric-heading,.user-dashboard-metric-foot,.user-dashboard-footnote{font-size:11px}
+.user-dashboard-active-tag{font-size:9px}
+.user-market-categories button,.user-chart-timeframes button{min-height:34px;font-size:11px}
+.user-market-asset>span b,.user-market-asset>span small,.user-market-asset>strong,.user-market-asset>em{font-size:11px}
+.user-dashboard-panel-link,.user-chart-empty,.user-allocation-list>div>span,.user-allocation-list b,.user-allocation-list small{font-size:11px}
+.user-allocation-chart>div:last-child small{font-size:10px}
+.user-dashboard-table th,.user-dashboard-table td,.user-dashboard-table td>b,.user-dashboard-table td>small,.user-order-status{font-size:11px}
+.user-opportunity-category,.user-opportunity-grid article>p,.user-opportunity-grid dt,.user-opportunity-grid dd,.user-opportunity-grid article>a{font-size:11px}
+.user-opportunity-grid h3{font-size:13px}
+.user-wallet-panel>p,.user-wallet-panel>small,.user-wallet-actions a,.user-wallet-demo-note,.user-quick-action>b{font-size:11px}
+.user-recent-activity li>span:nth-child(2)>b,.user-recent-activity li small,.user-recent-activity li time,.user-dashboard-empty p,.user-dashboard-empty>a,.user-dashboard-error,.user-dashboard-error button,.user-dashboard-fatal button{font-size:11px}
+.user-dashboard-loading{font-size:13px}
+.user-news-panel .news-feed-header .eyebrow,.user-news-panel .news-feed-tools select{font-size:11px}
+
+@media(prefers-reduced-motion:reduce){
+	*,*::before,*::after{scroll-behavior:auto!important;animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}

@@ -100,7 +100,7 @@ test('homepage investment testimonials use only verified stories and stay compac
 		await page.setViewportSize({width,height:844});
 		await page.goto('/');
 		await expect(page.getByRole('heading',{name:'Investment testimonials'})).toBeVisible();
-		await expect(page.getByText(/No verified investment testimonials are published yet/)).toBeVisible();
+		await expect(page.getByText(/No published client stories yet/)).toBeVisible();
 		await expect(page.locator('.client-story-card')).toHaveCount(0);
 		await expectNoHorizontalOverflow(page);
 	}
@@ -284,23 +284,23 @@ test('login and registration fields receive real pointer and keyboard input',asy
 
 test('dashboard hierarchy remains usable and contained at mobile and desktop widths',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+	await page.goto('/dashboard');
 	for(const width of [320,375,390,430,1440]){
 		await page.setViewportSize({width,height:900});
-		await page.goto('/dashboard');
-		await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Portfolio performance'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Asset allocation'})).toBeVisible();
+		await expect(page.getByRole('heading',{name:/Welcome back/})).toBeVisible();
+		await expect(page.getByRole('heading',{name:'Market pulse'})).toBeVisible();
+		await expect(page.getByRole('heading',{name:'My portfolio'})).toBeVisible();
 		await expect(page.locator('.dashboard-profile-panel')).toHaveCount(0);
 		await expectNoHorizontalOverflow(page);
 		const layout=await page.evaluate(()=>{
-			const summary=document.querySelector('.portfolio-summary');
-			const panels=[...document.querySelectorAll('.portfolio-content-grid > .account-panel')].map(panel=>{
+			const dashboard=document.querySelector('.user-dashboard-columns');
+			const panels=[...document.querySelectorAll('.user-dashboard-columns > div')].map(panel=>{
 				const rect=panel.getBoundingClientRect();
 				return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom};
 			});
-			return {summaryColumns:getComputedStyle(summary!).gridTemplateColumns.split(' ').length,panels};
+			return {columns:getComputedStyle(dashboard!).gridTemplateColumns.split(' ').length,panels};
 		});
-		expect(layout.summaryColumns).toBe(width<=900?2:4);
+		expect(layout.columns).toBe(width<=760?1:2);
 		for(let index=0;index<layout.panels.length;index++){
 			for(let other=index+1;other<layout.panels.length;other++){
 				const a=layout.panels[index],b=layout.panels[other];

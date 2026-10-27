@@ -8,7 +8,7 @@ import Providers from '@/components/Providers';
 import {normalizeLocale} from '@/lib/i18n';
 
 export const metadata={title:'Aurevia Invest',description:'Aurevia Invest — professional investment platform'};
-export const viewport={width:'device-width',initialScale:1,maximumScale:1,userScalable:false,viewportFit:'cover',themeColor:'#07110e'};
+export const viewport={width:'device-width',initialScale:1,viewportFit:'cover',themeColor:'#07110e'};
 
 export default async function RootLayout({children}:{children:ReactNode}){
   const cookieStore=await cookies();
