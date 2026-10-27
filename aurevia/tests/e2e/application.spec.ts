@@ -99,6 +99,25 @@ test('homepage investment testimonials use only verified stories and stay compac
 	}
 });
 
+test('homepage cash decorations dismiss for the session and respect reduced motion',async({browser,page})=>{
+	await page.setViewportSize({width:1280,height:900});
+	await page.goto('/');
+	const dismissButtons=page.getByRole('button',{name:'Dismiss decorative coin'});
+	await expect(dismissButtons).toHaveCount(3);
+	await dismissButtons.first().click();
+	await expect(dismissButtons).toHaveCount(2);
+	await page.reload();
+	await expect(dismissButtons).toHaveCount(2);
+
+	const nextSession=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
+	try{
+		const nextPage=await nextSession.newPage();
+		await nextPage.goto('/');
+		await expect(nextPage.getByRole('button',{name:'Dismiss decorative coin'})).toHaveCount(3);
+		await expect(nextPage.locator('.home-cash-item').first()).toHaveCSS('animation-name','none');
+	}finally{await nextSession.close();}
+});
+
 test('public disclosures distinguish simulated activity, paper orders, and internal wallet funds',async({page})=>{
 	await page.goto('/terms');
 	await expect(page.getByText(/Alpaca Paper Trading only/)).toBeVisible();
