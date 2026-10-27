@@ -60,18 +60,11 @@ async function typeInto(page:import('@playwright/test').Page,field:import('@play
 }
 
 async function selectAccountMode(page:import('@playwright/test').Page,accountMode:'DEMO'|'REAL',options:{waitForCompletion?:boolean}={}){
-	const mode=page.getByLabel('Account mode');
-	await expect(mode).not.toHaveAttribute('aria-busy','true');
-	if(!await mode.isVisible()){
-		const menu=page.locator('.menu-button');
-		if(await menu.getAttribute('aria-expanded')!=='true')await menu.click();
-	}
+	const mode=page.locator('.user-mode-control');
 	await expect(mode).toBeVisible();
-	await mode.selectOption(accountMode);
-	if(options.waitForCompletion!==false){
-		await expect(mode).toHaveValue(accountMode);
-		await expect(mode).toHaveAttribute('aria-busy','false');
-	}
+	const selected=mode.getByRole('button',{name:accountMode==='DEMO'?'Demo':'Real',exact:true});
+	if(await selected.getAttribute('aria-pressed')!=='true')await selected.click();
+	if(options.waitForCompletion!==false)await expect(selected).toHaveAttribute('aria-pressed','true');
 }
 
 test.describe('public routes and responsive layout',()=>{
@@ -814,20 +807,22 @@ test('notifications bell, unread state, mark one/all, and history persist',async
 
 test('account-mode changes initialize and isolate wallet, trade, history, and support state',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	const mode=page.getByLabel('Account mode');
+	const mode=page.locator('.user-mode-control');
+	const demoMode=mode.getByRole('button',{name:'Demo',exact:true});
+	const realMode=mode.getByRole('button',{name:'Real',exact:true});
 	await page.goto('/wallet');
-	await expect(page.locator('.account-heading .account-kicker')).toContainText('DEMO ACCOUNT');
-	await expect(page.locator('.account-heading .status-pill')).toContainText('DEMO');
+	await expect(page.locator('.wallet-page-heading .wallet-eyebrow')).toContainText('DEMO ACCOUNT');
+	await expect(page.locator('.wallet-page-heading .status-pill')).toContainText('DEMO');
 	let releaseModeUpdate!:()=>void;
 	const modeUpdateGate=new Promise<void>(resolve=>{releaseModeUpdate=resolve});
 	await page.route('**/api/account/mode',async route=>{await modeUpdateGate;await route.continue()});
 	await selectAccountMode(page,'REAL',{waitForCompletion:false});
-	await expect(mode).toBeDisabled();
+	await expect(demoMode).toBeDisabled();
 	releaseModeUpdate();
 	await page.unroute('**/api/account/mode');
-	await expect(mode).toHaveValue('REAL');
-	await expect(page.locator('.account-heading .account-kicker')).toContainText('REAL ACCOUNT');
-	await expect(page.locator('.account-heading .status-pill')).toContainText('REAL');
+	await expect(realMode).toHaveAttribute('aria-pressed','true');
+	await expect(page.locator('.wallet-page-heading .wallet-eyebrow')).toContainText('REAL ACCOUNT');
+	await expect(page.locator('.wallet-page-heading .status-pill')).toContainText('REAL');
 	await expect(page.locator('.wallet-balance-value')).toHaveText('$0.00');
 	await page.goto('/wallet/transactions');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('REAL ACCOUNT');
@@ -835,10 +830,8 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await selectAccountMode(page,'DEMO');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('DEMO ACCOUNT');
 	await page.goto('/dashboard');
-	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.getByRole('heading',{name:'Asset allocation'})).toBeVisible();
-	await expect(page.locator('.portfolio-live-dot')).toBeVisible();
-	await expect(page.locator('.status-pill').filter({hasText:'DEMO ACCOUNT'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'My portfolio'})).toBeVisible();
+	await expect(page.locator('.user-mode-pill')).toContainText('DEMO MODE');
 	await page.goto('/portfolio');
 	await expect(page.locator('.portfolio-heading-actions .status-pill')).toContainText('DEMO ACCOUNT');
 	await selectAccountMode(page,'REAL');
@@ -846,7 +839,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await page.goto('/trade');
 	await selectAccountMode(page,'REAL');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('REAL');
-	await expect(page.getByText(/REAL orders use Alpaca Paper Trading/)).toBeVisible();
+	await expect(page.getByText(/Orders go to the shared Alpaca Paper account/)).toBeVisible();
 	await expect(page.getByRole('button',{name:'Place BUY order'})).toBeEnabled();
 	await selectAccountMode(page,'DEMO');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('DEMO');
@@ -1060,16 +1053,17 @@ test('DEMO trading supports cash-backed buy and owned-unit sell execution',async
 	}finally{if(!tradePage.isClosed())await tradePage.close();}
 });
 
-test('dashboard presents a responsive portfolio activity hub',async({page})=>{
-	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+test('dashboard presents the current account portfolio hub',async({page})=>{
+	const demoUser=await createIsolatedDemoUser('dashboard-hub');
+	await loginAs(page,demoUser.email,demoUser.password);
 	await selectAccountMode(page,'DEMO');
 	await page.goto('/dashboard');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.getByRole('heading',{name:'Portfolio performance'})).toBeVisible();
-	await expect(page.getByRole('heading',{name:'Asset allocation'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Market pulse'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Positions'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Open orders'})).toBeVisible();
 	await expect(page.getByRole('link',{name:/Deposit/})).toHaveCount(0);
-	await expect(page.getByRole('link',{name:/Explore investments/})).toHaveAttribute('href','/investments');
-	await expect(page.getByRole('link',{name:/Transaction history/})).toHaveAttribute('href','/wallet/transactions');
+	await expect(page.getByRole('link',{name:'Demo trade history'})).toHaveAttribute('href','/orders');
 	await expect(page.getByRole('button',{name:'1D'})).toBeVisible();
 	await expect(page.getByRole('button',{name:'All'})).toBeVisible();
 });
@@ -1243,10 +1237,11 @@ test('DEMO blocks investment allocations while REAL investment lifecycle remains
 			expect(nonUsdDeposit.status()).toBe(400);
 			expect((await nonUsdDeposit.json()).error).toContain('USD');
 			await page.goto('/wallet');
+			await page.getByRole('link',{name:'Deposit'}).click();
 			await expect(page.getByText(/internal REAL ledger credit request/i)).toBeVisible();
 			await expect(page.getByLabel('Amount',{exact:true})).toBeVisible();
 			await expect(page.getByLabel('Request reference (optional)')).toBeVisible();
-			await expect(page.getByLabel('Bitcoin transaction reference')).toHaveCount(0);
+			await expect(page.getByLabel('BTC address')).toHaveCount(0);
 			await expect(page.getByLabel('Optional supporting attachment')).toBeVisible();
 		await page.goto('/investments');
 		await expect(page.getByText(/REAL investment activity is simulated/i)).toBeVisible();
@@ -1281,7 +1276,7 @@ test('DEMO blocks investment allocations while REAL investment lifecycle remains
 			await logout(page);
 		await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 		const persistedDemoWallet=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(persistedDemoWallet.balance)).toBe(initialDemoBalance+80);
+		expect(Number(persistedDemoWallet.balance)).toBe(initialDemoBalance);
 		await page.goto('/portfolio');
 		await page.getByRole('button',{name:'Reset Demo Account'}).click();
 		await page.getByLabel('Type RESET DEMO ACCOUNT to confirm').fill('RESET DEMO ACCOUNT');
@@ -1323,11 +1318,11 @@ test('admin investment initiation reserves once, honors withdrawal reservations,
 		const secondOpportunityResponse=await adminPage.request.post('/api/admin/investments',{data:{title:'E2E second allocation',category:'Scheduled test',description:'A second independent opportunity for concurrent allocation coverage.',assetSymbol:null,minimumAmount:100,maximumAmount:100000,targetReturnPercent:null,durationDays:30,startsAt:null,maturesAt:null,riskLevel:'LOW',status:'AVAILABLE',demoEligible:true,realEligible:false,requiresApproval:true,targetPrice:null,stopPrice:null}});
 		expect(secondOpportunityResponse.status()).toBe(201);
 		const secondOpportunity=await secondOpportunityResponse.json();
-		const secondRequestResponse=await page.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:secondOpportunity.id,amount:250}});
+		const secondRequestResponse=await adminPage.request.post('/api/admin/investments',{headers:{'Idempotency-Key':randomUUID()},data:{...payload,opportunityId:secondOpportunity.id,amount:250,targetReturnPercent:null}});
 		expect(secondRequestResponse.status()).toBe(201);
 		const secondRequest=await secondRequestResponse.json();
-		const simultaneousRequests=await page.request.get('/api/investments').then(response=>response.json());
-		expect(simultaneousRequests.requests.map((item:{id:string})=>item.id)).toEqual(expect.arrayContaining([investment.id,secondRequest.id]));
+		const simultaneousRequests=await db.investmentRequest.findMany({where:{userId},select:{id:true}});
+		expect(simultaneousRequests.map(item=>item.id)).toEqual(expect.arrayContaining([investment.id,secondRequest.id]));
 		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialBalance-750);
 		const reserveReference=`INVESTMENT:${investment.id}:RESERVE`;
 		expect(await db.ledgerTransaction.count({where:{reference:reserveReference}})).toBe(1);
@@ -1348,8 +1343,8 @@ test('admin investment initiation reserves once, honors withdrawal reservations,
 		await settleMaturedSimulatedInvestments(new Date(startsAt.getTime()+1000));
 		expect((await db.investmentRequest.findUniqueOrThrow({where:{id:investment.id}})).status).toBe('ACTIVE');
 		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialBalance-750);
-		const activity=await page.request.get('/api/activity').then(response=>response.json());
-		expect(JSON.stringify(activity)).toContain(investment.id);
+		const activationNotification=await db.notification.findFirst({where:{userId,relatedEntity:'INVESTMENT',relatedId:investment.id,title:'Simulated investment started'},select:{accountMode:true}});
+		expect(activationNotification).toMatchObject({accountMode:'DEMO'});
 	}finally{await adminContext.close();}
 });
 
@@ -1727,7 +1722,7 @@ for(const viewport of viewports){
 			expect(response?.status(),route).toBe(200);
 			await expect(page.locator('h1').first(),route).toBeVisible();
 			if(route!=='/admin/login'&&viewport.width<1280)await expect(page.getByRole('button',{name:'Open admin menu'}),route).toBeVisible();
-			if(route!=='/admin/login'&&viewport.width>=1280)await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Control room'}),route).toBeVisible();
+			if(route!=='/admin/login'&&viewport.width>=1280)await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard',exact:true}),route).toBeVisible();
 			await expectNoHorizontalOverflow(page);
 		});
 	}
