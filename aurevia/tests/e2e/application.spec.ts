@@ -106,6 +106,38 @@ test('homepage investment testimonials use only verified stories and stay compac
 	}
 });
 
+test('public disclosures distinguish simulated activity, paper orders, and internal wallet funds',async({page})=>{
+	await page.goto('/terms');
+	await expect(page.getByText(/Alpaca Paper Trading only/)).toBeVisible();
+	await expect(page.getByText(/broker-reported paper cash or returns are not Aurevia wallet funds/)).toBeVisible();
+	await page.goto('/risk-disclosure');
+	await expect(page.getByText(/not live-market executions/)).toBeVisible();
+	await expect(page.getByText(/are not withdrawable through the Aurevia wallet/)).toBeVisible();
+	await page.goto('/privacy');
+	await expect(page.getByText(/private object-storage bucket/)).toBeVisible();
+	await expect(page.locator('.info-note')).toContainText('short-lived links');
+});
+
+test('support fallback gives correct paper-trading and funding guidance',async({page})=>{
+	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+	await page.route('**/api/support/nova',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Support assistant unavailable.'})}));
+	await page.goto('/support');
+	await page.getByRole('textbox',{name:'Ask Nova AI'}).fill('How do REAL and DEMO account modes work?');
+	await page.getByRole('button',{name:'Send question'}).click();
+	await expect(page.getByText(/DEMO trades are simulated/)).toBeVisible();
+	await expect(page.getByText(/Alpaca Paper Trading when enabled/)).toBeVisible();
+	await expect(page.getByText(/does not send an external payment or payout/)).toBeVisible();
+});
+
+test('provider health distinguishes paper trading from disabled live services',async({page})=>{
+	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+	await page.goto('/admin/providers');
+	await expect(page.getByRole('heading',{name:'Provider health'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Live financial services'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Alpaca paper account'})).toBeVisible();
+	await expect(page.getByText(/When enabled, REAL-mode customer orders use this shared Alpaca Paper account/)).toBeVisible();
+});
+
 test('market view uses disclosed internal quotes and chart history without Finnhub',async({page})=>{
 	const quotes=await page.request.get('/api/live-markets?symbols=AAPL,BTC');
 	expect(quotes.ok()).toBe(true);
