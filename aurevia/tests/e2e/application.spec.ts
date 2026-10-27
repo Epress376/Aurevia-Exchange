@@ -138,6 +138,14 @@ test('provider health distinguishes paper trading from disabled live services',a
 	await expect(page.getByText(/When enabled, REAL-mode customer orders use this shared Alpaca Paper account/)).toBeVisible();
 });
 
+test('DEMO accounts see REAL-mode gates before KYC and tier API access',async({page})=>{
+	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+	await page.goto('/kyc');
+	await expect(page.getByRole('heading',{name:'REAL mode required'})).toBeVisible();
+	await page.goto('/tier');
+	await expect(page.getByRole('heading',{name:'REAL mode required'})).toBeVisible();
+});
+
 test('market view uses disclosed internal quotes and chart history without Finnhub',async({page})=>{
 	const quotes=await page.request.get('/api/live-markets?symbols=AAPL,BTC');
 	expect(quotes.ok()).toBe(true);

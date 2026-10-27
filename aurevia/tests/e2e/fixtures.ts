@@ -65,6 +65,7 @@ export async function expectNoHorizontalOverflow(page:Page){
 				return {tag:element.tagName,selector:element.id?`#${element.id}`:element.className,rect:{left:rect.left,right:rect.right,width:rect.width},position:style.position,overflow:style.overflow};
 			})
 			.filter(item=>item.rect.right>viewport+1||item.rect.left<-1)
+			.sort((left,right)=>right.rect.right-left.rect.right)
 			.slice(0,20);
 		return {viewport,document:document.documentElement.scrollWidth,offenders};
 	});
@@ -100,7 +101,7 @@ test.afterEach(async({page},testInfo)=>{
 	const expectedClientErrors=capture.failedResponses.filter(response=>(response.url.endsWith('/api/register/verify')&&response.status===400)||(response.url.endsWith('/api/auth/callback/credentials')&&response.status===401)||((testInfo.title.includes('watchlists persist')||testInfo.title.includes('session replacement is explicit')||testInfo.title.includes('Nova escalation reaches admin')||testInfo.title.includes('tier requests require')||testInfo.title.includes('account deletion'))&&response.url.endsWith('/api/notifications?limit=8')&&response.status===401)||(testInfo.title.includes('account deletion')&&['/api/currency-preference','/api/positions'].some(path=>response.url.endsWith(path))&&response.status===401)|| (testInfo.title.includes('Nova escalation reaches admin')&&response.url.endsWith('/api/support')&&response.status===409)||((testInfo.title.includes('Account Funding')||testInfo.title.includes('Wallet shows the internal funding workflow'))&&(response.url.endsWith('/api/payment-methods')||response.url.endsWith('/api/wallet'))&&response.status===503)||(testInfo.title.includes('KYC access is owner-scoped')&&response.url.endsWith('/api/kyc/documents')&&response.status===409));
 	if(testInfo.title.includes('support fallback'))expectedClientErrors.push(...capture.failedResponses.filter(response=>response.url.endsWith('/api/support/nova')&&response.status===503));
 	const unexpectedResponses=capture.failedResponses.filter(response=>!expectedClientErrors.includes(response));
-	expect(capture.consoleErrors,'browser console errors').toEqual([]);
+	expect(capture.consoleErrors,`browser console errors; failed application responses: ${JSON.stringify(capture.failedResponses)}`).toEqual([]);
 	expect(capture.pageErrors,'uncaught browser exceptions').toEqual([]);
 	expect(capture.failedRequests,'failed application requests').toEqual([]);
 	expect(unexpectedResponses,'unexpected failed application responses').toEqual([]);

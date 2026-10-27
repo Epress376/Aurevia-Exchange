@@ -26,13 +26,17 @@ export default function AccountTierPanel(){
 	const [notice,setNotice]=useState('');
 	const [busy,setBusy]=useState(false);
 	const [loading,setLoading]=useState(true);
+	const isRealAccount=session?.user?.accountMode==='REAL';
 	const load=useCallback(async()=>{
 		setLoading(true);
 		try{const response=await fetch('/api/tier-requests',{cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to load tier status.');setData(result);setError('')}
 		catch(exception){setError(exception instanceof Error?exception.message:'Unable to load tier status.')}
 		finally{setLoading(false)}
 	},[]);
-	useEffect(()=>{void load()},[load]);
+	useEffect(()=>{
+		if(isRealAccount){void load();return}
+		setData(null);setError('');setLoading(false);
+	},[isRealAccount,load]);
 	async function requestUpgrade(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();if(busy)return;setBusy(true);setError('');setNotice('');
 		try{const response=await fetch('/api/tier-requests',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to submit your tier review request.');setNotice(`Your Tier ${result.requestedTier} request is waiting for administrator review.`);setMessage('');await load()}
@@ -49,6 +53,7 @@ export default function AccountTierPanel(){
 	const latest=data?.requests[0];
 	return <><Nav/><main className="account-page">
 		<header className="account-heading"><div><span className="account-kicker">Account access · {session?.user?.accountMode||'ACCOUNT'}</span><h1>Tier and verification</h1><p>Step-by-step reviews with no invented financial limits or automatic upgrades.</p></div><span className={`status-pill ${session?.user?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?.tier||'ACCOUNT'} · CURRENT</span></header>
+		{!isRealAccount?<section className="account-panel card p-5 mt-4" role="status"><h2 className="font-semibold">REAL mode required</h2><p className="mt-2 text-sm leading-6 muted">Tier reviews depend on identity verification and are available only in REAL mode. Switch account mode from the navigation to view or submit a review.</p></section>:<>
 		{loading&&!data&&<p className="account-empty" role="status">Loading tier status…</p>}{error&&<p className="text-sm text-loss" role="alert">{error}</p>}{notice&&<p className="text-sm text-profit" role="status">{notice}</p>}
 		<div className="mt-4 grid gap-4 lg:grid-cols-3">{tiers.map(tier=>{const current=tier.number===currentTier;const complete=tier.number<currentTier;return <article className={`card p-5 ${current?'border-gold/50':''}`} key={tier.number}><div className="flex items-center justify-between"><h2 className="font-bold">TIER {tier.number}</h2>{current||complete?<ShieldCheck size={18} className="gold"/>:<Clock3 size={18} className="muted"/>}</div><h3 className="mt-4 text-lg font-semibold">{tier.title}</h3><p className="mt-2 text-sm leading-6 muted">{tier.description}</p><div className="mt-5 border-t border-white/10 pt-4"><span className="muted text-xs">Status</span><p className="mt-1 text-sm">{current?'Current tier':complete?'Reviewed and completed':'Available after the previous tier'}</p></div></article>})}</div>
 		<section className="account-panel card p-5 mt-4"><div className="account-panel-title"><div><h2>Requirements and progress</h2><p className="account-panel-subtitle">Admin decisions are recorded and never triggered by document submission alone.</p></div><LockKeyhole size={18} className="gold"/></div>
@@ -59,5 +64,6 @@ export default function AccountTierPanel(){
 			{data?.requests&&data.requests.length>1&&<div className="mt-4 grid gap-2">{data.requests.slice(1).map(request=><p className="text-xs muted" key={request.id}>Tier {request.requestedTier} · {request.status.replaceAll('_',' ')} · {new Date(request.createdAt).toLocaleDateString()}</p>)}</div>}
 			
 		</section>
+		</>}
 	</main></>;
 }

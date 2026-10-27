@@ -1,6 +1,7 @@
 'use client';
 
 import {FormEvent,useCallback,useEffect,useState} from 'react';
+import {useSession} from 'next-auth/react';
 import {FileCheck2,Info,ShieldCheck,Upload} from 'lucide-react';
 import Nav from '@/components/Nav';
 import {useLocale} from '@/lib/i18n-context';
@@ -19,7 +20,9 @@ const statusCopy:Record<VerificationStatus,{label:TranslationKey;description:Tra
 };
 
 export default function Kyc(){
+  const {data:session,status:sessionStatus}=useSession();
   const {translate}=useLocale();
+  const isRealAccount=session?.user?.accountMode==='REAL';
   const [form,setForm]=useState<VerificationForm>(emptyForm);
   const [status,setStatus]=useState<VerificationStatus>('PENDING');
   const [message,setMessage]=useState('');
@@ -33,6 +36,11 @@ export default function Kyc(){
   const [uploading,setUploading]=useState(false);
 
   const load=useCallback(async(active:()=>boolean)=>{
+    if(sessionStatus==='loading')return;
+    if(sessionStatus!=='authenticated'||!isRealAccount){
+      if(active()){setError('');setLoading(false)}
+      return;
+    }
     setLoading(true);setError('');
     try{
       const responses=await Promise.all([fetch('/api/kyc'),fetch('/api/profile'),fetch('/api/kyc/documents',{cache:'no-store'})]);
@@ -44,7 +52,7 @@ export default function Kyc(){
       setDocuments(uploadedDocuments);
     }catch(exception){if(active())setError(exception instanceof Error?exception.message:translate('unableLoadVerification'))}
     finally{if(active())setLoading(false)}
-  },[translate]);
+  },[isRealAccount,sessionStatus,translate]);
 
   useEffect(()=>{
     let active=true;
@@ -85,6 +93,7 @@ export default function Kyc(){
 
   return <><Nav/><main className="account-page">
     <header className="account-heading"><div><span className="account-kicker">{translate('accountVerification')}</span><h1>{translate('kycTitle')}</h1><p>{translate('verificationWorkflow')}</p></div>{status==='APPROVED'?<span className="verified-badge"><ShieldCheck size={14} aria-hidden="true"/> Profile verified</span>:<span className="status-pill">{loading?translate('loadingStatus'):state.label}</span>}</header>
+    {sessionStatus==='authenticated'&&!isRealAccount?<section className="account-panel card p-5" role="status"><h2 className="font-semibold">REAL mode required</h2><p className="mt-2 text-sm leading-6 muted">Identity verification and private document uploads are available only in REAL mode. Switch account mode from the navigation to continue.</p></section>:<>
     {error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" disabled={loading} onClick={()=>setRetryCount(value=>value+1)}>Retry</button></div>}
     <section className="account-panel card p-5">
       <div className="account-panel-title"><div><h2>{translate('verificationProgress')}</h2><p className="account-panel-subtitle">{state.description}</p></div><ShieldCheck size={20} className="gold" aria-hidden="true"/></div>
@@ -112,5 +121,6 @@ export default function Kyc(){
       </section>
       <aside className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('reviewStatus')}</h2><p className="account-panel-subtitle">{translate('currentAccountStatus')}</p></div></div><span className="status-pill">{loading?translate('loading'):state.label}</span><p className="mt-4 text-sm leading-6 muted">{state.description}</p><div className="mt-5 border-t border-white/10 pt-4"><h3 className="text-sm font-semibold">{translate('identityDocuments')}</h3><p className="mt-2 text-xs leading-5 muted">{translate('documentTypes')}</p><div className="mt-3 grid gap-3"><label className="account-label">{translate('documentType')}<select className="input" value={uploadKind} onChange={event=>setUploadKind(event.target.value as 'IDENTITY_DOCUMENT'|'SELFIE')}><option value="IDENTITY_DOCUMENT">Identity document</option><option value="SELFIE">Selfie</option></select></label><label className="account-label">{translate('chooseFile')}<input className="input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event=>setUploadFile(event.target.files?.[0]||null)}/></label><button className="btn bg-gold text-black" type="button" disabled={!uploadFile||uploading||loading} onClick={()=>void uploadDocument()}><Upload size={15}/>{uploading?translate('uploadingDocument'):translate('uploadDocument')}</button></div>{documents.length?<ul className="mt-4 divide-y divide-white/10">{documents.map(document=><li className="py-3 text-sm" key={document.id}><div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all">{document.filename}</span><span className="status-pill">{document.status.replaceAll('_',' ')}</span></div><p className="mt-1 text-xs muted">{document.kind.replaceAll('_',' ')} · {new Date(document.uploadedAt).toLocaleDateString()}{document.reviewNote?` · ${document.reviewNote}`:''}</p></li>)}</ul>:<p className="mt-3 text-sm muted">{translate('noDocumentsSubmitted')}</p>}</div></aside>
     </div>
+    </>}
   </main></>;
 }
