@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {ArrowLeft,ArrowRight,ArrowUpRight,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,Ellipsis,FileText,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MessageSquareQuote,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,WalletCards,X} from 'lucide-react';
+import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -39,8 +39,6 @@ export default function Nav(){
   if(pathname!==path&&!pathname.startsWith(`${path}/`))return false;
   return !hash||pathname!==path||(currentHash||'#profile')===`#${hash}`;
  };
- const primaryPath=pathname==='/dashboard'||pathname==='/markets'||pathname.startsWith('/markets/')||pathname==='/wallet'||pathname==='/client-stories';
- const moreActive=open||!primaryPath;
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
@@ -207,11 +205,11 @@ export default function Nav(){
   </div>
   </header>
   <nav aria-label="Primary account navigation" className="user-bottom-navigation">
-   <Link href="/dashboard" aria-current={pathname==='/dashboard'?'page':undefined} className={pathname==='/dashboard'?'is-active':''}><House size={21} strokeWidth={1.7}/><span>Home</span></Link>
-   <Link href="/markets" aria-current={active('/markets')?'page':undefined} className={active('/markets')?'is-active':''}><ChartNoAxesCombined size={21} strokeWidth={1.7}/><span>Markets</span></Link>
-   <Link href="/wallet" aria-current={pathname==='/wallet'?'page':undefined} className={pathname==='/wallet'?'is-active':''}><WalletCards size={21} strokeWidth={1.7}/><span>Wallet</span></Link>
-   <Link href="/client-stories" aria-current={pathname==='/client-stories'?'page':undefined} className={pathname==='/client-stories'?'is-active':''}><MessageSquareQuote size={21} strokeWidth={1.7}/><span>Stories</span></Link>
-   <button ref={userMenuButtonRef} type="button" aria-label="More account navigation" aria-haspopup="dialog" aria-expanded={open} aria-controls="user-more-menu" className={moreActive?'is-active':''} onClick={()=>setOpen(value=>!value)}><Ellipsis size={22} strokeWidth={1.8}/><span>More</span></button>
+   <Link href="/dashboard" aria-current={pathname==='/dashboard'?'page':undefined} className={pathname==='/dashboard'?'is-active':''}><House size={20} strokeWidth={1.8}/><span>Home</span></Link>
+   <Link href="/wallet" aria-current={active('/wallet')?'page':undefined} className={active('/wallet')?'is-active':''}><Wallet size={20} strokeWidth={1.8}/><span>Wallet</span></Link>
+   <Link href="/trade" aria-label="Trade markets" aria-current={active('/trade')?'page':undefined} className={`user-bottom-trade ${active('/trade')?'is-active':''}`}><ArrowLeftRight size={22} strokeWidth={2}/><span>Trade</span></Link>
+   <Link href="/tier" aria-current={active('/tier')?'page':undefined} className={active('/tier')?'is-active':''}><Award size={20} strokeWidth={1.8}/><span>Benefits</span></Link>
+   <Link href="/settings" aria-current={active('/settings')?'page':undefined} className={active('/settings')?'is-active':''}><UserRound size={20} strokeWidth={1.8}/><span>Settings</span></Link>
   </nav>
   {open&&<button type="button" className="user-more-backdrop" aria-label="Close More menu" tabIndex={-1} onClick={close}/>}
   <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>

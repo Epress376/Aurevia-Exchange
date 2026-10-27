@@ -43,13 +43,13 @@ export default function CardApplyPage(){
 
 	return <>
 		<Nav/>
-		<main className="account-page">
+		<main className="account-page mobile-card-page">
 			<header className="account-heading"><div><span className="account-kicker">APPLY</span><h1>Choose a card</h1><p>Select a design. Order price is set by administrators and confirmed at submission.</p></div>
 				<Link href="/cards" className="text-link">Back</Link>
 			</header>
 			{error&&<p className="text-loss text-sm" role="alert">{error}</p>}
 			<div className="grid gap-4 lg:grid-cols-2">
-				<section className="card p-5">
+				<section className="card p-5 mobile-card-item">
 					{items.map(item=>(
 						<label key={item.id} className={`flex gap-3 p-3 rounded-xl border mb-2 cursor-pointer ${selected===item.id?'border-[rgba(212,167,44,.45)] bg-[rgba(212,167,44,.08)]':'border-white/10'}`}>
 							<input type="radio" name="card" checked={selected===item.id} onChange={()=>setSelected(item.id)}/>
@@ -59,7 +59,7 @@ export default function CardApplyPage(){
 					<label className="flex items-start gap-2 text-sm mt-4"><input type="checkbox" checked={accepted} onChange={e=>setAccepted(e.target.checked)}/><span>I understand this is an internal Aurevia platform card feature and is not valid for real-world payments or external card networks.</span></label>
 					<button type="button" className="btn bg-gold text-black mt-4" disabled={!accepted||!selected||busy} onClick={()=>void submit()}>{busy?'Submitting…':'Submit application'}</button>
 				</section>
-				<section className="card p-5">
+				<section className="card p-5 mobile-card-item">
 					{current&&<AureviaCardVisual designTier={current.designTier} cardholderName={name} displayName={current.displayName}/>}
 					<p className="card-disclosure">Design preview. Administrator approval required before issuance.</p>
 				</section>

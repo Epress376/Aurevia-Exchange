@@ -30,33 +30,31 @@ export default function CardsPage(){
 
 	return <>
 		<Nav/>
-		<main className="account-page">
-			<header className="account-heading">
-				<div><span className="account-kicker">CARD CENTER</span><h1>Your cards</h1><p>Aurevia card designs linked to your account.</p></div>
-				<Link href="/cards/apply" className="btn bg-gold text-black"><Plus size={14}/> Apply</Link>
-			</header>
-			{loading&&<p className="muted">Loading…</p>}
-			{error&&<p className="text-loss text-sm" role="alert">{error}</p>}
-			{!loading&&cards.length===0&&applications.length===0&&(
-				<section className="card p-5"><p className="muted">No cards yet. Apply for an Aurevia card design to get started.</p></section>
-			)}
-			<div className="grid gap-6 mt-2">
-				{cards.map(card=>(
-					<section key={card.id} className="card p-5">
-						<AureviaCardVisual designTier={card.designTier} cardholderName={card.cardholderName} maskedPan={card.maskedPan} expiryMonth={card.expiryMonth} expiryYear={card.expiryYear} displayName={card.displayName}/>
-						<div className="mt-4 flex flex-wrap justify-between gap-2">
-							<div>
-								<p className="text-sm"><b>{card.displayName}</b> · {card.status.replaceAll('_',' ')}</p>
-								<p className="text-xs muted">Ref {card.referenceNumber}</p>
-							</div>
-							<Link className="text-link" href={`/cards/${card.id}`}>Details</Link>
-						</div>
-						<p className="card-disclosure">See card details for product terms.</p>
-					</section>
-				))}
-			</div>
-			{applications.length>0&&(
-				<section className="card p-5 mt-4">
+		<main className="account-page mobile-card-page">
+		<header className="account-heading">
+			<div><span className="account-kicker">AUREVIA · CARD CENTER</span><h1>Virtual Card</h1><p>Your Aurevia card designs and applications.</p></div>
+			<Link href="/cards/apply" className="btn mobile-card-customize"><Plus size={14}/> Explore designs</Link>
+		</header>
+		{loading&&<p className="muted">Loading…</p>}
+		{error&&<p className="text-loss text-sm" role="alert">{error}</p>}
+		{!loading&&cards.length===0&&applications.length===0&&(
+			<section className="card mobile-card-empty"><span className="mobile-card-empty-icon"><CreditCard size={22}/></span><h2>Your card space</h2><p>No cards are linked to your account yet. Explore available designs to review the current card options.</p><Link href="/cards/apply" className="btn mobile-card-apply"><Plus size={15}/> Explore available cards</Link></section>
+		)}
+		<div className="mobile-card-list">
+			{cards.map(card=>(
+				<section key={card.id} className="card mobile-card-item">
+					<div className="mobile-card-view-heading"><span>YOUR AUREVIA CARD</span><span className="status-pill">{card.status.replaceAll('_',' ')}</span></div>
+					<AureviaCardVisual designTier={card.designTier} cardholderName={card.cardholderName} maskedPan={card.maskedPan} expiryMonth={card.expiryMonth} expiryYear={card.expiryYear} displayName={card.displayName}/>
+					<div className="mobile-card-item-footer">
+						<div><b>{card.displayName}</b><small>Reference · {card.referenceNumber}</small></div>
+						<Link className="mobile-card-details" href={`/cards/${card.id}`}>Card details <Plus size={14}/></Link>
+					</div>
+					<p className="card-disclosure">Aurevia in-platform card feature. Review the card details and terms before use.</p>
+				</section>
+			))}
+		</div>
+		{applications.length>0&&(
+			<section className="card mobile-card-applications">
 					<h2 className="font-semibold flex items-center gap-2"><CreditCard size={16}/> Applications</h2>
 					<ul className="mt-3 divide-y divide-white/10">{applications.map(app=>(
 						<li key={app.id} className="py-3 text-sm flex flex-wrap justify-between gap-2">

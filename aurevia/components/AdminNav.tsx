@@ -8,8 +8,8 @@ import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
-	{title:'Overview',links:[
-		{href:'/admin',label:'Dashboard',icon:LayoutDashboard},
+	{title:'Dashboards',links:[
+		{href:'/admin',label:'CRM Dashboard',icon:LayoutDashboard},
 	]},
 	{title:'Accounts',links:[
 		{href:'/admin/users',label:'Users',icon:UsersRound},

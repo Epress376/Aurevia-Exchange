@@ -1,9 +1,10 @@
 'use client';
 
-import {useCallback,useEffect,useMemo,useState} from 'react';
+import {useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
-import {Cell,Pie,PieChart,ResponsiveContainer,Tooltip} from 'recharts';
-import {Activity,ArrowDownLeft,ArrowRight,ArrowUpRight,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,LifeBuoy,LineChart,RefreshCw,ShieldCheck,WalletCards} from 'lucide-react';
+import Image from 'next/image';
+import {Cell,Pie, PieChart,ResponsiveContainer,Tooltip} from 'recharts';
+import {Activity,ArrowDownLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Bell,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,Eye,EyeOff,Home,LifeBuoy,LineChart,Plus,RefreshCw,Search,ShieldCheck,Star,WalletCards} from 'lucide-react';
 import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
@@ -125,7 +126,7 @@ function MarketChartPanel({selectedSymbol,quotes,internalInstrumentId}:{selected
 	const quote=isQuote(quoteValue)?quoteValue:history?.quote;
 	return <section className="user-dashboard-panel user-market-chart-panel" aria-labelledby="user-market-overview">
 		<header className="user-dashboard-panel-heading">
-			<div><span className="user-dashboard-eyebrow">SUPPORTED MARKET DATA</span><h2 id="user-market-overview">Market overview</h2><p>{quote?.asset.name||selectedSymbol} · {history?.source||quote?.source||'Quote source loading'}</p></div>
+			<div><span className="user-dashboard-eyebrow">SUPPORTED MARKET DATA</span><h2 id="user-market-overview">Market overview</h2><p>{quote?.asset.name||selectedSymbol} · {history?.source||quote?.source||'Quote source loading'}{quote?.updatedAt?` · Updated ${timeAgo(quote.updatedAt)}`:''}</p></div>
 			<div className="user-market-quote">{quote?<><strong>{formatMarketPrice(quote.price,quote.asset.currency)}</strong><span className={quote.changePercent>=0?'is-positive':'is-negative'}>{quote.changePercent>=0?'+':''}{quote.changePercent.toFixed(2)}%</span></>:<span className="user-dashboard-muted">Quote unavailable</span>}</div>
 		</header>
 		<div className="user-chart-toolbar"><div className="user-chart-timeframes" role="group" aria-label="Market chart range">{timeframes.map(item=><button key={item.value} type="button" aria-pressed={timeframe===item.value} className={timeframe===item.value?'is-selected':''} onClick={()=>setTimeframe(item.value)}>{item.label}</button>)}</div><Link href={`/markets?symbol=${encodeURIComponent(selectedSymbol)}`} className="user-dashboard-panel-link">Full market view <ExternalLink size={13}/></Link></div>
@@ -150,7 +151,13 @@ function AssetAllocation({overview}:{overview:Overview}){
 }
 
 function ActivityList({items}:{items:Overview['recentActivity']}){
-	return items.length?<ol className="user-recent-activity">{items.slice(0,6).map(item=><li key={item.id}><span className={`user-activity-mark activity-${item.category}`}/><span><b>{item.action}</b><small>{item.asset} · {item.status}</small></span><span><b>{activityAmount(item)}</b><time dateTime={item.timestamp}>{timeAgo(item.timestamp)}</time></span></li>)}</ol>:<div className="user-dashboard-empty compact"><Activity size={18}/><p>Your recent account activity will appear here.</p></div>;
+	const [sort,setSort]=useState<'NEWEST'|'OLDEST'|'VALUE'>('NEWEST');
+	const sortedItems=useMemo(()=>[...items].sort((a,b)=>{
+		if(sort==='VALUE')return Math.abs(Number(b.amount)||0)-Math.abs(Number(a.amount)||0);
+		const difference=new Date(a.timestamp).getTime()-new Date(b.timestamp).getTime();
+		return sort==='NEWEST'?-difference:difference;
+	}),[items,sort]);
+	return <>{items.length>0&&<label className="activity-sort"><span>Sort activity</span><select value={sort} onChange={event=>setSort(event.target.value as typeof sort)}><option value="NEWEST">Newest first</option><option value="OLDEST">Oldest first</option><option value="VALUE">Largest amount</option></select></label>}{sortedItems.length?<ol className="user-recent-activity">{sortedItems.slice(0,6).map(item=><li key={item.id}><span className={`user-activity-mark activity-${item.category}`}/><span><b>{item.action}</b><small>{item.asset} · {item.status}</small></span><span><b>{activityAmount(item)}</b><time dateTime={item.timestamp}>{timeAgo(item.timestamp)}</time></span></li>)}</ol>:<div className="user-dashboard-empty compact"><Activity size={18}/><p>Your recent account activity will appear here.</p></div>}</>;
 }
 
 export default function UserDashboardExperience(){
@@ -158,12 +165,18 @@ export default function UserDashboardExperience(){
 	const [overview,setOverview]=useState<Overview|null>(null);
 	const [loading,setLoading]=useState(true);
 	const [refreshing,setRefreshing]=useState(false);
+	const [syncingAll,setSyncingAll]=useState(false);
+	const [mobileBalanceVisible,setMobileBalanceVisible]=useState(true);
 	const [error,setError]=useState('');
 	const [quotes,setQuotes]=useState<Map<string,MarketQuote|QuoteError>>(new Map());
 	const [quoteSource,setQuoteSource]=useState('');
 	const [marketCategory,setMarketCategory]=useState<MarketCategory>('Favorites');
+	const [marketSearch,setMarketSearch]=useState('');
+	const [marketSort,setMarketSort]=useState<'DEFAULT'|'PRICE'|'CHANGE'>('DEFAULT');
+	const [favorites,setFavorites]=useState<string[]>(DEFAULT_WATCHLIST);
 	const [selectedSymbol,setSelectedSymbol]=useState(DEFAULT_WATCHLIST[0]||'BTC');
 	const accountMode=session?.user?.accountMode;
+	const refreshQuotesRef=useRef<()=>Promise<void>>(async()=>{});
 
 	const load=useCallback(async(showLoading=false)=>{
 		if(showLoading)setLoading(true);
@@ -199,37 +212,74 @@ export default function UserDashboardExperience(){
 				if(active){setQuotes(new Map(result.quotes.map(item=>[item.asset.id,item])));setQuoteSource(result.source)}
 			}catch(exception){if(active)setQuoteSource(exception instanceof Error?exception.message:'Market quotes unavailable')}
 		};
+		refreshQuotesRef.current=refresh;
 		void refresh();
 		const timer=window.setInterval(()=>void refresh(),30_000);
-		return()=>{active=false;window.clearInterval(timer)};
+		return()=>{active=false;refreshQuotesRef.current=async()=>{};window.clearInterval(timer)};
 	},[overview?.internalMarketInstruments]);
 
 	const visibleAssets=useMemo(()=>{
-		const assets=marketCategory==='Favorites'
-			?MARKET_ASSETS.filter(asset=>DEFAULT_WATCHLIST.includes(asset.id))
-			:MARKET_ASSETS.filter(asset=>categoryFor(asset.type)===marketCategory);
+		const query=marketSearch.trim().toLowerCase();
+		const assets=MARKET_ASSETS.filter(asset=>(marketCategory==='Favorites'?favorites.includes(asset.id):categoryFor(asset.type)===marketCategory)&&(!query||`${asset.id} ${asset.ticker} ${asset.name}`.toLowerCase().includes(query)));
+		if(marketSort!=='DEFAULT')assets.sort((a,b)=>{
+			const first=quotes.get(a.id),second=quotes.get(b.id);
+			const firstQuote=isQuote(first)?first:null,secondQuote=isQuote(second)?second:null;
+			const firstValue=marketSort==='PRICE'?firstQuote?.price??-Infinity:firstQuote?.changePercent??-Infinity;
+			const secondValue=marketSort==='PRICE'?secondQuote?.price??-Infinity:secondQuote?.changePercent??-Infinity;
+			return secondValue-firstValue;
+		});
 		return assets.slice(0,8);
-	},[marketCategory]);
+	},[favorites,marketCategory,marketSearch,marketSort,quotes]);
+	const favoriteAssets=useMemo(()=>MARKET_ASSETS.filter(asset=>favorites.includes(asset.id)).slice(0,4),[favorites]);
+	const toggleFavorite=useCallback((symbol:string)=>{
+		setFavorites(current=>current.includes(symbol)?current.filter(item=>item!==symbol):[...current,symbol]);
+	},[]);
 	const internalInstrumentId=overview?.internalMarketInstruments.find(item=>item.assetId===selectedSymbol)?.instrumentId;
 	const refreshOverview=useCallback(()=>{void load(false)},[load]);
-	if(loading&&!overview)return <><Nav/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
+	const syncAll=useCallback(async()=>{
+		setSyncingAll(true);
+		try{await Promise.all([load(false),refreshQuotesRef.current()])}
+		finally{setSyncingAll(false)}
+	},[load]);
+	if(loading&&!overview)return <><Nav/><DashboardSidebar name={session?.user?.name||session?.user?.email||''}/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
 
-	return <><Nav/><main className="user-dashboard-page">
+	return <><Nav/><DashboardSidebar name={overview?.profile.name||session?.user?.email||''}/><main className="user-dashboard-page">
 		{error&&<div className="user-dashboard-error" role="alert"><span>{error}</span><button type="button" onClick={()=>void load(true)}>Retry</button></div>}
 		{overview&&<>
 			<header className="user-dashboard-welcome">
 				<div><span className="user-dashboard-eyebrow">AUREVIA EXCHANGE · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
 				<div className="user-dashboard-welcome-actions">
-					<nav className="user-dashboard-shortcuts" aria-label="Dashboard shortcuts">
-						<Link href="/markets" title="Markets" aria-label="Markets"><LineChart size={15}/></Link>
-						{overview.accountMode==='REAL'&&<Link href="/investments" title="Investments" aria-label="Investments"><BriefcaseBusiness size={15}/></Link>}
-						{overview.accountMode==='REAL'&&<Link href="/wallet" title="Wallet" aria-label="Wallet"><WalletCards size={15}/></Link>}
-						<Link href={overview.accountMode==='DEMO'?'/orders':'/activity'} title={overview.accountMode==='DEMO'?'Demo trade history':'Account activity'} aria-label={overview.accountMode==='DEMO'?'Demo trade history':'Account activity'}><Activity size={15}/></Link>
-					</nav>
 					<span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode==='DEMO'?'DEMO MODE · VIRTUAL':'REAL ACCOUNT'}</span>
-					<button type="button" className="user-dashboard-refresh" aria-label="Refresh dashboard" disabled={refreshing} onClick={()=>void load()}><RefreshCw size={15} className={refreshing?'is-spinning':''}/></button>
+					<button type="button" className="user-dashboard-refresh" aria-label="Sync all account and market data" disabled={refreshing||syncingAll} onClick={()=>void syncAll()}><RefreshCw size={15} className={refreshing||syncingAll?'is-spinning':''}/><span>{refreshing||syncingAll?'Syncing…':'Sync all'}</span></button>
+					<Link href="/wallet" className="dashboard-wallet-link"><WalletCards size={15}/>Wallet</Link>
 				</div>
 			</header>
+			<section className="mobile-home-summary" aria-label="Account overview">
+				<header className="mobile-home-greeting">
+					<span className="mobile-home-avatar">{firstName(overview.profile.name).slice(0,1).toUpperCase()}</span>
+					<div><small>Welcome back</small><strong>{overview.profile.name||'Your account'}</strong></div>
+					<Link href="/support" aria-label="Contact support"><LifeBuoy size={19}/></Link>
+					<Link href="/notifications" aria-label="View notifications"><Bell size={19}/></Link>
+				</header>
+				<article className="mobile-balance-card">
+					<div className="mobile-balance-top"><span>Estimated account value</span><button type="button" aria-label={mobileBalanceVisible?'Hide account value':'Show account value'} aria-pressed={!mobileBalanceVisible} onClick={()=>setMobileBalanceVisible(value=>!value)}>{mobileBalanceVisible?<Eye size={17}/>:<EyeOff size={17}/>}</button></div>
+					<strong>{mobileBalanceVisible?formatUsd(overview.portfolioSummary.totalValue):'••••••••'}</strong>
+					<div className="mobile-balance-bottom"><span>USD · {overview.accountMode==='DEMO'?'Demo account':'Account total'}</span><Link href="/portfolio">Portfolio <ArrowRight size={13}/></Link></div>
+				</article>
+				<nav className="mobile-money-actions" aria-label="Quick account actions">
+					{overview.accountMode==='REAL'?<Link href="/wallet?type=DEPOSIT"><span><ArrowDownLeft size={17}/></span>Deposit</Link>:<Link href="/markets"><span><Search size={17}/></span>Markets</Link>}
+					{overview.accountMode==='REAL'?<Link href="/wallet?type=WITHDRAWAL"><span><ArrowUpRight size={17}/></span>Withdraw</Link>:<Link href="/portfolio"><span><BriefcaseBusiness size={17}/></span>Portfolio</Link>}
+					<Link href="/trade"><span><ArrowLeftRight size={17}/></span>Trade</Link>
+				</nav>
+				<section className="mobile-summary-section" aria-labelledby="mobile-assets-heading">
+					<header><h2 id="mobile-assets-heading">My assets</h2><Link href="/portfolio">See all <ArrowRight size={13}/></Link></header>
+					{overview.positions.length>0?<div className="mobile-assets-grid">{overview.positions.slice(0,2).map(position=><Link className="mobile-asset-card" href="/portfolio" key={position.id}><span className="mobile-asset-icon">{position.instrument.symbol.slice(0,1)}</span><span><b>{position.instrument.symbol}</b><small>{position.instrument.name}</small></span><strong>{formatUsd(position.marketValue)}</strong><small>{Number(position.quantity).toLocaleString(undefined,{maximumFractionDigits:6})} units</small></Link>)}</div>:<Link href="/portfolio" className="mobile-summary-empty">Your portfolio assets will appear here <ArrowRight size={14}/></Link>}
+				</section>
+				<section className="mobile-summary-section mobile-transactions" aria-labelledby="mobile-transactions-heading">
+					<header><h2 id="mobile-transactions-heading">Recent activity</h2><Link href="/activity">See all <ArrowRight size={13}/></Link></header>
+					{overview.recentActivity.length>0?<div className="mobile-transactions-list">{overview.recentActivity.slice(0,2).map(item=><Link href={item.link||'/activity'} key={item.id}><span className="mobile-transaction-icon"><Activity size={17}/></span><span><b>{item.action}</b><small>{item.asset} · {timeAgo(item.timestamp)}</small></span><span><strong>{activityAmount(item)}</strong><small>{item.status}</small></span></Link>)}</div>:<p className="mobile-summary-empty">Your recent account activity will appear here.</p>}
+				</section>
+			</section>
 			<section className="user-dashboard-metrics" aria-label={`${overview.accountMode} account balance and portfolio value`}>
 				<UserMetric label={`${overview.accountMode} ${overview.accountMode==='DEMO'?'virtual cash':'account balance'}`} value={formatUsd(overview.balances[overview.accountMode]||'0')} detail={overview.accountMode==='DEMO'?`Available DEMO cash · ${formatUsd(overview.demoStartingBalance||'5000.00')} starting allocation`:'Internal USD ledger balance'} active icon={overview.accountMode==='DEMO'?WalletCards:ShieldCheck}/>
 				<UserMetric label={`${overview.accountMode} portfolio value`} value={formatUsd(overview.portfolioSummary.totalValue)} detail={overview.accountMode==='DEMO'?'Virtual cash + simulated trading positions':'Cash + positions + allocated principal'} active icon={ChartNoAxesCombined}/>
@@ -237,17 +287,22 @@ export default function UserDashboardExperience(){
 			{overview.accountMode==='DEMO'&&<DemoAccountControls startingBalance={overview.demoStartingBalance||'5000.00'} onReset={refreshOverview}/>}
 			{overview.accountMode==='REAL'&&<p className="user-dashboard-real-note">REAL funding is credited only through existing administrator-approved requests. Balances shown are internal Aurevia ledger records.</p>}
 			<section className="user-market-assets" aria-label="Supported market quotes">
-				<header className="user-market-assets-heading"><div><span className="user-dashboard-eyebrow">SUPPORTED INSTRUMENTS</span><h2>Market pulse</h2></div><small>{quoteSource||'Quote source connecting'}</small></header>
+				<header className="user-market-assets-heading"><div><span className="user-dashboard-eyebrow">SUPPORTED INSTRUMENTS</span><h2>Market watch</h2></div><div className="dashboard-market-controls"><label className="dashboard-market-search"><Search size={15}/><input aria-label="Search supported markets" placeholder="Search markets..." value={marketSearch} onChange={event=>setMarketSearch(event.target.value)}/></label><label className="dashboard-market-sort"><span>Sort by</span><select aria-label="Sort markets" value={marketSort} onChange={event=>setMarketSort(event.target.value as typeof marketSort)}><option value="DEFAULT">Default</option><option value="PRICE">Price</option><option value="CHANGE">Daily change</option></select></label><small>{quoteSource||'Quote source connecting'}</small></div></header>
 				<div className="user-market-categories" role="group" aria-label="Filter market instruments">{categoryFilters.map(category=><button key={category} type="button" aria-pressed={marketCategory===category} className={marketCategory===category?'is-selected':''} onClick={()=>setMarketCategory(category)}>{category}</button>)}</div>
-				<div className="user-market-asset-grid">{visibleAssets.map(asset=>{
+				<div className="user-market-asset-grid">{visibleAssets.slice(0,4).map(asset=>{
 					const quote=quotes.get(asset.id);
-					return <button key={asset.id} type="button" className={`user-market-asset ${selectedSymbol===asset.id?'is-selected':''}`} onClick={()=>setSelectedSymbol(asset.id)} aria-pressed={selectedSymbol===asset.id}>
-						<span><b>{asset.id}</b><small>{asset.name}</small></span>
-						<strong>{isQuote(quote)?formatMarketPrice(quote.price,quote.asset.currency):quote?'Unavailable':'—'}</strong>
-						<em className={isQuote(quote)?quote.changePercent>=0?'is-positive':'is-negative':''}>{isQuote(quote)?`${quote.changePercent>=0?'+':''}${quote.changePercent.toFixed(2)}%`:quote?'Quote unavailable':'Loading quote'}</em>
-					</button>;
+					return <article key={asset.id} className={`market-watch-card ${selectedSymbol===asset.id?'is-selected':''}`}>
+						<button type="button" className="user-market-asset" onClick={()=>setSelectedSymbol(asset.id)} aria-pressed={selectedSymbol===asset.id}>
+							<span className="market-watch-symbol">{asset.id.slice(0,3)}</span><span><b>{asset.id}</b><small>{asset.name}</small></span>
+							<strong>{isQuote(quote)?formatMarketPrice(quote.price,quote.asset.currency):quote?'Unavailable':'—'}</strong>
+							<em className={isQuote(quote)?quote.changePercent>=0?'is-positive':'is-negative':''}>{isQuote(quote)?`${quote.changePercent>=0?'+':''}${quote.changePercent.toFixed(2)}%`:quote?'Quote unavailable':'Loading quote'}</em>
+						</button>
+						<button type="button" className={`market-watch-favorite ${favorites.includes(asset.id)?'is-favorite':''}`} aria-label={`${favorites.includes(asset.id)?'Remove':'Add'} ${asset.name} ${favorites.includes(asset.id)?'from':'to'} favorites`} aria-pressed={favorites.includes(asset.id)} onClick={()=>toggleFavorite(asset.id)}><Star size={15} fill={favorites.includes(asset.id)?'currentColor':'none'}/></button>
+					</article>;
 				})}</div>
+				{visibleAssets.length===0&&<p className="market-watch-empty">No supported markets match this filter.</p>}
 			</section>
+			<FavoriteMarkets assets={favoriteAssets} quotes={quotes} onRemove={toggleFavorite}/>
 			<div className="user-dashboard-columns">
 				<div className="user-dashboard-primary">
 					<MarketChartPanel selectedSymbol={selectedSymbol} quotes={quotes} internalInstrumentId={internalInstrumentId}/>
@@ -284,6 +339,46 @@ export default function UserDashboardExperience(){
 		</>}
 		{error&&!overview&&<div className="user-dashboard-empty user-dashboard-fatal"><p>Your account overview could not be loaded.</p><button type="button" onClick={()=>void load(true)}>Try again <RefreshCw size={14}/></button></div>}
 	</main></>;
+}
+
+function DashboardSidebar({name}:{name:string}){
+	const initial=name.trim().slice(0,1).toUpperCase()||'A';
+	const items=[
+		{href:'/dashboard',label:'Overview',icon:Home},
+		{href:'/portfolio',label:'Portfolio',icon:ChartNoAxesCombined},
+		{href:'/wallet',label:'Wallet',icon:WalletCards},
+		{href:'/markets',label:'Markets',icon:LineChart},
+		{href:'/orders',label:'Transactions',icon:Activity},
+		{href:'/settings',label:'Settings',icon:ShieldCheck},
+	];
+	return <aside className="dashboard-sidebar" aria-label="Dashboard navigation">
+		<Link href="/" className="dashboard-sidebar-brand"><Image src="/aurevia-logo.png" alt="" width={36} height={36}/><span><b>Aurevia</b><small>EXCHANGE</small></span></Link>
+		<span className="dashboard-sidebar-label">WORKSPACE</span>
+		<nav>{items.map(({href,label,icon:Icon})=><Link key={href} href={href} aria-current={href==='/dashboard'?'page':undefined} className={href==='/dashboard'?'is-active':''}><Icon size={17}/><span>{label}</span>{href==='/dashboard'&&<i aria-hidden="true"/>}</Link>)}</nav>
+		<div className="dashboard-sidebar-profile"><span>{initial}</span><div><b>{name||'Account'}</b><small>Personal account</small></div></div>
+	</aside>;
+}
+
+function FavoriteMarkets({assets,quotes,onRemove}:{assets:typeof MARKET_ASSETS;quotes:Map<string,MarketQuote|QuoteError>;onRemove:(symbol:string)=>void}){
+	return <section className="favorite-markets-panel" aria-labelledby="favorite-markets-title">
+		<header><div><span className="user-dashboard-eyebrow">YOUR WATCHLIST</span><h2 id="favorite-markets-title">Favourite markets</h2></div><Link href="/markets"><Plus size={14}/> Add favourite</Link></header>
+		{assets.length?<div className="favorite-markets-grid">{assets.map(asset=>{
+			const result=quotes.get(asset.id);
+			const quote=isQuote(result)?result:null;
+			return <article key={asset.id}>
+				<div className="favorite-market-heading"><span className="market-watch-symbol">{asset.id.slice(0,3)}</span><div><b>{asset.id}</b><small>{asset.name}</small></div><button type="button" aria-label={`Remove ${asset.name} from favorites`} onClick={()=>onRemove(asset.id)}><Star size={15} fill="currentColor"/></button></div>
+				<strong>{quote?formatMarketPrice(quote.price,quote.asset.currency):'—'}</strong>
+				<div className="favorite-market-change"><span className={quote?quote.changePercent>=0?'is-positive':'is-negative':''}>{quote?`${quote.changePercent>=0?'+':''}${quote.changePercent.toFixed(2)}%`:'Change unavailable'}</span><MarketSparkline values={quote?.sparkline||[]} positive={!quote||quote.changePercent>=0}/></div>
+			</article>;
+		})}</div>:<p className="market-watch-empty">No favourites yet. Star a supported market to add it here.</p>}
+	</section>;
+}
+
+function MarketSparkline({values,positive}:{values:number[];positive:boolean}){
+	if(values.length<2)return <span className="favorite-sparkline-empty" aria-label="Intraday chart unavailable">—</span>;
+	const min=Math.min(...values),range=Math.max(...values)-min||1;
+	const points=values.map((value,index)=>`${(index/(values.length-1))*100},${30-((value-min)/range)*26}`).join(' ');
+	return <svg className={positive?'favorite-sparkline is-positive':'favorite-sparkline is-negative'} viewBox="0 0 100 32" preserveAspectRatio="none" role="img" aria-label={`${positive?'Positive':'Negative'} market trend`}><polyline points={points}/></svg>;
 }
 
 function QuickAction({href,label,icon:Icon}:{href:string;label:string;icon:typeof Activity}){

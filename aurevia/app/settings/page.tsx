@@ -3,7 +3,8 @@
 import {FormEvent,useEffect,useState} from 'react';
 import {signOut,useSession} from 'next-auth/react';
 import Image from 'next/image';
-import {Bell,Check,KeyRound,ShieldCheck,Trash2,UserRound} from 'lucide-react';
+import Link from 'next/link';
+import {Activity,Bell,Check,ChevronRight,CreditCard,Download,KeyRound,Search,Settings2,ShieldCheck,Store,Trash2,UserRound,WalletCards} from 'lucide-react';
 import Nav from '@/components/Nav';
 import BrowserPushSettings from '@/components/BrowserPushSettings';
 import {useLocale} from '@/lib/i18n-context';
@@ -13,6 +14,8 @@ type Profile={id:string;email:string;name:string|null;firstName:string;lastName:
 export default function Settings(){
 	const [profile,setProfile]=useState<Profile|null>(null);
 	const [section,setSection]=useState<'profile'|'security'|'preferences'>('profile');
+	const [mobileHome,setMobileHome]=useState(true);
+	const [settingsSearch,setSettingsSearch]=useState('');
 	const [message,setMessage]=useState('');
 	const [error,setError]=useState('');
 	const [loading,setLoading]=useState(true);
@@ -53,9 +56,28 @@ export default function Settings(){
 
 	function selectSection(nextSection:'profile'|'security'|'preferences'){
 		setSection(nextSection);
+		setMobileHome(false);
 		window.history.replaceState(null,'',`${window.location.pathname}#${nextSection}`);
 		window.dispatchEvent(new Event('hashchange'));
 	}
+
+	const settingsGroups=[
+		{title:'Basic',tone:'basic',links:[
+			{label:'Account Details',description:'Your personal profile and verification',href:'/settings#profile',icon:UserRound},
+			{label:'Preferences',description:'Notification delivery preferences',href:'/settings#preferences',icon:Settings2},
+			{label:'Notifications',description:'View your account notifications',href:'/notifications',icon:Bell},
+			{label:'Applications',description:'Card applications and designs',href:'/cards',icon:CreditCard},
+			{label:'Activity history',description:'Review wallet transactions',href:'/wallet/transactions',icon:Activity},
+		]},
+		{title:'Payments',tone:'payments',links:[
+			{label:'Wallet & payout methods',description:'Manage wallet requests and destinations',href:'/wallet',icon:WalletCards},
+			{label:'Transaction history',description:'View wallet deposits and withdrawals',href:'/wallet/transactions',icon:Download},
+		]},
+		{title:'More',tone:'more',links:[
+			{label:'Explore markets',description:'Browse supported exchange markets',href:'/markets',icon:Store},
+			{label:'Support',description:'Get help with your account',href:'/support',icon:ShieldCheck},
+		]},
+	].map(group=>({...group,links:group.links.filter(link=>`${link.label} ${link.description} ${group.title}`.toLowerCase().includes(settingsSearch.trim().toLowerCase()))})).filter(group=>group.links.length>0);
 
 	async function save(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();
@@ -100,8 +122,14 @@ export default function Settings(){
 
 	const verification=profile?.kycStatus==='APPROVED'?'Approved':profile?.kycStatus==='REJECTED'?'Needs attention':'Pending';
 
-	return <><Nav/><main className="account-page">
+	return <><Nav/><main className="account-page mobile-settings-page" data-mobile-home={mobileHome}>
+		<section className="mobile-settings-home" aria-label="Settings menu">
+			<header className="mobile-settings-heading"><div><span>YOUR ACCOUNT</span><h1>Settings</h1></div><span className="mobile-settings-avatar">{(profile?.name||profile?.email||'A').trim().slice(0,1).toUpperCase()}</span></header>
+			<label className="mobile-settings-search"><Search size={18}/><span className="sr-only">Search settings</span><input type="search" placeholder="Search settings" value={settingsSearch} onChange={event=>setSettingsSearch(event.target.value)}/></label>
+			{settingsGroups.length?settingsGroups.map(group=><section className={`mobile-settings-group mobile-settings-group--${group.tone}`} key={group.title} aria-label={group.title}><h2>{group.title}</h2><div>{group.links.map(({label,description,href,icon:Icon})=><Link className="mobile-settings-row" href={href} key={label} onClick={()=>{if(href.startsWith('/settings#')){setMobileHome(false);setSection(href.endsWith('security')?'security':href.endsWith('preferences')?'preferences':'profile')}}}><span className="mobile-settings-icon"><Icon size={19}/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight size={17} className="mobile-settings-chevron"/></Link>)}</div></section>):<p className="mobile-settings-empty">No settings match “{settingsSearch}”.</p>}
+		</section>
 		<header className="account-heading"><div><span className="account-kicker">{translate('accountCenter')} · {session?.user?.accountMode||'ACCOUNT'}</span><h1>{translate('settingsTitle')}</h1><p>{translate('settingsSubtitle')}</p></div><div className="flex flex-wrap items-center gap-2"><span className={`status-pill ${session?.user?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{session?.user?.accountMode||'ACCOUNT'}</span><span className="status-pill">{loading?translate('loading'):profile?.status||translate('unavailable')}</span></div></header>
+		{!mobileHome&&<button type="button" className="mobile-settings-back" onClick={()=>setMobileHome(true)}><ChevronRight size={16}/>All settings</button>}
 		{error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" disabled={loading} onClick={()=>{setError('');setLoading(true);setRetryCount(value=>value+1)}}>{translate('retry')}</button></div>}
 		<div className="settings-layout">
 			<nav className="settings-tabs" aria-label={translate('settingsSections')} role="tablist">

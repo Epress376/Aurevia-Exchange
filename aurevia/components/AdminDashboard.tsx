@@ -136,21 +136,25 @@ function PlatformChart({daily}:{daily:DashboardData['daily']}){
 		const y=196-(day[key]/max)*160;
 		return `${x},${y}`;
 	}).join(' ');
+	const barWidth=Math.min(34,Math.max(10,592/Math.max(1,daily.length)*.48));
 	return <section className="admin-panel admin-chart-panel" aria-labelledby="admin-platform-overview">
-		<header className="admin-panel-heading"><div><p className="admin-eyebrow">REAL ACCOUNT ACTIVITY</p><h2 id="admin-platform-overview">Platform overview</h2><p>Approved USD deposits and settled USD withdrawals, daily.</p></div><span className="admin-period-label">LAST 7 DAYS · REAL</span></header>
+		<header className="admin-panel-heading"><div><p className="admin-eyebrow">REAL ACCOUNT ACTIVITY</p><h2 id="admin-platform-overview">Funding activity</h2><p>Approved USD deposits and settled USD withdrawals, daily.</p></div><span className="admin-period-label">LAST 7 DAYS · REAL</span></header>
 		<div className="admin-chart-legend"><span><i className="deposit-dot"/>Deposits</span><span><i className="withdrawal-dot"/>Withdrawals</span></div>
 		{daily.length===0?<p className="admin-empty-state">Daily activity is currently unavailable.</p>:<>
 			<svg className="admin-platform-chart" viewBox="0 0 700 250" role="img" aria-labelledby="admin-chart-title admin-chart-description">
 				<title id="admin-chart-title">Daily approved deposits and settled withdrawals</title>
 				<desc id="admin-chart-description">{daily.map(day=>`${day.date}: deposits ${money.format(day.depositsUsd)}, withdrawals ${money.format(day.withdrawalsUsd)}`).join('; ')}</desc>
 				{[36,76,116,156,196].map(y=><line key={y} x1="54" x2="646" y1={y} y2={y} className="admin-chart-gridline"/>)}
-				<polyline points={points('depositsUsd')} className="admin-chart-deposits"/>
+				{daily.map((day,index)=>{
+					const x=54+index*(592/Math.max(1,daily.length-1));
+					const height=day.depositsUsd/max*160;
+					return <rect key={day.date} x={x-barWidth/2} y={196-height} width={barWidth} height={height} rx="4" className="admin-chart-deposit-bar"><title>{day.date}: deposits {money.format(day.depositsUsd)}</title></rect>;
+				})}
 				<polyline points={points('withdrawalsUsd')} className="admin-chart-withdrawals"/>
 				{daily.map((day,index)=>{
 					const x=54+index*(592/Math.max(1,daily.length-1));
-					const depositY=196-(day.depositsUsd/max)*160;
 					const withdrawalY=196-(day.withdrawalsUsd/max)*160;
-					return <g key={day.date}><circle cx={x} cy={depositY} r="3" className="admin-chart-deposit-point"><title>{day.date}: deposits {money.format(day.depositsUsd)}</title></circle><circle cx={x} cy={withdrawalY} r="3" className="admin-chart-withdrawal-point"><title>{day.date}: withdrawals {money.format(day.withdrawalsUsd)}</title></circle><text x={x} y="226" textAnchor="middle" className="admin-chart-label">{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})}</text></g>;
+					return <g key={day.date}><circle cx={x} cy={withdrawalY} r="3" className="admin-chart-withdrawal-point"><title>{day.date}: withdrawals {money.format(day.withdrawalsUsd)}</title></circle><text x={x} y="226" textAnchor="middle" className="admin-chart-label">{new Date(`${day.date}T00:00:00Z`).toLocaleDateString(undefined,{month:'short',day:'numeric',timeZone:'UTC'})}</text></g>;
 				})}
 			</svg>
 			<div className="admin-chart-totals"><span>Deposits this week <b>{money.format(daily.reduce((sum,day)=>sum+day.depositsUsd,0))}</b></span><span>Withdrawals this week <b>{money.format(daily.reduce((sum,day)=>sum+day.withdrawalsUsd,0))}</b></span></div>
@@ -245,7 +249,7 @@ export default function AdminDashboard(){
 
 	return <main className="account-page admin-dashboard-page">
 		<header className="admin-dashboard-heading">
-			<div><p className="admin-eyebrow">AUREVIA EXCHANGE · CONTROL ROOM</p><h1>Good to see you.</h1><p>Live platform performance and operational activity.</p></div>
+			<div><nav className="admin-dashboard-breadcrumb" aria-label="Breadcrumb"><Link href="/admin">Home</Link><span>/</span><span>Dashboards</span><span>/</span><span aria-current="page">CRM Dashboard</span></nav><p className="admin-eyebrow">AUREVIA EXCHANGE · CUSTOMER OPERATIONS</p><h1>CRM Dashboard</h1><p>Live customer, account, and platform activity.</p></div>
 			<div className="admin-dashboard-header-actions">
 				<nav className="admin-dashboard-shortcuts" aria-label="Administrator dashboard shortcuts">
 					<Link href="/admin/users" title="Users" aria-label="Users"><UsersRound size={15}/></Link>
@@ -261,13 +265,12 @@ export default function AdminDashboard(){
 		{data&&<DashboardAssistant data={data}/>}
 		{error&&<p className="admin-dashboard-error" role="alert">{error}<button type="button" onClick={()=>void load()}>Retry</button></p>}
 		{loading&&!data?<div className="admin-dashboard-loading" role="status"><span className="admin-loading-indicator"/>Loading live platform data…</div>:data&&<>
-			<section className="admin-kpi-grid" aria-label="Platform key metrics">
-				<MetricCard label="Total users" value={integer.format(data.metrics.users.total)} detail={`+${integer.format(data.metrics.users.newThisWeek)} new this week`} icon={UsersRound}/>
-				<MetricCard label="Approved deposits" value={money.format(Number(data.metrics.deposits.totalUsd))} detail={`7d ${money.format(Number(data.metrics.deposits.last7DaysUsd))}`} change={data.metrics.deposits.changePercent} icon={ArrowDownRight}/>
-				<MetricCard label="Settled withdrawals" value={money.format(Number(data.metrics.withdrawals.totalUsd))} detail={`7d ${money.format(Number(data.metrics.withdrawals.last7DaysUsd))}`} change={data.metrics.withdrawals.changePercent} icon={WalletCards}/>
-				<MetricCard label="Total investments" value={money.format(Number(data.metrics.investments.totalUsd))} detail={`7d activated ${money.format(Number(data.metrics.investments.last7DaysUsd))}`} change={data.metrics.investments.changePercent} icon={BriefcaseBusiness}/>
+			<section className="admin-kpi-grid" aria-label="Customer relationship metrics">
+				<MetricCard label="Total customers" value={integer.format(data.metrics.users.total)} detail="Registered accounts" icon={UsersRound}/>
+				<MetricCard label="New this week" value={integer.format(data.metrics.users.newThisWeek)} detail={`Previous week ${integer.format(data.metrics.users.previousWeek)}`} change={data.metrics.users.previousWeek?((data.metrics.users.newThisWeek-data.metrics.users.previousWeek)/data.metrics.users.previousWeek)*100:null} icon={ArrowUpRight}/>
+				<MetricCard label="Pending verification" value={integer.format(data.kyc.pending)} detail={`${integer.format(data.kyc.verified)} verified · ${integer.format(data.kyc.rejected)} rejected`} icon={ShieldCheck}/>
 			</section>
-			<p className="admin-metric-disclaimer">Financial values are USD and REAL account mode only; these are internal Aurevia ledger records, not external payment totals. Investment values include active, paused, completed, and settled REAL requests.</p>
+			<p className="admin-metric-disclaimer">Customer and verification counts reflect current platform account records. Funding and investment figures below are internal USD ledger records for REAL mode.</p>
 			<div className="admin-dashboard-main-grid">
 				<PlatformChart daily={data.daily}/>
 				<div className="admin-dashboard-side-stack">
@@ -291,7 +294,7 @@ export default function AdminDashboard(){
 			</section>
 			<div className="admin-dashboard-bottom-grid">
 				<section className="admin-panel admin-recent-users" aria-labelledby="admin-recent-users-heading">
-					<header className="admin-panel-heading"><div><p className="admin-eyebrow">CUSTOMER ACCOUNTS</p><h2 id="admin-recent-users-heading">Recent users</h2></div><Link href="/admin/users" className="admin-panel-link">All users <ArrowRight size={14}/></Link></header>
+					<header className="admin-panel-heading"><div><p className="admin-eyebrow">CUSTOMER ACCOUNTS</p><h2 id="admin-recent-users-heading">Latest customers</h2></div><Link href="/admin/users" className="admin-panel-link">All customers <ArrowRight size={14}/></Link></header>
 					<div className="admin-table-wrap"><table className="admin-dashboard-table"><thead><tr><th>User</th><th>Mode</th><th>KYC</th><th>Joined</th><th><span className="sr-only">View user</span></th></tr></thead><tbody>{data.recentUsers.map(user=><tr key={user.id}><td><Link href={`/admin/users?search=${encodeURIComponent(user.email)}`} className="admin-user-link"><span className="admin-user-avatar">{(user.name||user.email).slice(0,1).toUpperCase()}</span><span><b>{user.name||'Unnamed user'}</b><small>{user.email}</small></span></Link></td><td><span className={`admin-mode-tag ${user.accountMode.toLowerCase()}`}>{user.accountMode}</span></td><td><span className={`admin-kyc-tag ${user.kycStatus.toLowerCase()}`}>{user.kycStatus.replaceAll('_',' ')}</span></td><td>{new Date(user.createdAt).toLocaleDateString()}</td><td><Link href={`/admin/users?search=${encodeURIComponent(user.email)}`} className="admin-row-action">View <ArrowRight size={13}/></Link></td></tr>)}</tbody></table></div>
 					{data.recentUsers.length===0&&<p className="admin-empty-state">No active customer accounts to show.</p>}
 				</section>

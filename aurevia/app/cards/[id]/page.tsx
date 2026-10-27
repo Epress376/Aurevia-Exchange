@@ -34,11 +34,11 @@ export default function CardDetailPage(){
 
 	return <>
 		<Nav/>
-		<main className="account-page">
+		<main className="account-page mobile-card-page">
 			<header className="account-heading"><div><span className="account-kicker">CARD</span><h1>Card details</h1></div><Link href="/cards" className="text-link">All cards</Link></header>
 			{error&&<p className="text-loss text-sm">{error}</p>}
 			{card&&(
-				<section className="card p-5 max-w-xl">
+				<section className="card p-5 max-w-xl mobile-card-item">
 					<AureviaCardVisual designTier={card.designTier} cardholderName={card.cardholderName} maskedPan={card.maskedPan} expiryMonth={card.expiryMonth} expiryYear={card.expiryYear} displayName={card.displayName}/>
 					<dl className="mt-4 grid gap-2 text-sm">
 						<div className="flex justify-between"><dt className="muted">Status</dt><dd>{card.status.replaceAll('_',' ')}</dd></div>
