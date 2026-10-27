@@ -2,6 +2,7 @@
 
 import {FormEvent,useState} from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import Nav from '@/components/Nav';
 
 export default function ForgotPassword(){
@@ -20,5 +21,5 @@ export default function ForgotPassword(){
 		}catch(exception){setError(exception instanceof Error?exception.message:'Password recovery is unavailable.')}
 		finally{setBusy(false)}
 	}
-	return <><Nav/><main className="auth-scene"><section className="auth-card" aria-labelledby="forgot-title"><div className="auth-brand"><span className="brand-mark" aria-hidden="true">A</span><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></div><p className="account-kicker">ACCOUNT RECOVERY</p><h1 id="forgot-title" className="auth-heading">Forgot password?</h1><p className="auth-subtitle">Enter your account email. If it is eligible, a time-limited recovery link will be sent.</p><form onSubmit={submit} className="mt-5 space-y-4"><label className="auth-field-label">Email address<input className="auth-input" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event=>setEmail(event.target.value)}/></label>{error&&<p className="auth-error" role="alert">{error}</p>}{message&&<p className="text-sm text-profit" role="status">{message}</p>}<button type="submit" className="auth-submit w-full" disabled={busy}>{busy?'Submitting…':'Request recovery link'}</button></form><p className="auth-footer"><Link href="/login" className="auth-link">Return to sign in</Link></p></section></main></>;
+	return <><Nav/><main className="auth-scene"><section className="auth-card" aria-labelledby="forgot-title"><div className="auth-brand"><Image src="/aurevia-logo.png" alt="" width={52} height={52} priority/><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></div><p className="account-kicker">ACCOUNT RECOVERY</p><h1 id="forgot-title" className="auth-heading">Forgot password?</h1><p className="auth-subtitle">Enter your account email. If it is eligible, a time-limited recovery link will be sent.</p><form onSubmit={submit} className="mt-5 space-y-4"><label className="auth-field-label">Email address<input className="auth-input" type="email" autoComplete="email" required maxLength={254} value={email} onChange={event=>setEmail(event.target.value)}/></label>{error&&<p className="auth-error" role="alert">{error}</p>}{message&&<p className="text-sm text-profit" role="status">{message}</p>}<button type="submit" className="auth-submit w-full" disabled={busy}>{busy?'Submitting…':'Request recovery link'}</button></form><p className="auth-footer"><Link href="/login" className="auth-link">Return to sign in</Link></p></section></main></>;
 }
