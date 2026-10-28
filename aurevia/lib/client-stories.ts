@@ -26,9 +26,12 @@ export async function getPublishedClientStories(){
 			displayName:story.displayName,
 			country:story.country,
 			cityOrRegion:story.cityOrRegion,
+			title:story.title,
 			quote:story.quote,
 			imageReference:story.imageReference,
 			imageUrl,
+			rating:story.rating,
+			source:story.source,
 			verifiedClientStory:Boolean(story.verifiedClient&&verified) as true,
 			...(amount?{withdrawalAmount:amount.amount,currency:amount.currency}:{}),
 		};

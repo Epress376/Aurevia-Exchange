@@ -2,11 +2,11 @@
 
 import {FormEvent,useEffect,useState} from 'react';
 import {signOut,useSession} from 'next-auth/react';
-import Image from 'next/image';
 import Link from 'next/link';
 import {Activity,Bell,Check,ChevronRight,CreditCard,Download,HeartHandshake,KeyRound,Search,Settings2,ShieldCheck,Store,Trash2,UserRound,WalletCards} from 'lucide-react';
 import Nav from '@/components/Nav';
 import BrowserPushSettings from '@/components/BrowserPushSettings';
+import ProfileAvatar,{notifyProfileAvatarUpdated} from '@/components/ProfileAvatar';
 import {useLocale} from '@/lib/i18n-context';
 
 type Profile={id:string;email:string;name:string|null;firstName:string;lastName:string;phone:string|null;phoneVerified:boolean;country:string|null;address:string|null;hasAvatar:boolean;twoFactorEnabled:boolean;role:'USER'|'ADMIN';status:string;kycStatus:string;profileLocked:boolean;profileLockAt:string|null};
@@ -21,7 +21,6 @@ export default function Settings(){
 	const [loading,setLoading]=useState(true);
 	const [saving,setSaving]=useState(false);
 	const [avatarFile,setAvatarFile]=useState<File|null>(null);
-	const [avatarUrl,setAvatarUrl]=useState('');
 	const [avatarSaving,setAvatarSaving]=useState(false);
 	const [showDeleteForm,setShowDeleteForm]=useState(false);
 	const [deletePassword,setDeletePassword]=useState('');
@@ -38,7 +37,6 @@ export default function Settings(){
 			if(!response.ok)throw new Error(result.error||'Unable to load your profile.');
 			if(active){
 				setProfile(result);
-				if(result.hasAvatar){const avatar=await fetch('/api/profile/avatar',{cache:'no-store'});if(avatar.ok){const signed=await avatar.json();if(active)setAvatarUrl(signed.url)}}
 			}
 		}).catch(exception=>{if(active)setError(exception instanceof Error?exception.message:'Unable to load your profile.')}).finally(()=>{if(active)setLoading(false)});
 		return()=>{active=false};
@@ -104,7 +102,7 @@ export default function Settings(){
 			const response=await fetch('/api/profile/avatar',{method:'POST',body});
 			const result=await response.json();if(!response.ok)throw new Error(result.error||'Profile photo upload failed.');
 			const view=await fetch('/api/profile/avatar',{cache:'no-store'});if(!view.ok)throw new Error('Profile photo saved but could not be loaded.');
-			const signed=await view.json();setAvatarUrl(signed.url);setAvatarFile(null);setProfile(current=>current?{...current,hasAvatar:true}:current);setMessage('Profile photo updated.');
+			const signed=await view.json();notifyProfileAvatarUpdated(signed.url);setAvatarFile(null);setProfile(current=>current?{...current,hasAvatar:true}:current);setMessage('Profile photo updated.');
 		}catch(exception){setError(exception instanceof Error?exception.message:'Profile photo upload failed.')}
 		finally{setAvatarSaving(false)}
 	}
@@ -125,7 +123,7 @@ export default function Settings(){
 
 	return <><Nav/><main className="account-page mobile-settings-page" data-mobile-home={mobileHome}>
 		<section className="mobile-settings-home" aria-label="Settings menu">
-			<header className="mobile-settings-heading"><div><span>YOUR ACCOUNT</span><h1>Settings</h1></div><span className="mobile-settings-avatar">{(profile?.name||profile?.email||'A').trim().slice(0,1).toUpperCase()}</span></header>
+			<header className="mobile-settings-heading"><div><span>YOUR ACCOUNT</span><h1>Settings</h1></div><ProfileAvatar className="mobile-settings-avatar" size={44} alt="Your profile picture"/></header>
 			<label className="mobile-settings-search"><Search size={18}/><span className="sr-only">Search settings</span><input type="search" placeholder="Search settings" value={settingsSearch} onChange={event=>setSettingsSearch(event.target.value)}/></label>
 			{settingsGroups.length?settingsGroups.map(group=><section className={`mobile-settings-group mobile-settings-group--${group.tone}`} key={group.title} aria-label={group.title}><h2>{group.title}</h2><div>{group.links.map(({label,description,href,icon:Icon})=><Link className="mobile-settings-row" href={href} key={label} onClick={()=>{if(href.startsWith('/settings#')){setMobileHome(false);setSection(href.endsWith('security')?'security':href.endsWith('preferences')?'preferences':'profile')}}}><span className="mobile-settings-icon"><Icon size={19}/></span><span><b>{label}</b><small>{description}</small></span><ChevronRight size={17} className="mobile-settings-chevron"/></Link>)}</div></section>):<p className="mobile-settings-empty">No settings match “{settingsSearch}”.</p>}
 		</section>
@@ -142,7 +140,7 @@ export default function Settings(){
 				{section==='profile'&&<section className="account-panel card p-5" role="tabpanel"><div className="account-panel-title"><div><h2>{translate('personalProfile')}</h2><p className="account-panel-subtitle">{translate('profileDetailsSubtitle')}</p></div><UserRound size={18} className="gold" aria-hidden="true"/></div>
 					{profile&&<form onSubmit={save} className="account-form-grid">
 						{profile.profileLocked&&<div className="account-callout md:col-span-2" role="status"><ShieldCheck size={16}/><span>Verified profile details are locked as of {profile.profileLockAt?new Date(profile.profileLockAt).toLocaleDateString():''}. Contact support to request a correction.</span></div>}
-						<div className="account-label md:col-span-2"><span>{translate('profilePhoto')}</span><div className="mt-2 flex flex-wrap items-center gap-3">{avatarUrl&&<Image src={avatarUrl} unoptimized alt={translate('profilePhotoAlt')} width={92} height={92} className="profile-avatar"/>}<input type="file" accept="image/png,image/jpeg,image/webp" aria-label={translate('chooseProfilePhoto')} disabled={profile.profileLocked} onChange={event=>setAvatarFile(event.target.files?.[0]||null)}/><button className="btn min-h-11 bg-white/5" type="button" disabled={profile.profileLocked||!avatarFile||avatarSaving} onClick={()=>void uploadAvatar()}>{avatarSaving?translate('uploading'):translate('uploadPhoto')}</button></div><small className="mt-1 block muted">{translate('privateImage')}</small></div>
+						<div className="account-label md:col-span-2"><span>{translate('profilePhoto')}</span><div className="mt-2 flex flex-wrap items-center gap-3"><ProfileAvatar className="profile-avatar" size={92} alt={translate('profilePhotoAlt')}/><input type="file" accept="image/png,image/jpeg,image/webp" aria-label={translate('chooseProfilePhoto')} disabled={profile.profileLocked} onChange={event=>setAvatarFile(event.target.files?.[0]||null)}/><button className="btn min-h-11 bg-white/5" type="button" disabled={profile.profileLocked||!avatarFile||avatarSaving} onClick={()=>void uploadAvatar()}>{avatarSaving?translate('uploading'):translate('uploadPhoto')}</button></div><small className="mt-1 block muted">{translate('privateImage')}</small></div>
 						<label className="account-label md:col-span-2">{translate('emailAddress')}<input className="input" type="email" autoComplete="email" value={profile.email} disabled/></label>
 						<label className="account-label">{translate('firstName')}<input className="input" autoComplete="given-name" required maxLength={60} value={profile.firstName} disabled={profile.profileLocked} onChange={event=>setProfile({...profile,firstName:event.target.value})}/></label>
 						<label className="account-label">{translate('lastName')}<input className="input" autoComplete="family-name" maxLength={60} value={profile.lastName} disabled={profile.profileLocked} onChange={event=>setProfile({...profile,lastName:event.target.value})}/></label>

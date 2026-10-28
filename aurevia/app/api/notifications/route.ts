@@ -21,11 +21,12 @@ export async function GET(req:Request){
 		const limit=Math.min(Math.max(Number(params.get('limit')||30),1),100);
 		const archived=params.get('state')==='archived';
 		const modeWhere={userId:user.id,OR:[{accountMode:account.accountMode},{accountMode:null}]};
-		const [notifications,unreadCount]=await Promise.all([
+		const [notifications,unreadCount,latestUnread]=await Promise.all([
 			db.notification.findMany({where:{...modeWhere,archivedAt:archived?{not:null}:null},include:{pushOutbox:{select:{id:true}}},orderBy:{createdAt:'desc'},take:limit}),
 			db.notification.count({where:{...modeWhere,isRead:false}}),
+			db.notification.findFirst({where:{...modeWhere,isRead:false,archivedAt:null},orderBy:{createdAt:'desc'},select:{createdAt:true}}),
 		]);
-		return NextResponse.json(jsonSafe({notifications:notifications.map(({pushOutbox,...notification})=>({...notification,canDelete:notification.isRead&&!pushOutbox})),unreadCount}),{headers:{'Cache-Control':'private, no-store'}});
+		return NextResponse.json(jsonSafe({notifications:notifications.map(({pushOutbox,...notification})=>({...notification,canDelete:notification.isRead&&!pushOutbox})),unreadCount,latestUnreadAt:latestUnread?.createdAt??null}),{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
 		if(error instanceof Error&&error.message==='FORBIDDEN')return NextResponse.json({error:'Forbidden'},{status:403});

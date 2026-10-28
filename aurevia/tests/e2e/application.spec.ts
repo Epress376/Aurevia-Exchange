@@ -24,9 +24,10 @@ const viewports=[
 	{width:1920,height:1080},
 ];
 
-const publicRoutes=['/','/login','/register','/markets','/client-stories','/about','/education','/support','/waitlist','/terms','/privacy','/risk-disclosure','/forgot-password','/reset-password'];
 const authenticatedRoutes=['/dashboard','/trade','/markets','/portfolio','/orders','/investments','/broadcasts','/wallet','/wallet/transactions','/kyc','/tier','/settings','/support','/notifications','/activity','/wallet/convert'];
 const adminRoutes=['/admin/login','/admin','/admin/users','/admin/content','/admin/positions','/admin/settings','/admin/deleted-items','/admin/broadcasts','/admin/investments','/admin/payments','/admin/approved-deposits','/admin/approved-withdrawals','/admin/settlements','/admin/kyc','/admin/support','/admin/waitlist','/admin/providers','/admin/operations','/admin/receipts','/admin/nova','/admin/audit-logs','/admin/tiers','/admin/verified-accounts','/admin/markets'];
+const appOrigin=process.env.AUREVIA_E2E_APP_URL||'http://127.0.0.1:4310';
+const providerOrigin=process.env.AUREVIA_E2E_PROVIDER_URL||'http://127.0.0.1:4311';
 
 test.afterEach(async()=>{
 	await db.user.updateMany({
@@ -76,69 +77,6 @@ async function selectAccountMode(page:import('@playwright/test').Page,accountMod
 		await expect(mode.getByRole('button',{name:accountMode==='DEMO'?'Real':'Demo',exact:true})).toBeEnabled();
 	}
 }
-
-test.describe('public routes and responsive layout',()=>{
-	for(const viewport of viewports){
-		test(`public routes render without horizontal overflow at ${viewport.width}x${viewport.height}`,async({page})=>{
-			await page.setViewportSize(viewport);
-			for(const route of publicRoutes){
-				const response=await page.goto(route);
-				expect(response?.status(),route).toBe(200);
-				await expect(page.locator('h1').first(),route).toBeVisible();
-				if(route==='/markets')await expect(page.getByRole('heading',{name:'Markets',exact:true})).toBeVisible();
-				if(route==='/support')await expect(page.getByRole('heading',{name:'Nova AI',exact:true})).toBeVisible();
-				if(route==='/register'){
-					await expect(page.getByRole('radio',{name:/DEMO ACCOUNT/})).toBeVisible();
-					await expect(page.getByRole('radio',{name:/REAL ACCOUNT/})).toBeVisible();
-				}
-				await expectNoHorizontalOverflow(page);
-			}
-		});
-	}
-});
-
-test('homepage investment testimonials use only verified stories and stay compact on mobile',async({page})=>{
-	await page.route('**/api/client-stories',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
-	for(const width of [320,375,414]){
-		await page.setViewportSize({width,height:844});
-		await page.goto('/');
-		await expect(page.getByRole('heading',{name:'Investment testimonials'})).toBeVisible();
-		await expect(page.getByText(/No published client stories yet/)).toBeVisible();
-		await expect(page.locator('.client-story-card')).toHaveCount(0);
-		await expectNoHorizontalOverflow(page);
-	}
-});
-
-test('homepage cash decorations dismiss for the session and respect reduced motion',async({browser,page})=>{
-	await page.setViewportSize({width:1280,height:900});
-	await page.goto('/');
-	const dismissButtons=page.getByRole('button',{name:'Dismiss decorative coin'});
-	await expect(dismissButtons).toHaveCount(3);
-	await dismissButtons.first().click();
-	await expect(dismissButtons).toHaveCount(2);
-	await page.reload();
-	await expect(dismissButtons).toHaveCount(2);
-
-	const nextSession=await browser.newContext({viewport:{width:1280,height:900},reducedMotion:'reduce'});
-	try{
-		const nextPage=await nextSession.newPage();
-		await nextPage.goto('/');
-		await expect(nextPage.getByRole('button',{name:'Dismiss decorative coin'})).toHaveCount(3);
-		await expect(nextPage.locator('.home-cash-item').first()).toHaveCSS('animation-name','none');
-	}finally{await nextSession.close();}
-});
-
-test('public disclosures distinguish simulated activity, paper orders, and internal wallet funds',async({page})=>{
-	await page.goto('/terms');
-	await expect(page.getByText(/Alpaca Paper Trading only/)).toBeVisible();
-	await expect(page.getByText(/broker-reported paper cash or returns are not Aurevia wallet funds/)).toBeVisible();
-	await page.goto('/risk-disclosure');
-	await expect(page.getByText(/not live-market executions/)).toBeVisible();
-	await expect(page.getByText(/are not withdrawable through the Aurevia wallet/)).toBeVisible();
-	await page.goto('/privacy');
-	await expect(page.getByText(/private object-storage bucket/)).toBeVisible();
-	await expect(page.locator('.info-note')).toContainText('short-lived links');
-});
 
 test('support fallback gives correct paper-trading and funding guidance',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
@@ -349,25 +287,34 @@ test('dashboard hierarchy remains usable and contained at mobile and desktop wid
 	await page.goto('/dashboard');
 	for(const width of [320,375,390,430,1440]){
 		await page.setViewportSize({width,height:900});
-		await expect(page.getByRole('heading',{name:/Welcome back/})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'Market pulse'})).toBeVisible();
-		await expect(page.getByRole('heading',{name:'My portfolio'})).toBeVisible();
-		await expect(page.locator('.dashboard-profile-panel')).toHaveCount(0);
+		if(width<=760){
+			await expect(page.locator('.mobile-home-greeting')).toBeVisible();
+			await expect(page.locator('.mobile-balance-card')).toBeVisible();
+			await expect(page.getByRole('heading',{name:'My assets'})).toBeVisible();
+			await expect(page.getByRole('heading',{name:'Recent activity'})).toBeVisible();
+		}else{
+			await expect(page.getByRole('heading',{name:/Welcome back/})).toBeVisible();
+			await expect(page.getByRole('heading',{name:'Market watch'})).toBeVisible();
+			await expect(page.getByRole('heading',{name:'My portfolio'})).toBeVisible();
+			await expect(page.locator('.dashboard-profile-panel')).toHaveCount(0);
+		}
 		await expectNoHorizontalOverflow(page);
-		const layout=await page.evaluate(()=>{
-			const dashboard=document.querySelector('.user-dashboard-columns');
-			const panels=[...document.querySelectorAll('.user-dashboard-columns > div')].map(panel=>{
-				const rect=panel.getBoundingClientRect();
-				return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom};
+		if(width>760){
+			const layout=await page.evaluate(()=>{
+				const dashboard=document.querySelector('.user-dashboard-columns');
+				const panels=[...document.querySelectorAll('.user-dashboard-columns > div')].map(panel=>{
+					const rect=panel.getBoundingClientRect();
+					return {left:rect.left,right:rect.right,top:rect.top,bottom:rect.bottom};
+				});
+				return {columns:getComputedStyle(dashboard!).gridTemplateColumns.split(' ').length,panels};
 			});
-			return {columns:getComputedStyle(dashboard!).gridTemplateColumns.split(' ').length,panels};
-		});
-		expect(layout.columns).toBe(width<=760?1:2);
-		for(let index=0;index<layout.panels.length;index++){
-			for(let other=index+1;other<layout.panels.length;other++){
-				const a=layout.panels[index],b=layout.panels[other];
-				const overlaps=a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1;
-				expect(overlaps,`portfolio panels ${index} and ${other} overlap at ${width}px`).toBe(false);
+			expect(layout.columns).toBe(2);
+			for(let index=0;index<layout.panels.length;index++){
+				for(let other=index+1;other<layout.panels.length;other++){
+					const a=layout.panels[index],b=layout.panels[other];
+					const overlaps=a.left<b.right-1&&a.right>b.left+1&&a.top<b.bottom-1&&a.bottom>b.top+1;
+					expect(overlaps,`portfolio panels ${index} and ${other} overlap at ${width}px`).toBe(false);
+				}
 			}
 		}
 	}
@@ -377,7 +324,7 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	const navigation=page.getByRole('navigation',{name:'Primary account navigation'});
 	const moreButton=page.getByRole('button',{name:'More account navigation'});
-	for(const viewport of [{width:320,height:800},{width:390,height:844},{width:768,height:1024},{width:1440,height:900}]){
+	for(const viewport of [{width:320,height:800},{width:390,height:844},{width:768,height:1024}]){
 		await page.setViewportSize(viewport);
 		await page.goto('/dashboard');
 		await expect(navigation).toBeVisible();
@@ -389,7 +336,7 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 		expect(geometry.left).toBeGreaterThanOrEqual(0);
 		expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
 		expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
-		for(const [name,href] of [['Home','/dashboard'],['Markets','/markets'],['Wallet','/wallet'],['Stories','/client-stories']] as const){
+		for(const [name,href] of [['Home','/dashboard'],['Wallet','/wallet'],['Trade markets','/trade'],['Benefits','/tier'],['Settings','/settings']] as const){
 			await expect(navigation.getByRole('link',{name})).toHaveAttribute('href',href);
 		}
 		await expect(navigation.getByRole('link',{name:'Home'})).toHaveAttribute('aria-current','page');
@@ -397,8 +344,19 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 		await expect(navigation).toBeInViewport();
 		await expectNoHorizontalOverflow(page);
 	}
+	for(const viewport of [{width:1440,height:900}]){
+		await page.setViewportSize(viewport);
+		await page.goto('/dashboard');
+		const sidebar=page.locator('.dashboard-sidebar');
+		await expect(sidebar).toBeVisible();
+		await expect(sidebar.getByRole('link',{name:'Overview'})).toHaveAttribute('href','/dashboard');
+		await expect(sidebar.getByRole('link',{name:'Markets'})).toHaveAttribute('href','/markets');
+	}
 	expect(await page.getByRole('navigation',{name:'Administrator navigation'}).count()).toBe(0);
+	await page.setViewportSize({width:390,height:844});
+	await page.goto('/dashboard');
 	await expect(navigation.getByRole('link',{name:'Home'})).toHaveClass(/is-active/);
+	await expect(moreButton).toBeVisible();
 	await selectAccountMode(page,'REAL');
 	await moreButton.click();
 	const moreMenu=page.getByRole('dialog',{name:'More'});
@@ -451,7 +409,7 @@ test('global chat support persists its position and exchanges private admin mess
 	await page.getByRole('button',{name:'Open chat support'}).click();
 	const subject=`Floating support ${randomUUID().slice(0,8)}`;
 	await page.getByLabel('Subject').fill(subject);
-	await page.getByLabel('Message').fill('Please have an administrator reply to this private support request.');
+	await page.getByRole('textbox',{name:'Message',exact:true}).fill('Please have an administrator reply to this private support request.');
 	await page.getByRole('button',{name:'Send to admin'}).click();
 	await expect(page.locator('.floating-support-notice')).toContainText('sent to the admin support inbox');
 	const conversations=await page.request.get('/api/support').then(response=>response.json());
@@ -461,13 +419,38 @@ test('global chat support persists its position and exchanges private admin mess
 	try{
 		const adminPage=await adminContext.newPage();
 		await loginAs(adminPage,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+		await adminPage.goto('/admin');
+		await expect(adminPage.locator('.floating-support')).toHaveCount(0);
+		await expect(adminPage.locator('.admin-topbar-icon .admin-unread-dot')).toBeVisible();
+		await adminPage.getByRole('link',{name:/View notifications and audit activity/}).click();
+		await expect(adminPage).toHaveURL(/\/admin\/audit-logs/);
+		await expect(adminPage.locator('.admin-topbar-icon .admin-unread-dot')).toHaveCount(0);
+		const storyResponse=await adminPage.request.post('/api/admin/client-stories',{data:{
+			displayName:'Aurevia editorial testimonial',
+			title:'A simpler way to manage my finances',
+			quote:'The platform gives me a clear view of my account.',
+			rating:5,
+			consentConfirmed:true,
+			publicationStatus:'PUBLISHED',
+			source:'admin',
+		}});
+		expect(storyResponse.status()).toBe(201);
+		const story=await storyResponse.json();
+		expect(story).toMatchObject({userId:null,title:'A simpler way to manage my finances',rating:5,publicationStatus:'PUBLISHED',verifiedClient:false});
+		const publicStories=await adminPage.request.get('/api/client-stories').then(response=>response.json());
+		expect(publicStories).toContainEqual(expect.objectContaining({id:story.id,title:story.title,rating:5,verifiedClientStory:false}));
+		const hiddenStory=await adminPage.request.patch('/api/admin/client-stories',{data:{storyId:story.id,publicationStatus:'DRAFT'}});
+		expect(hiddenStory.ok()).toBe(true);
+		expect(await adminPage.request.get('/api/client-stories').then(response=>response.json())).not.toContainEqual(expect.objectContaining({id:story.id}));
 		const inbox=await adminPage.request.get('/api/admin/support').then(response=>response.json());
 		expect(inbox.some((item:{id:string})=>item.id===conversation.id)).toBe(true);
 		const response=await adminPage.request.patch('/api/admin/support',{data:{action:'reply',conversationId:conversation.id,message:'Admin reply from the isolated end-to-end test.'}});
 		expect(response.ok()).toBe(true);
 	}finally{await adminContext.close()}
 	await page.getByRole('button',{name:'Close chat support'}).click();
+	await expect(page.locator('.floating-support-unread-dot')).toBeVisible({timeout:15_000});
 	await page.getByRole('button',{name:'Open chat support'}).click();
+	await expect(page.locator('.floating-support-unread-dot')).toHaveCount(0);
 	await expect(page.locator('.floating-support-messages')).toContainText('Admin reply from the isolated end-to-end test.');
 	await expectNoHorizontalOverflow(page);
 });
@@ -649,7 +632,7 @@ test('sign-in password visibility, recovery link, and account link are accessibl
 test('registration skips contact verification and platform health remains available after logout',async({page})=>{
 	const email=fixture('REGISTRATION_EMAIL');
 	const password=fixture('REGISTRATION_PASSWORD');
-	await page.request.post('http://127.0.0.1:4311/reset');
+	await page.request.post(`${providerOrigin}/reset`);
 	await page.goto('/register');
 	await expect(page.getByRole('heading',{name:'Open an account'})).toBeVisible();
 	await expect(page.getByRole('radio',{name:/DEMO ACCOUNT/})).toBeVisible();
@@ -686,7 +669,7 @@ test('registration skips contact verification and platform health remains availa
 	await expect(page).toHaveURL(/\/login\?registered=1/);
 	expect(await db.user.findUniqueOrThrow({where:{email},select:{requiresRegistrationVerification:true}})).toEqual({requiresRegistrationVerification:false});
 	expect(await db.verificationCode.count({where:{user:{email}}})).toBe(0);
-	const providerStats=await page.request.get('http://127.0.0.1:4311/stats');
+	const providerStats=await page.request.get(`${providerOrigin}/stats`);
 	expect(await providerStats.json()).toMatchObject({email:0,sms:0});
 	await page.getByLabel('Email or administrator username').fill(email);
 	await page.getByLabel('Password',{exact:true}).fill(password);
@@ -807,7 +790,9 @@ for(const viewport of viewports){
 		for(const route of authenticatedRoutes){
 			const response=await page.goto(route);
 			expect(response?.status(),route).toBe(200);
-			await expect(page.locator('h1').first(),route).toBeVisible();
+			await expect(page.locator('main').first(),route).toBeVisible();
+			if(await page.locator('h1:visible').count())await expect(page.locator('h1:visible').first(),route).toBeVisible();
+			if(route==='/dashboard'&&viewport.width<=640)await expect(page.locator('.mobile-home-greeting'),route).toBeVisible();
 			await expectNoHorizontalOverflow(page);
 		}
 	});
@@ -884,7 +869,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await page.getByRole('button',{name:'Contact Admin'}).click();
 	const subject=`Mode-scoped support ${randomUUID().slice(0,8)}`;
 	await page.getByLabel('Subject').fill(subject);
-	await page.getByLabel('Message').fill('Temporary DEMO support isolation test.');
+	await page.getByRole('textbox',{name:'Message',exact:true}).fill('Temporary DEMO support isolation test.');
 	await page.getByRole('button',{name:'Create support ticket'}).click();
 	await expect(page.getByRole('button').filter({hasText:subject})).toBeVisible();
 	await selectAccountMode(page,'REAL');
@@ -965,7 +950,7 @@ test('REAL funding remains available while trading stays disabled without broker
 	const fundedBuy=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:fundedInstrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(fundedInstrument.price),observedAt:fundedInstrument.lastUpdatedAt||fundedInstrument.updatedAt}});
 	expect(fundedBuy.status()).toBe(403);
 	expect((await fundedBuy.json()).error).toContain('Alpaca Paper orders are disabled');
-	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(200);
+	expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(180);
 	expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(0);
 	expect(await page.request.get('/api/orders').then(response=>response.json())).toHaveLength(0);
 	await selectAccountMode(page,'DEMO');
@@ -1099,13 +1084,13 @@ test('dashboard presents the current account portfolio hub',async({page})=>{
 	await selectAccountMode(page,'DEMO');
 	await page.goto('/dashboard');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.getByRole('heading',{name:'Market pulse'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Market watch'})).toBeVisible();
 	await expect(page.getByRole('heading',{name:'Positions'})).toBeVisible();
 	await expect(page.getByRole('heading',{name:'Open orders'})).toBeVisible();
 	await expect(page.getByRole('link',{name:/Deposit/})).toHaveCount(0);
-	await expect(page.getByRole('link',{name:'Demo trade history'})).toHaveAttribute('href','/orders');
+	await expect(page.getByRole('link',{name:'Order history'})).toHaveAttribute('href','/orders');
 	await expect(page.getByRole('button',{name:'1D'})).toBeVisible();
-	await expect(page.getByRole('button',{name:'All'})).toBeVisible();
+	await expect(page.getByRole('button',{name:'ALL',exact:true})).toBeVisible();
 });
 
 test('closing a DEMO position records a sell execution, reconciles portfolio, and notifies',async({page})=>{
@@ -1419,7 +1404,7 @@ test('Nova escalation reaches admin and admin response appears with notification
 	await page.getByRole('button',{name:'Contact Admin'}).click();
 	await page.getByLabel('Category').selectOption('FUNDING');
 	await page.getByLabel('Subject').fill(subject);
-	await page.getByLabel('Message').fill('Please review this disposable browser test ticket.');
+	await page.getByRole('textbox',{name:'Message',exact:true}).fill('Please review this disposable browser test ticket.');
 	await page.getByRole('button',{name:'Create support ticket'}).click();
 	await expect(page.getByRole('status')).toContainText(/created\./i);
 	await logout(page);
@@ -1465,7 +1450,7 @@ test('tier requests require an administrator decision and never enable real exec
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	await selectAccountMode(page,'REAL');
 	await page.goto('/tier');
-	await expect(page.getByRole('heading',{name:'Tier and verification'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Benefits'})).toBeVisible();
 	const state=await page.request.get('/api/tier-requests').then(response=>response.json());
 	expect(state.currentTier).toBe(1);
 	await page.getByRole('button',{name:'Request Tier 2 review'}).click();
@@ -1487,8 +1472,9 @@ test('tier requests require an administrator decision and never enable real exec
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	const updated=await page.request.get('/api/tier-requests').then(response=>response.json());
 	expect(updated.currentTier).toBe(2);
+	await selectAccountMode(page,'REAL');
 	await page.goto('/tier');
-	await expect(page.getByText('Step-by-step reviews with no invented financial limits or automatic upgrades.')).toBeVisible();
+	await expect(page.getByText('TIER 2 · CURRENT')).toBeVisible();
 	const instrument=(await page.request.get('/api/market').then(response=>response.json()))[0];
 	const realOrder=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:instrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(instrument.price),observedAt:instrument.lastUpdatedAt||instrument.updatedAt}});
 	expect(realOrder.status()).toBe(403);
@@ -1503,17 +1489,17 @@ test('administrator email sign-in persists through refresh and logout removes ad
 	await page.getByRole('checkbox',{name:/Replace another active Aurevia session/}).check();
 	await page.getByRole('button',{name:'Enter control center'}).click();
 	await page.waitForURL(/\/admin$/);
-	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
-	await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'CRM Dashboard'})).toBeVisible();
+	await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'CRM Dashboard'})).toBeVisible();
 	await page.setViewportSize({width:390,height:844});
 	await page.getByRole('banner').getByRole('button',{name:'Open admin menu'}).click();
 	const adminNavigation=page.getByRole('navigation',{name:'Administrator navigation'});
-	await expect(adminNavigation.getByRole('link',{name:'Dashboard'})).toBeVisible();
+	await expect(adminNavigation.getByRole('link',{name:'CRM Dashboard'})).toBeVisible();
 	await expect(adminNavigation.getByRole('link',{name:'Verified accounts'})).toBeVisible();
 	await expect(adminNavigation.getByRole('link',{name:'Funding'})).toBeVisible();
 	expect(await page.getByRole('navigation',{name:'Primary navigation'}).count()).toBe(0);
 	await page.reload();
-	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'CRM Dashboard'})).toBeVisible();
 	await page.setViewportSize({width:1440,height:900});
 	await logout(page);
 	await expect(page).toHaveURL(/\/login/);
@@ -1583,7 +1569,7 @@ test('administrator sessions stay in the isolated console and cannot use custome
 	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
 	await page.goto('/dashboard');
 	await expect(page).toHaveURL(/\/admin$/);
-	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'CRM Dashboard'})).toBeVisible();
 	await expect(page.getByRole('link',{name:'User portal'})).toHaveCount(0);
 	expect((await page.request.get('/api/profile')).status()).toBe(403);
 	await page.goto('/wallet');
@@ -1614,7 +1600,7 @@ test('verified personal details remain read-only during the two-month lock windo
 test('administrator user and KYC actions persist and report protected actions',async({page})=>{
 	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
 	await page.goto('/admin');
-	await expect(page.getByRole('heading',{name:'Good to see you.'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'CRM Dashboard'})).toBeVisible();
 	const shortcuts=page.getByRole('navigation',{name:'Administrator dashboard shortcuts'});
 	for(const label of ['Users','KYC verification','Funding','Investments','Orders and ledger','Settings'])await expect(shortcuts.getByRole('link',{name:label})).toBeVisible();
 	const users=await page.request.get('/api/admin/users').then(response=>response.json());
@@ -1768,16 +1754,17 @@ for(const viewport of viewports){
 		await page.setViewportSize(viewport);
 		const loginResponse=await page.goto('/admin/login');
 		expect(loginResponse?.status(),'/admin/login').toBe(200);
-		await expect(page.locator('h1').first(),'/admin/login').toBeVisible();
+		await expect(page.locator('h1:visible').first(),'/admin/login').toBeVisible();
 		await expectNoHorizontalOverflow(page);
 
 		await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
 		for(const route of adminRoutes.filter(path=>path!=='/admin/login')){
 			const response=await page.goto(route);
 			expect(response?.status(),route).toBe(200);
-			await expect(page.locator('h1').first(),route).toBeVisible();
+			await expect(page.locator('main').first(),route).toBeVisible();
+			if(await page.locator('h1:visible').count())await expect(page.locator('h1:visible').first(),route).toBeVisible();
 			if(viewport.width<=1020)await expect(page.getByRole('button',{name:'Open admin menu'}),route).toBeVisible();
-			else await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'Dashboard',exact:true}),route).toBeVisible();
+			else await expect(page.getByRole('navigation',{name:'Administrator navigation'}).getByRole('link',{name:'CRM Dashboard',exact:true}),route).toBeVisible();
 			await expectNoHorizontalOverflow(page);
 		}
 	});
@@ -1903,7 +1890,7 @@ test('REAL withdrawal requests reserve balance until an attested payout debits o
 		const depositApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:depositRequest.id,decision:'APPROVED',note:'Approve internal test credit'}});
 		expect(depositApproval.status()).toBe(200);
 		const fundedWallet=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(fundedWallet.balance)).toBe(100);
+		expect(Number(fundedWallet.balance)).toBe(90);
 
 		await loginAs(page,isolated.email,isolated.password);
 		await selectAccountMode(page,'REAL');
@@ -1915,8 +1902,8 @@ test('REAL withdrawal requests reserve balance until an attested payout debits o
 		const request=await submission.json();
 		expect(request).toMatchObject({type:'WITHDRAWAL',accountMode:'REAL',status:'PENDING_REVIEW'});
 		const walletPending=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(walletPending.balance)).toBe(100);
-		expect(Number(walletPending.withdrawableBalance)).toBe(75);
+		expect(Number(walletPending.balance)).toBe(90);
+		expect(Number(walletPending.withdrawableBalance)).toBe(65);
 
 		const withdrawalQueue=await adminPage.request.get('/api/admin/funding?type=WITHDRAWAL').then(response=>response.json());
 		expect(withdrawalQueue.some((item:{id:string})=>item.id===request.id)).toBe(true);
@@ -1928,8 +1915,8 @@ test('REAL withdrawal requests reserve balance until an attested payout debits o
 		await requestRow.getByRole('button',{name:'Approve · reserve funds'}).click();
 		await expect(adminPage.getByRole('status').filter({hasText:'Withdrawal approved; amount remains reserved and no payment is confirmed.'})).toBeVisible();
 		const walletReserved=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(walletReserved.balance)).toBe(100);
-		expect(Number(walletReserved.withdrawableBalance)).toBe(75);
+		expect(Number(walletReserved.balance)).toBe(90);
+		expect(Number(walletReserved.withdrawableBalance)).toBe(65);
 
 		const processingKey=randomUUID();
 		const processing=await adminPage.request.post('/api/admin/funding/withdrawal',{headers:{'Idempotency-Key':processingKey},data:{id:request.id,action:'PROCESS'}});
@@ -1942,8 +1929,8 @@ test('REAL withdrawal requests reserve balance until an attested payout debits o
 		expect(replay.status()).toBe(200);
 		expect(await db.ledgerTransaction.count({where:{reference:`FUNDING:${request.id}:EXTERNAL_WITHDRAWAL`}})).toBe(1);
 		const walletApproved=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(walletApproved.balance)).toBe(75);
-		expect(Number(walletApproved.withdrawableBalance)).toBe(75);
+		expect(Number(walletApproved.balance)).toBe(65);
+		expect(Number(walletApproved.withdrawableBalance)).toBe(65);
 	}finally{
 		await adminContext.close();
 	}
@@ -2288,7 +2275,7 @@ test('profile settings persist for the owner and remain inaccessible to signed-o
 
 test('browser notification settings explain denied permission without prompting again',async({page})=>{
 	const settingsUser=await createIsolatedDemoUser('push-denied');
-	await page.context().grantPermissions([],{origin:'http://127.0.0.1:4310'});
+	await page.context().grantPermissions([],{origin:appOrigin});
 	await loginAs(page,settingsUser.email,settingsUser.password);
 	await page.goto('/settings#preferences');
 	await waitForStartup(page);

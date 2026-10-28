@@ -1,9 +1,9 @@
 import nextEnv from '@next/env';
 import {spawn} from 'node:child_process';
 import {randomUUID} from 'node:crypto';
+import {createServer} from 'node:net';
 
 const {loadEnvConfig}=nextEnv;
-const port=4310;
 const projectRoot=process.cwd();
 for(const name of ['DATABASE_URL','DIRECT_URL'])delete process.env[name];
 loadEnvConfig(projectRoot,false,undefined,true);
@@ -29,9 +29,28 @@ function capture(command,args,{input}={}){
 	});
 }
 
+async function reserveLoopbackPort(){
+	const server=createServer();
+	await new Promise((resolve,reject)=>{
+		server.once('error',reject);
+		server.listen(0,'127.0.0.1',resolve);
+	});
+	const address=server.address();
+	if(!address||typeof address==='string')throw new Error('Unable to reserve an isolated E2E port.');
+	return {port:address.port,server};
+}
+
+function releasePortReservation(server){
+	return new Promise((resolve,reject)=>{
+		if(!server.listening)return resolve();
+		server.close(error=>error?reject(error):resolve());
+	});
+}
+
 const containerName=`aurevia-e2e-${randomUUID()}`;
 const databaseName='aurevia_e2e';
 const databaseUser='aurevia_e2e';
+const portReservations=[];
 let containerStarted=false;
 let exitCode=1;
 
@@ -43,7 +62,13 @@ try{
 	const portMatch=/^127\.0\.0\.1:(\d+)$/.exec(published.stdout);
 	if(published.code!==0||!portMatch)throw new Error('Unable to confirm the loopback-only PostgreSQL port.');
 	const databaseUrl=`postgresql://${databaseUser}@127.0.0.1:${portMatch[1]}/${databaseName}?schema=public`;
-	const environment={...process.env,DATABASE_URL:databaseUrl,DIRECT_URL:databaseUrl,AUREVIA_E2E_DATABASE_URL:databaseUrl,AUREVIA_E2E_DIRECT_URL:databaseUrl,CRON_SECRET:randomUUID(),PORT:String(port),NODE_ENV:'production',ALPACA_PAPER_ORDERS_ENABLED:'false',REAL_EXECUTION_ENABLED:'false',FINNHUB_API_KEY:'',WITHDRAWAL_DESTINATION_ENCRYPTION_KEY:Buffer.alloc(32,1).toString('base64')};
+	const appPortReservation=await reserveLoopbackPort();
+	portReservations.push(appPortReservation.server);
+	const providerPortReservation=await reserveLoopbackPort();
+	portReservations.push(providerPortReservation.server);
+	const appUrl=`http://127.0.0.1:${appPortReservation.port}`;
+	const providerUrl=`http://127.0.0.1:${providerPortReservation.port}`;
+	const environment={...process.env,DATABASE_URL:databaseUrl,DIRECT_URL:databaseUrl,AUREVIA_E2E_DATABASE_URL:databaseUrl,AUREVIA_E2E_DIRECT_URL:databaseUrl,AUREVIA_E2E_APP_PORT:String(appPortReservation.port),AUREVIA_E2E_PROVIDER_PORT:String(providerPortReservation.port),AUREVIA_E2E_APP_URL:appUrl,AUREVIA_E2E_PROVIDER_URL:providerUrl,CRON_SECRET:randomUUID(),PORT:String(appPortReservation.port),NODE_ENV:'production',ALPACA_PAPER_ORDERS_ENABLED:'false',REAL_EXECUTION_ENABLED:'false',FINNHUB_API_KEY:'',WITHDRAWAL_DESTINATION_ENCRYPTION_KEY:Buffer.alloc(32,1).toString('base64')};
 	for(const name of Object.keys(environment))if(/SUPABASE|STORAGE/i.test(name))environment[name]='';
 	Object.assign(environment,{SUPABASE_URL:'',SUPABASE_SERVICE_ROLE_KEY:'',NEXT_PUBLIC_SUPABASE_URL:'',NEXT_PUBLIC_SUPABASE_ANON_KEY:''});
 	let ready=false;
@@ -63,10 +88,12 @@ try{
 	const migrated=await run('npx',['prisma','migrate','deploy'],{env:environment});
 	if(migrated!==0)throw new Error('Prisma migrations failed on the isolated E2E database.');
 	console.log('Running Playwright against a disposable loopback-only PostgreSQL database.');
+	await Promise.all(portReservations.map(releasePortReservation));
 	exitCode=await run('npm',['run','test:e2e','--',...process.argv.slice(2)],{env:environment});
 }catch(error){
 	console.error(error instanceof Error?error.message:'Isolated E2E setup failed.');
 }finally{
+	await Promise.all(portReservations.map(releasePortReservation));
 	if(containerStarted){
 		const removed=await capture('docker',['rm','--force',containerName]);
 		if(removed.code!==0){console.error('Unable to remove the isolated E2E PostgreSQL container.');exitCode=1;}

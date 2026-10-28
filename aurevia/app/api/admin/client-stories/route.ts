@@ -12,9 +12,11 @@ const imageReferenceSchema=z.string().max(500).refine(value=>/^(\/client-stories
 const patchSchema=z.object({
 	storyId:z.string().min(1),
 	displayName:z.string().trim().min(2).max(120).optional(),
-	country:z.string().trim().min(2).max(80).optional(),
+	country:z.string().trim().max(80).nullable().optional(),
 	cityOrRegion:z.string().trim().max(120).nullable().optional(),
+	title:z.string().trim().max(120).nullable().optional(),
 	quote:z.string().trim().min(1).max(3000).optional(),
+	rating:z.number().int().min(1).max(5).nullable().optional(),
 	imageReference:imageReferenceSchema.optional(),
 	userId:z.string().min(1).nullable().optional(),
 	verifyIdentity:z.boolean().optional(),
@@ -52,9 +54,11 @@ export async function GET(){
 
 const createSchema=z.object({
 	displayName:z.string().trim().min(2).max(120),
-	country:z.string().trim().min(2).max(80),
+	country:z.string().trim().max(80).nullable().optional(),
 	cityOrRegion:z.string().trim().max(120).nullable().optional(),
+	title:z.string().trim().max(120).nullable().optional(),
 	quote:z.string().trim().min(1).max(3000),
+	rating:z.number().int().min(1).max(5).nullable().optional(),
 	imageReference:imageReferenceSchema.optional(),
 	userId:z.string().min(1).nullable().optional(),
 	consentConfirmed:z.boolean().default(true),
@@ -70,6 +74,13 @@ export async function POST(req:Request){
 		if((input.publicationStatus===ClientStoryStatus.PUBLISHED||input.publicationStatus===ClientStoryStatus.VERIFIED)&&!input.consentConfirmed){
 			return NextResponse.json({error:'Consent is required before publishing.'},{status:409});
 		}
+		const source=input.source??'admin';
+		const canPublish=input.publicationStatus===ClientStoryStatus.VERIFIED
+			?canPublishClientStory({userId:input.userId??null,verifiedClient:false,transactionVerified:false,consentConfirmed:input.consentConfirmed})
+			:canPublishClientStory({userId:input.userId??null,verifiedClient:false,transactionVerified:false,consentConfirmed:input.consentConfirmed,source});
+		if((input.publicationStatus===ClientStoryStatus.PUBLISHED||input.publicationStatus===ClientStoryStatus.VERIFIED)&&!canPublish){
+			return NextResponse.json({error:'Publication requires recorded consent and either an admin-authored testimonial or verified client details.'},{status:409});
+		}
 		if(input.userId){
 			const user=await db.user.findUnique({where:{id:input.userId},select:{role:true}});
 			if(!user||user.role!=='USER')return NextResponse.json({error:'Invalid linked user.'},{status:409});
@@ -78,14 +89,16 @@ export async function POST(req:Request){
 			const created=await tx.clientStory.create({
 				data:{
 					displayName:input.displayName,
-					country:input.country,
+					country:input.country?.trim()||null,
 					cityOrRegion:input.cityOrRegion??null,
+					title:input.title?.trim()||null,
 					quote:input.quote,
+					rating:input.rating??null,
 					imageReference:input.imageReference??null,
 					userId:input.userId??null,
 					consentConfirmed:input.consentConfirmed,
 					publicationStatus:input.publicationStatus,
-					source:input.source??'admin',
+					source,
 					adminNote:input.adminNote??null,
 					verifiedClient:false,
 					transactionVerified:false,
@@ -127,12 +140,18 @@ export async function PATCH(req:Request){
 			const displayCurrency=input.displayCurrency===undefined?current.displayCurrency:input.displayCurrency;
 			if(showWithdrawalAmount&&(!withdrawal||displayCurrency!==withdrawal.currency))throw new Error('PUBLIC_AMOUNT_REQUIRES_MATCHING_WITHDRAWAL');
 			const publicationStatus=input.publicationStatus??current.publicationStatus;
-			if((publicationStatus===ClientStoryStatus.VERIFIED||publicationStatus===ClientStoryStatus.PUBLISHED)&&!canPublishClientStory({userId,verifiedClient,transactionVerified,consentConfirmed}))throw new Error('VERIFICATION_AND_CONSENT_REQUIRED');
+			const source=input.source===undefined?current.source:input.source;
+			const canPublish=publicationStatus===ClientStoryStatus.VERIFIED
+				?canPublishClientStory({userId,verifiedClient,transactionVerified,consentConfirmed})
+				:canPublishClientStory({userId,verifiedClient,transactionVerified,consentConfirmed,source});
+			if((publicationStatus===ClientStoryStatus.VERIFIED||publicationStatus===ClientStoryStatus.PUBLISHED)&&!canPublish)throw new Error('VERIFICATION_AND_CONSENT_REQUIRED');
 			const data={
 				displayName:input.displayName,
 				country:input.country,
 				cityOrRegion:input.cityOrRegion,
+				title:input.title,
 				quote:input.quote,
+				rating:input.rating,
 				imageReference:input.imageReference,
 				userId,
 				verifiedClient,
@@ -144,7 +163,7 @@ export async function PATCH(req:Request){
 				showWithdrawalAmount,
 				displayCurrency:showWithdrawalAmount?displayCurrency:null,
 				publicationStatus,
-				source:input.source,
+				source,
 				adminNote:input.adminNote,
 			};
 			const changed=await tx.clientStory.updateMany({where:{id:current.id,updatedAt:current.updatedAt,deletedAt:null},data});

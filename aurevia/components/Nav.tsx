@@ -3,10 +3,11 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MoreHorizontal,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
+import ProfileAvatar from '@/components/ProfileAvatar';
 import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
 
@@ -203,8 +204,8 @@ export default function Nav(){
     <button type="button" aria-pressed={data.user.accountMode==='DEMO'} disabled={modeBusy||loggingOut||data.user.accountMode==='DEMO'} onClick={()=>void changeMode('DEMO')}>Demo</button>
     <button type="button" aria-pressed={data.user.accountMode==='REAL'} disabled={modeBusy||loggingOut||data.user.accountMode==='REAL'} onClick={()=>void changeMode('REAL')}>Real</button>
    </div>
-   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><LanguageSelector/></div>
-   <span className="user-topbar-identity"><span className="user-topbar-avatar">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
+   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><button ref={userMenuButtonRef} type="button" className={`user-account-back${open||moreMenuGroups.some(group=>group.links.some(item=>active(item.href)))?' is-active':''}`} aria-label="More account navigation" aria-expanded={open} aria-controls="user-more-menu" onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={17} aria-hidden="true"/></button><LanguageSelector/></div>
+   <span className="user-topbar-identity"><ProfileAvatar className="user-topbar-avatar" size={32} alt="Your profile picture"/><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
    {modeError&&<span className="user-mode-error" role="alert">{modeError}</span>}
   </div>
   </header>
@@ -233,7 +234,7 @@ export default function Nav(){
       <Link href="/login" onClick={close}>{translate('signIn')}</Link>
       <Link href="/register" className="nav-cta" onClick={close}>{translate('createAccount')}</Link>
      </section>}
-    {status==='authenticated'&&data?.user&&<div className="nav-account-snapshot"><span className="nav-account-monogram">{(data.user.name||data.user.email||'A').trim().slice(0,1).toUpperCase()}</span><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><em>{data.user.accountMode} ACCOUNT</em></span></div>}
+    {status==='authenticated'&&data?.user&&<div className="nav-account-snapshot"><ProfileAvatar className="nav-account-monogram" size={36} alt="Your profile picture"/><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><em>{data.user.accountMode} ACCOUNT</em></span></div>}
      <section className="nav-menu-group" aria-labelledby="nav-overview-heading">
       <h2 className="nav-menu-section" id="nav-overview-heading">OVERVIEW</h2>
       <Link href="/" onClick={close} aria-current={pathname==='/'?'page':undefined}>{translate('home')}</Link>

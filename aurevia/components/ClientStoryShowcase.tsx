@@ -8,10 +8,12 @@ import {ArrowLeft,ArrowRight,ArrowUpRight,ShieldCheck} from 'lucide-react';
 type ClientStory={
 	id:string;
 	displayName:string;
-	country:string;
+	country:string|null;
 	cityOrRegion:string|null;
+	title?:string|null;
 	quote:string;
 	imageUrl:string|null;
+	rating?:number|null;
 	verifiedClientStory?:boolean;
 	withdrawalAmount?:string;
 	currency?:string;
@@ -88,6 +90,8 @@ export default function ClientStoryShowcase(){
 							)}
 						</div>
 						<div className="client-story-stage-body">
+							{current.title&&<p className="eyebrow">{current.title}</p>}
+							{current.rating&&<p className="client-story-rating" aria-label={`Rated ${current.rating} out of 5`}>{'★'.repeat(current.rating)}<span className="sr-only">Rated {current.rating} out of 5</span></p>}
 							<blockquote className="client-story-quote whitespace-pre-line break-words">“{current.quote}”</blockquote>
 							<div className="mt-5">
 								<h3 className="font-semibold text-lg">{current.displayName}</h3>

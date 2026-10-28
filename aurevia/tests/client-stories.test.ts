@@ -12,6 +12,12 @@ describe('client story publication safeguards',()=>{
 		expect(canPublishClientStory({userId:null,verifiedClient:true,transactionVerified:true,consentConfirmed:true})).toBe(false);
 	});
 
+	it('allows a consented, admin-authored testimonial without a linked account but never marks it verified',()=>{
+		expect(canPublishClientStory({userId:null,verifiedClient:false,transactionVerified:false,consentConfirmed:true,source:'admin'})).toBe(true);
+		expect(canPublishClientStory({userId:null,verifiedClient:false,transactionVerified:false,consentConfirmed:false,source:'admin'})).toBe(false);
+		expect(canPublishClientStory({userId:null,verifiedClient:false,transactionVerified:false,consentConfirmed:true})).toBe(false);
+	});
+
 	it('accepts only a completed, settled real withdrawal belonging to the linked client',()=>{
 		expect(isVerifiedClientWithdrawal(withdrawal,'user-1')).toBe(true);
 		expect(isVerifiedClientWithdrawal({...withdrawal,userId:'user-2'},'user-1')).toBe(false);

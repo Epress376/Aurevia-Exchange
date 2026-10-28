@@ -452,6 +452,9 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .dashboard-greeting p{margin:5px 0 0;overflow-wrap:anywhere;color:#9ba79d;font-size:10px;line-height:1.6}
 .profile-avatar-wrap{position:relative;display:grid;width:54px;height:54px;flex:none;place-items:center;border:1px solid rgba(197,164,107,.35);border-radius:50%;background:#102219}
 .profile-avatar,.profile-avatar img,.user-avatar,.user-avatar img{width:92px;height:92px;border-radius:50%;object-fit:cover;flex-shrink:0}
+.profile-avatar-image{display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover}
+.profile-avatar-fallback-icon{flex:none;color:currentColor}
+.admin-settings-avatar{display:grid;width:72px;height:72px;flex:none;place-items:center;overflow:hidden;border:1px solid rgba(156,121,69,.28);border-radius:50%;background:#f6f0e5;color:#9c7945}
 .dashboard-avatar{width:56px;height:56px;border-radius:50%;object-fit:cover;flex-shrink:0}
 .profile-avatar-fallback{width:100%;height:100%;border-radius:50%;object-fit:cover}
 .receipt-container{box-sizing:border-box;width:100%;max-width:100%;max-height:85vh;max-height:85dvh;overflow-y:auto;padding:12px;font-size:clamp(0.75rem,2.8vw,0.9rem)}
@@ -741,14 +744,18 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .nova-message.is-user{align-self:flex-end;border-color:rgba(197,164,107,.25);background:rgba(197,164,107,.07)}
 .nova-message>span{color:var(--a-brass-soft);font-size:8px;font-weight:700;letter-spacing:.1em}
 .nova-message p{margin:5px 0 0;color:#c1cbc1;font-size:10px;line-height:1.65;white-space:pre-wrap}
-.floating-support{position:fixed;z-index:18;width:min(360px,calc(100vw - 24px));font-family:inherit}
+.floating-support{position:fixed;left:0;top:0;z-index:18;width:min(360px,calc(100vw - 24px));font-family:inherit;will-change:transform}
 .floating-support:not(.is-open){width:56px}
-.floating-support-launcher{position:relative;display:grid;width:56px;height:56px;place-items:center;padding:0;border:1px solid rgba(197,164,107,.55);border-radius:50%;background:#14271d;color:#f0eadc;box-shadow:0 12px 36px rgba(0,0,0,.38);touch-action:none;cursor:grab;z-index:19}
+.floating-support-launcher{position:relative;display:grid;width:56px;height:56px;place-items:center;padding:0;border:1px solid rgba(212,175,55,.55);border-radius:50%;background:var(--a-forest);color:var(--a-paper);box-shadow:0 12px 36px rgba(0,0,0,.38);touch-action:none;cursor:grab;z-index:19;transition:transform 150ms ease,box-shadow 150ms ease}
+.floating-support-launcher:hover{transform:scale(1.04);box-shadow:0 14px 40px rgba(0,0,0,.45)}
+.floating-support-unread-dot,.admin-unread-dot{position:absolute;width:10px;height:10px;border:2px solid #fff;border-radius:50%;background:#dc3545;box-shadow:0 0 0 2px rgba(220,53,69,.15)}
+.floating-support-unread-dot{top:0;right:0;width:13px;height:13px;border-color:var(--a-forest)}
+.client-story-rating{color:#9c7945;letter-spacing:.12em;font-size:15px}
 .floating-support-launcher:active,.floating-support-header:active{cursor:grabbing}
 .floating-support-launcher svg:first-child{color:var(--a-brass-soft)}
 .floating-support-launcher svg:last-child{position:absolute;right:5px;bottom:5px;color:#8d9c90}
-.floating-support-panel{position:relative;z-index:19;display:flex;max-height:min(560px,calc(100dvh - 24px));flex-direction:column;overflow:hidden;border:1px solid rgba(197,164,107,.35);border-radius:8px;background:#0d1711;box-shadow:0 18px 56px rgba(0,0,0,.58);color:#e5e9e2}
-.floating-support-header{display:flex;min-height:62px;flex:none;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.09);background:#14271d;touch-action:none;cursor:grab}
+.floating-support-panel{position:relative;z-index:19;display:flex;max-height:min(560px,calc(100dvh - 24px));flex-direction:column;overflow:hidden;border:1px solid rgba(212,175,55,.35);border-radius:8px;background:var(--a-ink);box-shadow:0 18px 56px rgba(0,0,0,.58);color:var(--a-paper)}
+.floating-support-header{display:flex;min-height:62px;flex:none;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid rgba(255,255,255,.09);background:var(--a-forest);touch-action:none;cursor:grab}
 .floating-support-header>div{display:grid;min-width:0;flex:1;gap:3px}
 .floating-support-header b{font-size:13px}
 .floating-support-header small,.floating-support-select span{color:#9ba79d;font-size:10px}
@@ -777,6 +784,7 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .floating-support-notice{color:#a7d5b1}
 .floating-support-error{color:#f0aaaa}
 @media(max-width:480px){.floating-support-panel{max-height:min(560px,calc(100dvh - 24px))}}
+@media(prefers-reduced-motion:reduce){.floating-support-launcher{transition:none}}
 .nova-input-row{display:grid;grid-template-columns:minmax(0,1fr) 42px;gap:8px}
 .nova-input-row button{display:grid;place-items:center}
 .support-ticket-list{display:grid;gap:7px;margin-top:12px}
@@ -2376,13 +2384,13 @@ section.floating-support-panel{
 
 /* Admin analytics workspace */
 .admin-shell-chrome{--admin-sidebar-width:258px;position:relative;z-index:100}
-.admin-sidebar{position:fixed;inset:0 auto 0 0;z-index:102;display:flex;width:var(--admin-sidebar-width);flex-direction:column;border-right:1px solid rgba(212,167,44,.18);background:linear-gradient(180deg,#0a1b14 0%,#07120d 100%);box-shadow:18px 0 50px rgba(0,0,0,.25)}
+.admin-sidebar{position:fixed;inset:0 auto 0 0;z-index:102;display:flex;width:var(--admin-sidebar-width);flex-direction:column;border-right:1px solid rgba(212,175,55,.18);background:linear-gradient(180deg,var(--a-forest) 0%,var(--a-ink) 100%);box-shadow:18px 0 50px rgba(0,0,0,.25)}
 .admin-sidebar>.admin-brand{min-height:78px;padding:0 20px;border-bottom:1px solid rgba(255,255,255,.07)}
 .admin-sidebar .admin-sidebar-navigation{display:flex;min-height:0;flex:1;overflow-y:auto;overscroll-behavior:contain;padding:12px 12px 22px}
 .admin-sidebar .admin-command-groups{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}
 .admin-sidebar .admin-command-group{display:grid;align-content:start;gap:3px;padding:0;border:0;background:none}
 .admin-sidebar .admin-command-group h2{display:block;margin:4px 8px 5px;padding:0;color:#9a8652;font-size:9px;font-weight:700;letter-spacing:.16em;text-transform:uppercase}
-.admin-sidebar .admin-command-group a{display:flex;min-height:38px;align-items:center;justify-content:flex-start;gap:10px;padding:8px 10px;border:1px solid transparent;border-radius:6px;color:#b5c1b8;font-size:11px;text-decoration:none;transition:background .16s ease,border-color .16s ease,color .16s ease}
+.admin-sidebar .admin-command-group a{position:relative;display:flex;min-height:38px;align-items:center;justify-content:flex-start;gap:10px;padding:8px 10px;border:1px solid transparent;border-radius:6px;color:#b5c1b8;font-size:11px;text-decoration:none;transition:background .16s ease,border-color .16s ease,color .16s ease}
 .admin-sidebar .admin-command-group a span{position:static;width:auto;height:auto;overflow:visible;clip:auto;white-space:normal}
 .admin-sidebar .admin-command-group a svg{flex:none;color:#829287}
 .admin-sidebar .admin-command-group a:hover,.admin-sidebar .admin-command-group a:focus-visible{border-color:rgba(212,167,44,.22);background:rgba(212,167,44,.07);color:#fff0c9}
@@ -2395,7 +2403,7 @@ section.floating-support-panel{
 .admin-profile-copy small{color:#849187;font-size:8px;letter-spacing:.13em}
 .admin-sidebar-logout{display:grid;width:32px;height:32px;place-items:center;border:1px solid rgba(255,255,255,.08);border-radius:5px;background:transparent;color:#aab5ac;cursor:pointer}
 .admin-sidebar-logout:hover{border-color:rgba(212,167,44,.35);color:#f0d588}
-.admin-topbar{position:fixed;inset:0 0 auto var(--admin-sidebar-width);z-index:101;display:flex;min-height:72px;align-items:center;gap:22px;padding:10px clamp(18px,3vw,42px);border-bottom:1px solid rgba(255,255,255,.07);background:rgba(7,17,12,.94);box-shadow:0 8px 28px rgba(0,0,0,.18);backdrop-filter:blur(18px)}
+.admin-topbar{position:fixed;inset:0 0 auto var(--admin-sidebar-width);z-index:101;display:flex;min-height:72px;align-items:center;gap:22px;padding:10px clamp(18px,3vw,42px);border-bottom:1px solid rgba(255,255,255,.07);background:rgba(11,15,26,.94);box-shadow:0 8px 28px rgba(0,0,0,.18);backdrop-filter:blur(18px)}
 .admin-topbar-heading{display:grid;min-width:135px;gap:4px}
 .admin-topbar-heading>span{color:#a58f55;font-size:8px;font-weight:700;letter-spacing:.17em}
 .admin-topbar-heading>b{color:#f1f3ed;font-family:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;font-size:17px;font-weight:400}
@@ -2416,7 +2424,9 @@ section.floating-support-panel{
 .admin-search-results>p{margin:0;padding:11px;color:#89968d;font-size:9px;line-height:1.5}
 .admin-topbar-meta{display:flex;flex:none;align-items:center;gap:15px}
 .admin-clock{color:#9aa69d;font-size:10px;font-variant-numeric:tabular-nums;white-space:nowrap}
-.admin-topbar-icon{display:grid;width:34px;height:34px;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#b9c2ba}
+.admin-topbar-icon{position:relative;display:grid;width:34px;height:34px;place-items:center;border:1px solid rgba(255,255,255,.1);border-radius:6px;color:#b9c2ba}
+.admin-topbar-icon .admin-unread-dot{top:3px;right:3px;width:9px;height:9px;border-width:1px;border-color:#101a15}
+.admin-command-group .admin-unread-dot{top:7px;right:7px;width:9px;height:9px;border-width:1px;border-color:#111a16}
 .admin-topbar-icon:hover{border-color:rgba(212,167,44,.38);color:#f0d588}
 .admin-topbar-profile{display:flex;align-items:center;gap:8px}
 .admin-topbar-profile>span:last-child{display:grid;gap:3px}

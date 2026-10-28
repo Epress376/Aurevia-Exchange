@@ -1,12 +1,20 @@
 import {NextResponse} from 'next/server';
+import {getServerSession} from 'next-auth';
 import {NotificationType} from '@prisma/client';
-import {requireUser} from '@/lib/auth';
+import {authOptions} from '@/lib/auth-options';
 import {db} from '@/lib/db';
 import {createNotification} from '@/lib/notifications';
 import {createPrivateObjectKey,createPrivateSignedUrl,deletePrivateObject,hasMatchingFileExtension,PrivateStorageError,uploadPrivateObject} from '@/lib/private-storage';
 import {isProfileLocked} from '@/lib/profile-lock';
 
 const maxBytes=2*1024*1024;
+async function requireAvatarOwner(){
+	const session=await getServerSession(authOptions);
+	if(!session?.user?.id)throw new Error('UNAUTHORIZED');
+	if(session.user.role!=='USER'&&session.user.role!=='ADMIN')throw new Error('FORBIDDEN');
+	return {id:session.user.id,role:session.user.role};
+}
+
 function avatarMime(bytes:Buffer):'image/png'|'image/jpeg'|'image/webp'|null{
 	if(bytes.length>=8&&bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10])))return 'image/png';
 	if(bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)return 'image/jpeg';
@@ -16,9 +24,9 @@ function avatarMime(bytes:Buffer):'image/png'|'image/jpeg'|'image/webp'|null{
 
 export async function GET(){
 	try{
-		const user=await requireUser();
+		const user=await requireAvatarOwner();
 		const profile=await db.user.findUnique({where:{id:user.id},select:{avatarKey:true}});
-		if(!profile?.avatarKey)return NextResponse.json({error:'No profile photo is configured.'},{status:404});
+		if(!profile?.avatarKey)return NextResponse.json({url:null},{headers:{'Cache-Control':'private, no-store'}});
 		return NextResponse.json({url:await createPrivateSignedUrl('avatar',user.id,profile.avatarKey)},{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
@@ -32,7 +40,7 @@ export async function POST(request:Request){
 	let newKey:string|undefined;
 	let ownerId:string|undefined;
 	try{
-		const user=await requireUser();
+		const user=await requireAvatarOwner();
 		ownerId=user.id;
 		const contentLength=Number(request.headers.get('content-length')||0);
 		if(contentLength>maxBytes+64*1024)return NextResponse.json({error:'Profile photo must be 2 MB or smaller.'},{status:413});
@@ -45,15 +53,15 @@ export async function POST(request:Request){
 		const avatarKey=createPrivateObjectKey('avatar',user.id,contentType);
 		newKey=avatarKey;
 		const previous=await db.user.findUnique({where:{id:user.id},select:{avatarKey:true,verifiedAt:true,kycStatus:true}});
-		if(previous?.kycStatus==='APPROVED'&&isProfileLocked(previous.verifiedAt))return NextResponse.json({error:'Verified profile details are locked. Contact support for an account change.'},{status:423});
+		if(user.role==='USER'&&previous?.kycStatus==='APPROVED'&&isProfileLocked(previous.verifiedAt))return NextResponse.json({error:'Verified profile details are locked. Contact support for an account change.'},{status:423});
 		await uploadPrivateObject('avatar',user.id,avatarKey,bytes,contentType);
 		await db.$transaction(async tx=>{
 			const current=await tx.user.findUniqueOrThrow({where:{id:user.id},select:{verifiedAt:true,kycStatus:true}});
-			if(current.kycStatus==='APPROVED'&&isProfileLocked(current.verifiedAt))throw new Error('PROFILE_LOCKED');
+			if(user.role==='USER'&&current.kycStatus==='APPROVED'&&isProfileLocked(current.verifiedAt))throw new Error('PROFILE_LOCKED');
 			const saved=await tx.user.updateMany({where:{id:user.id,avatarKey:previous?.avatarKey??null},data:{avatarKey}});
 			if(saved.count!==1)throw new Error('AVATAR_CHANGED');
 			await tx.auditLog.create({data:{actorId:user.id,action:'PROFILE_AVATAR_UPDATED',entity:'USER',entityId:user.id,metadata:{contentType,size:bytes.length}}});
-			await createNotification(tx,{userId:user.id,type:NotificationType.SECURITY,title:'Profile photo updated',message:'Your profile photo was updated.',dedupeKey:`security:${user.id}:avatar:${avatarKey.split('/').at(-1)}`,actionUrl:'/settings'});
+			if(user.role==='USER')await createNotification(tx,{userId:user.id,type:NotificationType.SECURITY,title:'Profile photo updated',message:'Your profile photo was updated.',dedupeKey:`security:${user.id}:avatar:${avatarKey.split('/').at(-1)}`,actionUrl:'/settings'});
 		});
 		if(previous?.avatarKey)await deletePrivateObject('avatar',user.id,previous.avatarKey);
 		return NextResponse.json({ok:true},{status:201});

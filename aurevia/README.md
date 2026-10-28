@@ -82,7 +82,9 @@ Sign-in and registration use the application's own email/username and password c
 
 Run `npm run test:e2e:isolated` with Docker available. The command starts a disposable PostgreSQL 16 container bound only to a dynamically selected loopback port, applies Prisma migrations only to that container, and removes it after the run. The container has no persistent volume; neither `DATABASE_URL` nor `DIRECT_URL` from `.env` is used for tests. `npm run test:e2e` requires explicit `AUREVIA_E2E_DATABASE_URL` and `AUREVIA_E2E_DIRECT_URL` values that point to the same local PostgreSQL database ending in `_e2e`; it refuses Supabase, Neon, and other remote hosts before fixture setup.
 
-The isolated database bootstraps only the minimal Supabase Storage tables, private bucket metadata, and database roles required by the Storage-policy migration. The Playwright application process has Supabase URL/key configuration cleared, so file workflows fail closed and cannot access the shared Storage service. `npm run test:e2e` by itself continues to reject non-local or mismatched database URLs.
+The isolated database bootstraps only the minimal Supabase Storage tables, private bucket metadata, and database roles required by the Storage-policy migration. The Playwright application process has Supabase URL/key configuration cleared, so file workflows fail closed and cannot access the shared Storage service. The isolated runner reserves distinct free loopback ports for the app and mock provider to avoid collisions with unrelated services. `npm run test:e2e` by itself continues to reject non-local or mismatched database URLs.
+
+Playwright runs with two workers. Public-route and responsive-layout checks are in a separate spec so they can run alongside the shared-fixture application suite; the latter remains sequential to prevent races against its seeded accounts.
 
 ## Environment
 

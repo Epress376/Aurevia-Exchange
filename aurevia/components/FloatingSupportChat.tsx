@@ -14,6 +14,7 @@ const positionKey='aurevia-support-chat-position';
 const widgetWidth=360;
 const panelHeight=560;
 const launcherSize=56;
+const seenMessageKey='aurevia-support-chat-seen';
 
 function clampPosition(position:Position,expanded:boolean):Position{
 	const width=expanded?Math.min(widgetWidth,window.innerWidth-24):launcherSize;
@@ -25,8 +26,9 @@ function clampPosition(position:Position,expanded:boolean):Position{
 }
 
 export default function FloatingSupportChat(){
-	const {status}=useSession();
+	const {data:session,status}=useSession();
 	const [open,setOpen]=useState(false);
+	const [hasUnread,setHasUnread]=useState(false);
 	const [position,setPosition]=useState<Position|null>(null);
 	const [conversations,setConversations]=useState<Conversation[]>([]);
 	const [selectedId,setSelectedId]=useState('');
@@ -38,20 +40,49 @@ export default function FloatingSupportChat(){
 	const [notice,setNotice]=useState('');
 	const drag=useRef<DragState|null>(null);
 	const dragged=useRef(false);
+	const animationFrame=useRef<number|null>(null);
 	const messageList=useRef<HTMLDivElement>(null);
+	const latestActivity=useRef<string|null>(null);
 	const selected=conversations.find(conversation=>conversation.id===selectedId);
+	const userId=session?.user?.id;
 
 	const clamp=useCallback((next:Position)=>clampPosition(next,open),[open]);
 	const load=useCallback(async()=>{
-		if(status!=='authenticated')return;
+		if(status!=='authenticated'||!userId)return;
 		try{
-			const response=await fetch('/api/support',{cache:'no-store'});
+			const [response,notificationResponse]=await Promise.all([
+				fetch('/api/support',{cache:'no-store'}),
+				fetch('/api/notifications?limit=20',{cache:'no-store'}),
+			]);
 			const result=await response.json();
 			if(!response.ok)throw new Error(result.error||'Support messages are temporarily unavailable.');
-			setConversations(result);
-			setError('');
+			const nextConversations=result as Conversation[];
+			setConversations(nextConversations);
+			const newestAdminMessage=nextConversations.flatMap(item=>item.messages).filter(item=>item.authorType==='ADMIN').reduce<string|null>((latest,item)=>!latest||item.createdAt>latest?item.createdAt:latest,null);
+			let newestUnreadNotification:string|null=null;
+			if(notificationResponse.ok){
+				const notifications=await notificationResponse.json() as {latestUnreadAt?:string|null};
+				newestUnreadNotification=notifications.latestUnreadAt??null;
+			}else{
+				console.error('Chat notification indicator could not refresh.',notificationResponse.status);
+			}
+			const newestActivity=[newestAdminMessage,newestUnreadNotification].filter((value):value is string=>Boolean(value)).sort().at(-1)??null;
+			latestActivity.current=newestActivity;
+			const key=`${seenMessageKey}:${userId}`;
+			try{
+				const seenAt=localStorage.getItem(key);
+				if(open){
+					localStorage.setItem(key,newestActivity||new Date().toISOString());
+					setHasUnread(false);
+				}else if(newestActivity&&(!seenAt||newestActivity>seenAt)){
+					setHasUnread(true);
+				}else{
+					setHasUnread(false);
+				}
+			}catch{}
+			setError(notificationResponse.ok?'':'Unread notification status is temporarily unavailable.');
 		}catch(exception){setError(exception instanceof Error?exception.message:'Support messages are temporarily unavailable.')}
-	},[status]);
+	},[open,status,userId]);
 
 	useEffect(()=>{
 		let saved:Position|null=null;
@@ -74,11 +105,16 @@ export default function FloatingSupportChat(){
 			const active=drag.current;
 			if(!active||active.pointerId!==event.pointerId)return;
 			if(Math.abs(event.clientX-active.startX)+Math.abs(event.clientY-active.startY)>4)dragged.current=true;
-			if(dragged.current)setPosition(clampPosition({left:active.left+event.clientX-active.startX,top:active.top+event.clientY-active.startY},open));
+			if(dragged.current){
+				const next=clampPosition({left:active.left+event.clientX-active.startX,top:active.top+event.clientY-active.startY},open);
+				if(animationFrame.current!==null)window.cancelAnimationFrame(animationFrame.current);
+				animationFrame.current=window.requestAnimationFrame(()=>{animationFrame.current=null;setPosition(next)});
+			}
 		}
 		function endDrag(event:PointerEvent){
 			const active=drag.current;
 			if(active?.pointerId!==event.pointerId)return;
+			if(animationFrame.current!==null){window.cancelAnimationFrame(animationFrame.current);animationFrame.current=null}
 			if(dragged.current){
 				const next=clampPosition({left:active.left+event.clientX-active.startX,top:active.top+event.clientY-active.startY},open);
 				setPosition(next);
@@ -90,12 +126,13 @@ export default function FloatingSupportChat(){
 		window.addEventListener('pointerup',endDrag);
 		window.addEventListener('pointercancel',endDrag);
 		return()=>{
+			if(animationFrame.current!==null)window.cancelAnimationFrame(animationFrame.current);
 			window.removeEventListener('pointermove',moveDrag);
 			window.removeEventListener('pointerup',endDrag);
 			window.removeEventListener('pointercancel',endDrag);
 		};
 	},[open]);
-	useEffect(()=>{if(!open||status!=='authenticated')return;void load();const timer=window.setInterval(()=>void load(),20_000);return()=>window.clearInterval(timer)},[open,status,load]);
+	useEffect(()=>{if(status!=='authenticated')return;void load();const timer=window.setInterval(()=>void load(),10_000);return()=>window.clearInterval(timer)},[status,load]);
 	useEffect(()=>{if(messageList.current)messageList.current.scrollTop=messageList.current.scrollHeight},[selected?.messages.length,open]);
 
 	function beginDrag(event:React.PointerEvent<HTMLElement>){
@@ -105,7 +142,14 @@ export default function FloatingSupportChat(){
 		dragged.current=false;
 		drag.current={pointerId:event.pointerId,startX:event.clientX,startY:event.clientY,left:position.left,top:position.top};
 	}
-	function toggleOpen(){if(dragged.current){dragged.current=false;return}setOpen(value=>!value)}
+	function toggleOpen(){
+		if(dragged.current){dragged.current=false;return}
+		if(!open&&userId){
+			try{if(latestActivity.current)localStorage.setItem(`${seenMessageKey}:${userId}`,latestActivity.current)}catch{}
+			setHasUnread(false);
+		}
+		setOpen(!open);
+	}
 
 	async function createTicket(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();if(busy)return;
@@ -133,8 +177,8 @@ export default function FloatingSupportChat(){
 	}
 
 	if(!position)return null;
-	return <aside className={`floating-support ${open?'is-open':''}`} style={{left:position.left,top:position.top}} aria-label="Chat support">
-		{!open?<button className="floating-support-launcher" type="button" aria-label="Open chat support" title="Drag to move, click to open" onPointerDown={beginDrag} onClick={toggleOpen}><MessageCircle size={21}/><Move size={12} aria-hidden="true"/></button>:<section className="floating-support-panel" aria-label="Admin chat support">
+	return <aside className={`floating-support ${open?'is-open':''}`} style={{left:0,top:0,transform:`translate3d(${position.left}px,${position.top}px,0)`}} aria-label="Chat support">
+		{!open?<button className="floating-support-launcher" type="button" aria-label={hasUnread?'Open chat support, new messages':'Open chat support'} title="Drag to move, click to open" onPointerDown={beginDrag} onClick={toggleOpen}><MessageCircle size={21}/><Move size={12} aria-hidden="true"/>{hasUnread&&<span className="floating-support-unread-dot" aria-label="Unread support message"/>}</button>:<section className="floating-support-panel" aria-label="Admin chat support">
 			<header className="floating-support-header" onPointerDown={beginDrag}>
 				<span className="floating-support-icon"><LifeBuoy size={17}/></span><div><b>Admin support</b><small>Private account conversation</small></div>
 				<button type="button" aria-label="Minimize chat support" onClick={()=>setOpen(false)}><Minus size={16}/></button><button type="button" aria-label="Close chat support" onClick={()=>setOpen(false)}><X size={16}/></button>

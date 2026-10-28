@@ -7,6 +7,7 @@ import {Cell,Pie, PieChart,ResponsiveContainer,Tooltip} from 'recharts';
 import {Activity,ArrowDownLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Bell,BriefcaseBusiness,ChartNoAxesCombined,Clock3,ExternalLink,Eye,EyeOff,Home,LifeBuoy,LineChart,Plus,RefreshCw,Search,ShieldCheck,Star,WalletCards} from 'lucide-react';
 import {useSession} from 'next-auth/react';
 import Nav from '@/components/Nav';
+import ProfileAvatar from '@/components/ProfileAvatar';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
 import LivePriceChart from '@/components/LivePriceChart';
 import {InvestmentProgressCard} from '@/components/InvestmentProgressCard';
@@ -256,7 +257,7 @@ export default function UserDashboardExperience(){
 			</header>
 			<section className="mobile-home-summary" aria-label="Account overview">
 				<header className="mobile-home-greeting">
-					<span className="mobile-home-avatar">{firstName(overview.profile.name).slice(0,1).toUpperCase()}</span>
+					<ProfileAvatar className="mobile-home-avatar" size={44} alt="Your profile picture"/>
 					<div><small>Welcome back</small><strong>{overview.profile.name||'Your account'}</strong></div>
 					<Link href="/support" aria-label="Contact support"><LifeBuoy size={19}/></Link>
 					<Link href="/notifications" aria-label="View notifications"><Bell size={19}/></Link>

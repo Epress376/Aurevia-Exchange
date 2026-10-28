@@ -1062,9 +1062,11 @@ model PortfolioSnapshot {
 model ClientStory {
   id                   String            @id @default(cuid())
   displayName          String
-  country              String
+  country              String?
   cityOrRegion         String?
+  title                String?
   quote                String
+  rating               Int?              @db.SmallInt
   imageReference       String?
   userId               String?
   user                 User?             @relation(fields: [userId], references: [id], onDelete: SetNull)

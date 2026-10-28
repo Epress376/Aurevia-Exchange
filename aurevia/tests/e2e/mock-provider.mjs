@@ -102,4 +102,4 @@ const server=http.createServer((request,response)=>{
 	response.end();
 });
 
-server.listen(4311,'127.0.0.1');
+server.listen(Number(process.env.AUREVIA_E2E_PROVIDER_PORT||4311),'127.0.0.1');

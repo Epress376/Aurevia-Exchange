@@ -2,6 +2,8 @@
 
 import {FormEvent,useEffect,useState} from 'react';
 import {RefreshCw,Save} from 'lucide-react';
+import {useSession} from 'next-auth/react';
+import ProfileAvatar,{notifyProfileAvatarUpdated} from '@/components/ProfileAvatar';
 import {SIMULATED_BTC_ADDRESS_SETTING} from '@/lib/config/simulated-bitcoin-address';
 import {tierBoostSettingKeys} from '@/lib/tier-boost-settings';
 
@@ -17,6 +19,9 @@ export default function AdminSettingsPanel(){
 	const [notice,setNotice]=useState('');
 	const [tier2Boost,setTier2Boost]=useState('0');
 	const [tier3Boost,setTier3Boost]=useState('0');
+	const [avatarFile,setAvatarFile]=useState<File|null>(null);
+	const [avatarSaving,setAvatarSaving]=useState(false);
+	const {data:session}=useSession();
 
 	async function load(){
 		setLoading(true);setError('');
@@ -32,6 +37,24 @@ export default function AdminSettingsPanel(){
 	}
 
 	useEffect(()=>{void load()},[]);
+
+	async function uploadAvatar(){
+		if(!avatarFile||avatarSaving)return;
+		setAvatarSaving(true);setError('');setNotice('');
+		try{
+			const body=new FormData();body.append('file',avatarFile);
+			const response=await fetch('/api/profile/avatar',{method:'POST',body});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Profile photo upload failed.');
+			const view=await fetch('/api/profile/avatar',{cache:'no-store'});
+			const avatar=await view.json();
+			if(!view.ok)throw new Error(avatar.error||'Profile photo saved but could not be loaded.');
+			notifyProfileAvatarUpdated(avatar.url);
+			setAvatarFile(null);
+			setNotice('Administrator profile photo updated.');
+		}catch(exception){setError(exception instanceof Error?exception.message:'Profile photo upload failed.')}
+		finally{setAvatarSaving(false)}
+	}
 
 	async function save(key:string,value:string):Promise<boolean>{
 		if(busyKey)return false;
@@ -61,6 +84,9 @@ export default function AdminSettingsPanel(){
 		<header className="account-heading"><div><span className="account-kicker">SERVICE &amp; SYSTEM</span><h1>System settings</h1><p>Manage the system values consumed by the application.</p></div><button className="icon-action" type="button" aria-label="Refresh system settings" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/></button></header>
 		<div className="account-callout mb-4"><span>REAL funding requests remain internal ledger entries. A configured BTC address is an optional display-only reference for users; it does not receive, verify, or credit cryptocurrency deposits.</span></div>
 		{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}{error&&<p className="mb-3 text-sm text-loss" role="alert">{error}</p>}
+		<section className="account-panel card mb-4 p-5"><div className="account-panel-title"><div><h2>Administrator profile</h2><p className="account-panel-subtitle">Your private profile photo appears in the admin navigation.</p></div></div>
+			<div className="mt-4 flex flex-wrap items-center gap-4"><ProfileAvatar className="admin-settings-avatar" size={72} alt="Administrator profile photo"/><div className="grid gap-2"><strong>{session?.user?.name||session?.user?.email||'Administrator'}</strong><label className="account-label">Profile photo<input className="input mt-1" type="file" accept="image/png,image/jpeg,image/webp" aria-label="Choose administrator profile photo" onChange={event=>setAvatarFile(event.target.files?.[0]||null)}/></label><button className="btn min-h-11 w-fit bg-white/5" type="button" disabled={!avatarFile||avatarSaving} onClick={()=>void uploadAvatar()}>{avatarSaving?'Uploading…':'Upload photo'}</button></div></div>
+		</section>
 		<section className="account-panel card p-5"><div className="account-panel-title"><div><h2>Configured values</h2><p className="account-panel-subtitle">Saving a value records an administrator audit event.</p></div></div>
 			{loading?<p className="account-empty" role="status">Loading system settings…</p>:<>
 				<div className="account-panel mt-4 p-4">

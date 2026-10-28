@@ -1,11 +1,12 @@
 'use client';
 
-import {type FormEvent,useCallback,useEffect,useState} from 'react';
+import {type FormEvent,useCallback,useEffect,useRef,useState} from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,Handshake,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
+import ProfileAvatar from '@/components/ProfileAvatar';
 
 const groups=[
 	{title:'Dashboards',links:[
@@ -60,6 +61,8 @@ export default function AdminNav(){
 	const [search,setSearch]=useState('');
 	const [searchOpen,setSearchOpen]=useState(false);
 	const [now,setNow]=useState<Date|null>(null);
+	const [hasUnreadActivity,setHasUnreadActivity]=useState(false);
+	const latestActivityRef=useRef<string|null>(null);
 	const currentQuery=searchParams.toString();
 	const isAdmin=status==='authenticated'&&data?.user?.role==='ADMIN';
 	const matchingDestinations=search.trim()?groups.flatMap(group=>group.links
@@ -84,6 +87,35 @@ export default function AdminNav(){
 		const timer=window.setInterval(update,60_000);
 		return ()=>window.clearInterval(timer);
 	},[]);
+	useEffect(()=>{
+		if(!isAdmin||!data?.user?.id)return;
+		const storageKey=`aurevia-admin-activity-seen:${data.user.id}`;
+		let active=true;
+		async function refreshActivity(){
+			try{
+				const response=await fetch('/api/admin/activity/unread',{cache:'no-store'});
+				const result=await response.json();
+				if(!response.ok)throw new Error(result.error||'Unable to check new admin activity.');
+				if(!active)return;
+				const latest=typeof result.latestActivityAt==='string'?result.latestActivityAt:null;
+				latestActivityRef.current=latest;
+				if(pathname==='/admin/audit-logs'){
+					if(latest)localStorage.setItem(storageKey,latest);
+					setHasUnreadActivity(false);
+					return;
+				}
+				const seen=localStorage.getItem(storageKey);
+				setHasUnreadActivity(Boolean(latest&&(!seen||latest>seen)));
+			}catch(error){
+				if(active)console.error('Admin activity notification status unavailable.',error instanceof Error?error.name:'UnknownError');
+			}
+		}
+		void refreshActivity();
+		const timer=window.setInterval(()=>void refreshActivity(),30_000);
+		const onStorage=(event:StorageEvent)=>{if(event.key===storageKey&&event.newValue)setHasUnreadActivity(Boolean(latestActivityRef.current&&latestActivityRef.current>event.newValue))};
+		window.addEventListener('storage',onStorage);
+		return()=>{active=false;window.clearInterval(timer);window.removeEventListener('storage',onStorage)};
+	},[data?.user?.id,isAdmin,pathname]);
 	useEffect(()=>{
 		function handleBackShortcut(event:KeyboardEvent){
 			const target=event.target;
@@ -140,12 +172,12 @@ export default function AdminNav(){
 						const expected=new URLSearchParams(query);
 						const actual=new URLSearchParams(currentQuery);
 						const isActive=pathname===path&&['mode','type'].every(key=>expected.get(key)===actual.get(key))&&([...expected.keys()].length>0||![...actual.keys()].some(key=>key==='mode'||key==='type'));
-						return <Link key={href} href={href} title={label} onClick={close} aria-current={isActive?'page':undefined}><Icon size={16} aria-hidden="true"/><span>{label}</span></Link>;
+						return <Link key={href} href={href} title={label} onClick={close} aria-current={isActive?'page':undefined}><Icon size={16} aria-hidden="true"/><span>{label}</span>{href==='/admin/audit-logs'&&hasUnreadActivity&&<span className="admin-unread-dot" aria-label="New admin activity"/>}</Link>;
 					})}
 				</section>)}</div>:<p className="admin-nav-loading">Administrator access required</p>}
 			</nav>
 			<div className="admin-sidebar-footer">
-				<span className="admin-profile-avatar" aria-hidden="true">{(data?.user?.name||data?.user?.email||'A').trim().slice(0,1).toUpperCase()}</span>
+				<ProfileAvatar className="admin-profile-avatar" size={34} alt="Administrator profile picture"/>
 				<span className="admin-profile-copy"><b>{data?.user?.name||'Administrator'}</b><small>ADMINISTRATOR</small></span>
 				<button type="button" className="admin-sidebar-logout" disabled={!isAdmin||loggingOut} onClick={()=>void logout()} aria-label="Sign out" title="Sign out"><LogOut size={16}/></button>
 			</div>
@@ -164,8 +196,8 @@ export default function AdminNav(){
 			</form>
 			<div className="admin-topbar-meta">
 				<time className="admin-clock" dateTime={now?.toISOString()}>{now?now.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'}</time>
-				<Link href="/admin/audit-logs" className="admin-topbar-icon" aria-label="View notifications and audit activity" title="Notifications & audit"><Bell size={17}/></Link>
-				<span className="admin-topbar-profile"><span className="admin-profile-avatar">{(data?.user?.name||data?.user?.email||'A').trim().slice(0,1).toUpperCase()}</span><span><b>{data?.user?.name||'Administrator'}</b><small>ADMIN</small></span></span>
+				<Link href="/admin/audit-logs" className="admin-topbar-icon" aria-label={hasUnreadActivity?'View notifications and audit activity, new activity':'View notifications and audit activity'} title="Notifications & audit"><Bell size={17}/>{hasUnreadActivity&&<span className="admin-unread-dot" aria-label="New admin activity"/>}</Link>
+				<span className="admin-topbar-profile"><ProfileAvatar className="admin-profile-avatar" size={30} alt="Administrator profile picture"/><span><b>{data?.user?.name||'Administrator'}</b><small>ADMIN</small></span></span>
 			</div>
 		</header>
 	</div>;

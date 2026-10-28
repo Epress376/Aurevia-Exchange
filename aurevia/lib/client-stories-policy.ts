@@ -4,9 +4,11 @@ export function isVerifiedClientWithdrawal(withdrawal:WithdrawalCandidate|null,u
 	return Boolean(withdrawal&&userId&&withdrawal.userId===userId&&withdrawal.type==='WITHDRAWAL'&&withdrawal.accountMode==='REAL'&&withdrawal.status==='COMPLETED'&&withdrawal.settlementReference&&!withdrawal.settlementReference.startsWith('SIMULATED-')&&withdrawal.settledAt);
 }
 
-/** Published client stories require a linked, verified client, verified transaction, and confirmed consent. */
-export function canPublishClientStory(input:{userId:string|null;verifiedClient:boolean;transactionVerified:boolean;consentConfirmed:boolean}){
-	return Boolean(input.userId&&input.verifiedClient&&input.transactionVerified&&input.consentConfirmed);
+/** Admin-authored testimonials need recorded consent; client-verified stories retain transaction checks. */
+export function canPublishClientStory(input:{userId:string|null;verifiedClient:boolean;transactionVerified:boolean;consentConfirmed:boolean;source?:string|null}){
+	if(!input.consentConfirmed)return false;
+	if(input.source==='admin'&&!input.userId)return true;
+	return Boolean(input.userId&&input.verifiedClient&&input.transactionVerified);
 }
 
 export function publicWithdrawalAmount(input:{show:boolean;displayCurrency:string|null;currency:string;amount:string;amountMatches:boolean}){

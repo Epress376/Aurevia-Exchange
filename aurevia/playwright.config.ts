@@ -29,8 +29,10 @@ if(isolatedDatabaseTarget('AUREVIA_E2E_DATABASE_URL')!==isolatedDatabaseTarget('
 }
 process.env.DATABASE_URL=e2eDatabaseUrl;
 process.env.DIRECT_URL=e2eDirectUrl;
-const baseURL='http://127.0.0.1:4310';
-const providerURL='http://127.0.0.1:4311';
+const appPort=Number(process.env.AUREVIA_E2E_APP_PORT||4310);
+const providerPort=Number(process.env.AUREVIA_E2E_PROVIDER_PORT||4311);
+const baseURL=process.env.AUREVIA_E2E_APP_URL||`http://127.0.0.1:${appPort}`;
+const providerURL=process.env.AUREVIA_E2E_PROVIDER_URL||`http://127.0.0.1:${providerPort}`;
 const testSecret=randomBytes(32).toString('hex');
 
 export default defineConfig({
@@ -38,7 +40,7 @@ export default defineConfig({
 	testMatch:'**/*.spec.ts',
 	outputDir:join(tmpdir(),'aurevia-playwright-results'),
 	fullyParallel:false,
-	workers:1,
+	workers:2,
 	retries:0,
 	reporter:'list',
 	timeout:90000,
@@ -63,6 +65,7 @@ export default defineConfig({
 			url:`${providerURL}/health`,
 			reuseExistingServer:false,
 			timeout:15000,
+			env:{...process.env,AUREVIA_E2E_PROVIDER_PORT:String(providerPort)},
 		},
 		{
 			command:'npm run build && npm start',
@@ -72,7 +75,7 @@ export default defineConfig({
 			env:{
 				...process.env,
 				AUREVIA_NEXT_DIST_DIR:'.next-e2e',
-				PORT:'4310',
+				PORT:String(appPort),
 				NODE_ENV:'production',
 				NEXTAUTH_URL:baseURL,
 				NEXT_PUBLIC_APP_URL:baseURL,
