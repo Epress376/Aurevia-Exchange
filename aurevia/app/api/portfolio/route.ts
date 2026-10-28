@@ -5,6 +5,7 @@ import {db} from '@/lib/db';
 import {balance,reservedWithdrawalAmount} from '@/lib/ledger';
 import {ALPACA_PAPER_PROVIDER,BTC_FUNDING_METHOD,paperOrderCollateral} from '@/lib/bitcoin-funding';
 import {recordedInvestmentPnl} from '@/lib/investment-policy';
+import {valueSimulatedMark} from '@/lib/portfolio-valuation';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '@/lib/portfolio-metrics';
 import {jsonSafe} from '@/lib/serializers';
 
@@ -37,13 +38,36 @@ export async function GET(){
    mode===AccountMode.REAL?reservedWithdrawalAmount(db,user.id,AccountMode.REAL,'USD'):Promise.resolve(zero()),
   ]);
   const cashBalance=account?await balance(db,account.id):zero();
-  const paperCollateral=paperOrderCollateral(paperOrders.map(order=>({...order,takerFee:zero()})));
+  const paperCollateral=paperOrderCollateral(paperOrders.map(order=>({...order,takerFee:order.instrument.takerFee})));
   const paperAvailableBalance=Prisma.Decimal.max(zero(),cashBalance.minus(pendingWithdrawals).minus(paperCollateral.committed));
-  const paperPositions=positions.filter(position=>position.providerName===ALPACA_PAPER_PROVIDER).map(position=>({
-   id:position.id,symbol:position.instrument.symbol,name:position.instrument.name,side:position.side,
-   quantity:position.quantity,averageEntryPrice:position.entryPrice,realizedPnl:position.realizedPnl,
-   openedAt:position.openedAt,valuationStatus:'UNAVAILABLE' as const,
-  }));
+  const availableCashBalance=paperAvailableBalance;
+  const paperInstrumentIds=[...new Set(positions.filter(position=>position.providerName===ALPACA_PAPER_PROVIDER).map(position=>position.instrumentId))];
+  const latestPaperMarks=paperInstrumentIds.length?await db.candle.groupBy({
+   by:['instrumentId'],
+   where:{instrumentId:{in:paperInstrumentIds}},
+   _max:{ts:true},
+  }):[];
+  const latestPaperMarkByInstrument=new Map(latestPaperMarks.map(mark=>[mark.instrumentId,mark._max.ts]));
+  const paperPositions=positions.filter(position=>position.providerName===ALPACA_PAPER_PROVIDER).map(position=>{
+   const quotedAt=latestPaperMarkByInstrument.get(position.instrumentId)??new Date(Number.NaN);
+   const valuation=valueSimulatedMark({
+    side:position.side,
+    quantity:position.quantity,
+    entryPrice:position.entryPrice,
+    currentPrice:position.instrument.price,
+    quotedAt,
+   });
+   return {
+    id:position.id,symbol:position.instrument.symbol,name:position.instrument.name,side:position.side,
+    quantity:position.quantity,averageEntryPrice:position.entryPrice,realizedPnl:position.realizedPnl,
+    currentPrice:valuation.currentPrice,marketValue:valuation.marketValue,unrealizedPnl:valuation.unrealizedPnl,
+    openedAt:position.openedAt,valuationStatus:valuation.status,valuationAsOf:Number.isFinite(quotedAt.getTime())?quotedAt:null,
+   };
+  });
+  const currentlyValuedPaperPositions=paperPositions.filter(position=>position.valuationStatus==='CURRENT');
+  const paperPositionValue=currentlyValuedPaperPositions.reduce((sum,position)=>sum.plus(position.marketValue??0),zero());
+  const paperUnrealizedPnl=currentlyValuedPaperPositions.reduce((sum,position)=>sum.plus(position.unrealizedPnl??0),zero());
+  const paperValuationStatus=paperPositions.length===0?'NOT_APPLICABLE':currentlyValuedPaperPositions.length===paperPositions.length?'CURRENT':currentlyValuedPaperPositions.length>0?'PARTIAL':paperPositions.some(position=>position.valuationStatus==='STALE')?'STALE':'UNAVAILABLE';
   const internalPositions=positions.filter(position=>position.providerName!==ALPACA_PAPER_PROVIDER);
   let positionValue=zero();
   let unrealizedPnl=zero();
@@ -78,12 +102,12 @@ export async function GET(){
   const holdings=[
    ...(cashBalance.gt(0)?[{
     id:'CASH:USD',
-    name:'Cash and buying power',
+    name:'Aurevia wallet cash',
     category:'Cash',
     invested:zero(),
     value:cashBalance,
     gainLoss:zero(),
-    status:'AVAILABLE',
+    status:'LEDGER_BALANCE',
    }]:[]),
    ...valuedPositions.map(position=>({
     id:`POSITION:${position.id}`,
@@ -109,7 +133,7 @@ export async function GET(){
   const allocations=calculateAllocationPercentages([...allocationValues].map(([category,value])=>({category,value})));
   const rankedPositions=valuedPositions.filter(position=>position.unrealizedPnl!==null).toSorted((left,right)=>Number(right.unrealizedPnl)-Number(left.unrealizedPnl));
   const totalInvested=valuedPositions.reduce((sum,item)=>sum.plus(item.entryPrice.mul(item.quantity)),zero()).plus(investedRequests.reduce((sum,item)=>sum.plus(item.amount),zero()));
-  const response={accountMode:mode,currency:'USD',cashBalance,positionValue,investmentValue,totalValue,realizedPnl,unrealizedPnl,totalPnl,returnPercent,dailyPnl,dailyPercent,positions:valuedPositions,paperPositions,paperReservedBalance:paperCollateral.committed,paperAvailableBalance,investments,holdings,totalInvested,totalCurrentValue:totalValue,allocations,recentFunding,availableOpportunities,topGainers:rankedPositions.slice(0,3),topLosers:rankedPositions.slice(-3).reverse(),performance:performance.toReversed(),marketDataMode:'SIMULATED',externalValuationAvailable:false};
+  const response={accountMode:mode,currency:'USD',cashBalance,availableCashBalance,positionValue,investmentValue,totalValue,realizedPnl,unrealizedPnl,totalPnl,returnPercent,dailyPnl,dailyPercent,positions:valuedPositions,paperPositions,paperPositionValue:currentlyValuedPaperPositions.length?paperPositionValue:null,paperUnrealizedPnl:currentlyValuedPaperPositions.length?paperUnrealizedPnl:null,paperValuation:{status:paperValuationStatus,valuedCount:currentlyValuedPaperPositions.length,openCount:paperPositions.length},paperReservedBalance:paperCollateral.committed,paperAvailableBalance,investments,holdings,totalInvested,totalCurrentValue:totalValue,allocations,recentFunding,availableOpportunities,topGainers:rankedPositions.slice(0,3),topLosers:rankedPositions.slice(-3).reverse(),performance:performance.toReversed(),marketDataMode:'SIMULATED',externalValuationAvailable:false};
   return NextResponse.json(jsonSafe(response),{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
   return NextResponse.json({error:error instanceof Error&&error.message==='UNAUTHORIZED'?'Unauthorized':'Portfolio data is temporarily unavailable.'},{status:error instanceof Error&&error.message==='UNAUTHORIZED'?401:503,headers:{'Cache-Control':'private, no-store'}});

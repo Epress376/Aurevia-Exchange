@@ -145,6 +145,7 @@ test('portfolio timeframe controls filter authenticated snapshot history accessi
 	expect(portfolio.allocations.reduce((sum:number,item:{percentage:string})=>sum+Number(item.percentage),0)).toBeCloseTo(100,2);
 	await page.goto('/portfolio');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
+	await expect(page.getByRole('status',{name:'Market data source: simulated prices'})).toBeVisible();
 	const controls=page.getByRole('group',{name:'Performance timeframe'});
 	await controls.getByRole('button',{name:'1W'}).click();
 	await expect(controls.getByRole('button',{name:'1W'})).toHaveAttribute('aria-pressed','true');

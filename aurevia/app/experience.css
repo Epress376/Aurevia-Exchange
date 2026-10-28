@@ -4502,3 +4502,110 @@ html[data-theme="light"] .wallet-signature-card .wallet-secure-label svg{color:#
 	.wallet-signature-card .wallet-reservation-row{flex-wrap:wrap;gap:6px 9px}
 	.wallet-signature-card .wallet-reservation-row>span:last-child{margin-left:auto}
 }
+
+.portfolio-page{width:min(100%,1240px);padding:30px clamp(16px,3vw,38px) 56px}
+.portfolio-heading{margin-bottom:20px}
+.portfolio-heading h1{color:var(--a-paper);font-size:clamp(28px,3vw,36px);font-weight:650;letter-spacing:-.04em}
+.portfolio-heading>div>p{max-width:65ch;color:var(--a-muted);font-size:12px;line-height:1.6}
+.portfolio-heading-actions{display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;gap:8px}
+.portfolio-heading-actions .status-pill{white-space:nowrap}
+.portfolio-mark-status{display:inline-flex;min-height:28px;align-items:center;gap:7px;padding:0 10px;border:1px solid rgba(156,121,69,.28);border-radius:999px;background:rgba(156,121,69,.08);color:#d5bd85;font-size:8px;font-weight:750;letter-spacing:.1em;white-space:nowrap}
+.portfolio-mark-status i{width:6px;height:6px;border-radius:50%;background:#c9a45f}
+.portfolio-hero{border-color:var(--a-line);border-radius:14px;background:radial-gradient(ellipse at 10% 5%,rgba(156,121,69,.12),transparent 52%),linear-gradient(145deg,rgba(30,41,59,.95),rgba(15,23,42,.98));box-shadow:var(--a-shadow-panel)}
+.portfolio-value>span,.portfolio-today>span{color:var(--a-muted);font-size:10px;font-weight:650;letter-spacing:.12em;text-transform:uppercase}
+.portfolio-value>strong{color:var(--a-paper);font-size:clamp(34px,5vw,56px);font-weight:620;letter-spacing:-.05em}
+.portfolio-value>p{width:fit-content;margin:2px 0 0;padding:7px 10px;border:1px solid rgba(121,169,144,.2);border-radius:999px;background:rgba(121,169,144,.08);font-size:11px}
+.portfolio-value>p.text-loss{border-color:rgba(201,119,107,.24);background:rgba(201,119,107,.08)}
+.portfolio-neutral-value{color:var(--a-muted)}
+.portfolio-today{border-color:var(--a-line);background:rgba(11,15,26,.42)}
+.portfolio-today>b{color:var(--a-paper);font-size:24px}
+.portfolio-today>small{color:var(--a-muted)}
+.portfolio-summary{border-color:var(--a-line);background:var(--a-line)}
+.portfolio-summary>div{background:linear-gradient(145deg,rgba(30,41,59,.96),rgba(15,23,42,.98))}
+.portfolio-summary span,.portfolio-summary small{color:var(--a-muted)}
+.portfolio-summary strong,.portfolio-metric b{color:var(--a-paper)}
+.portfolio-page>.account-panel,.portfolio-premium-grid>.account-panel{border-color:var(--a-line);border-radius:12px;background:linear-gradient(145deg,rgba(30,41,59,.96),rgba(15,23,42,.98));box-shadow:var(--a-shadow-panel)}
+.portfolio-page .account-panel-title h2{color:var(--a-paper)}
+.portfolio-page .account-panel-subtitle{color:var(--a-muted)}
+.portfolio-timeframes button.is-active{border-color:rgba(201,164,95,.42);background:rgba(201,164,95,.12);color:#d9bd7a}
+.portfolio-legend li{color:#cbd5e1}
+.portfolio-legend b{color:#f8fafc}
+.portfolio-holdings-head{border-color:var(--a-line);color:var(--a-muted)}
+.portfolio-holding{border-color:var(--a-line)}
+.portfolio-holding>summary{color:#dbe4ed}
+.portfolio-holding-asset b,.portfolio-investment-row>summary b{color:var(--a-paper)}
+.portfolio-holding-asset small,.portfolio-investment-row>summary small{color:var(--a-muted)}
+.portfolio-holding>dl,.portfolio-investment-row dl{border-color:var(--a-line);background:rgba(255,255,255,.025)}
+.portfolio-holding dt,.portfolio-investment-row dt{color:var(--a-muted)}
+.portfolio-holding dd,.portfolio-investment-row dd{color:#dbe4ed}
+.portfolio-footer-summary{border-color:var(--a-line);background:var(--a-line)}
+.portfolio-footer-summary article{background:linear-gradient(145deg,rgba(30,41,59,.96),rgba(15,23,42,.98))}
+.portfolio-footer-summary span{color:var(--a-muted)}
+.portfolio-footer-summary b{color:var(--a-paper)}
+.portfolio-period-note,.portfolio-page .muted{color:var(--a-muted)}
+.portfolio-paper-summary{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px;margin-top:14px}
+.portfolio-paper-summary article{display:grid;min-width:0;gap:7px;padding:13px;border:1px solid var(--a-line);border-radius:9px;background:rgba(11,15,26,.35)}
+.portfolio-paper-summary span,.portfolio-paper-position>div>span{color:var(--a-muted);font-size:9px;font-weight:600;line-height:1.45}
+.portfolio-paper-summary b,.portfolio-paper-position>div>b{overflow-wrap:anywhere;color:var(--a-paper);font-size:13px;font-variant-numeric:tabular-nums}
+.portfolio-paper-list{display:grid;margin-top:13px;border-top:1px solid var(--a-line)}
+.portfolio-paper-position{display:grid;grid-template-columns:minmax(125px,1.3fr) repeat(4,minmax(95px,.8fr));gap:12px;align-items:center;padding:13px 3px;border-bottom:1px solid var(--a-line)}
+.portfolio-paper-position>div{display:grid;min-width:0;gap:5px}
+.portfolio-paper-position>div:first-child strong{color:var(--a-paper);font-size:12px}
+.portfolio-paper-position>div:first-child small{color:var(--a-muted);font-size:9px;line-height:1.45}
+.portfolio-paper-position>div>b{font-size:11px}
+.portfolio-paper-quote{grid-column:1/-1;color:var(--a-muted);font-size:9px;line-height:1.5}
+.portfolio-paper-quote--current{color:#9fc4ad}
+.portfolio-paper-quote--stale{color:#d5bd85}
+.portfolio-paper-quote--unavailable{color:#bd9c95}
+.portfolio-paper-disclosure{margin:12px 0 0;color:var(--a-muted);font-size:9px;line-height:1.65}
+@media(max-width:760px){
+	.portfolio-page{padding:24px 14px calc(42px + env(safe-area-inset-bottom))}
+	.portfolio-heading{align-items:flex-start;flex-direction:column;gap:12px}
+	.portfolio-heading-actions{justify-content:flex-start}
+	.portfolio-hero{grid-template-columns:1fr;gap:12px;padding:20px}
+	.portfolio-today{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:7px 10px}
+	.portfolio-today>span,.portfolio-today>b{grid-column:1}
+	.portfolio-today>small:first-of-type{grid-column:2;grid-row:1}
+	.portfolio-today>small:last-of-type{grid-column:1/-1}
+	.portfolio-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+	.portfolio-summary>div{padding:12px}
+	.portfolio-paper-summary{grid-template-columns:repeat(2,minmax(0,1fr))}
+	.portfolio-paper-position{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:13px 2px}
+	.portfolio-paper-position>div:first-child{grid-column:1/-1}
+	.portfolio-paper-quote{grid-column:1/-1}
+}
+@media(max-width:420px){
+	.portfolio-value>strong{font-size:clamp(30px,9vw,40px)}
+	.portfolio-paper-summary article{padding:10px}
+	.portfolio-paper-summary b{font-size:11px}
+	.portfolio-holdings-head{display:none}
+}
+html[data-theme="light"] .portfolio-mark-status{border-color:rgba(156,121,69,.26);background:rgba(156,121,69,.07);color:#775e34}
+html[data-theme="light"] .portfolio-hero,
+html[data-theme="light"] .portfolio-page>.account-panel,
+html[data-theme="light"] .portfolio-premium-grid>.account-panel{border-color:rgba(15,48,84,.1);background:linear-gradient(145deg,#fff,#f3f6fa);box-shadow:0 14px 36px rgba(15,48,84,.07)}
+html[data-theme="light"] .portfolio-today{border-color:rgba(15,48,84,.1);background:#f6f8fb}
+html[data-theme="light"] .portfolio-summary>div,
+html[data-theme="light"] .portfolio-footer-summary article{background:#fff}
+html[data-theme="light"] .portfolio-value>strong,
+html[data-theme="light"] .portfolio-summary strong,
+html[data-theme="light"] .portfolio-metric b,
+html[data-theme="light"] .portfolio-footer-summary b,
+html[data-theme="light"] .portfolio-paper-summary b,
+html[data-theme="light"] .portfolio-paper-position>div>b,
+html[data-theme="light"] .portfolio-paper-position>div:first-child strong{color:#0f3054}
+html[data-theme="light"] .portfolio-paper-summary article{border-color:rgba(15,48,84,.1);background:#f8fafc}
+html[data-theme="light"] .portfolio-paper-list,
+html[data-theme="light"] .portfolio-paper-position,
+html[data-theme="light"] .portfolio-footer-summary,
+html[data-theme="light"] .portfolio-summary,
+html[data-theme="light"] .portfolio-holdings-head,
+html[data-theme="light"] .portfolio-holding{border-color:rgba(15,48,84,.1)}
+html[data-theme="light"] .portfolio-holding>summary,
+html[data-theme="light"] .portfolio-holding dd,
+html[data-theme="light"] .portfolio-legend li{color:#435d76}
+html[data-theme="light"] .portfolio-legend b,
+html[data-theme="light"] .portfolio-holding-asset b,
+html[data-theme="light"] .portfolio-investment-row>summary b{color:#0f3054}
+html[data-theme="light"] .portfolio-holding>dl,
+html[data-theme="light"] .portfolio-investment-row dl{border-color:rgba(15,48,84,.1);background:#f8fafc}
