@@ -14,5 +14,5 @@ export default async function RootLayout({children}:{children:ReactNode}){
   const cookieStore=await cookies();
   const initialLocale=normalizeLocale(cookieStore.get('aurevia-locale')?.value ?? null);
   const direction=initialLocale==='ar'?'rtl':'ltr';
-  return <html lang={initialLocale} dir={direction} suppressHydrationWarning><body><Script id="aurevia-startup-state" strategy="beforeInteractive">{`try{if(sessionStorage.getItem('aurevia-startup-complete')==='1')document.documentElement.dataset.aureviaStartupComplete='true'}catch{}`}</Script><Providers initialLocale={initialLocale}><StartupShell>{children}</StartupShell></Providers></body></html>;
+  return <html lang={initialLocale} dir={direction} suppressHydrationWarning><body><Script id="aurevia-startup-state" strategy="beforeInteractive">{`try{if(sessionStorage.getItem('aurevia-startup-complete')==='1')document.documentElement.dataset.aureviaStartupComplete='true';document.documentElement.dataset.theme=localStorage.getItem('aurevia-theme')==='light'?'light':'dark'}catch{}`}</Script><Providers initialLocale={initialLocale}><StartupShell>{children}</StartupShell></Providers></body></html>;
 }

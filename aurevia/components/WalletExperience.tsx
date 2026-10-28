@@ -3,7 +3,7 @@
 import {FormEvent,useCallback,useEffect,useMemo,useRef,useState} from 'react';
 import Link from 'next/link';
 import {useSession} from 'next-auth/react';
-import {ArrowDownLeft,ArrowRight,ArrowUpRight,Check,Copy,Eye,EyeOff,RefreshCw,WalletCards,X} from 'lucide-react';
+import {ArrowDownLeft,ArrowRight,ArrowUpRight,Check,Copy,Eye,EyeOff,RefreshCw,ShieldCheck,WalletCards,X} from 'lucide-react';
 import Nav from '@/components/Nav';
 import ReceiptGenerator,{type ReceiptData} from '@/components/ReceiptGenerator';
 import WithdrawalDestinationPanel from '@/components/WithdrawalDestinationPanel';
@@ -309,6 +309,16 @@ export default function WalletExperience(){
 		{!workflow&&<>
 			{error&&<p className="wallet-feedback is-error" role="alert">{error}</p>}
 			<section className="wallet-balance-panel wallet-signature-card">
+				<div className="wallet-signature-brand">
+					<span className="wallet-brand-mark" aria-hidden="true">A</span>
+					<span className="wallet-brand-copy"><strong>AUREVIA</strong><small>INVEST</small></span>
+					<span className="wallet-secure-label"><ShieldCheck size={14} aria-hidden="true"/> ACCOUNT WALLET</span>
+				</div>
+				<div className="wallet-card-art" aria-hidden="true">
+					<div className="wallet-art-plate wallet-art-plate-back"><span/></div>
+					<div className="wallet-art-plate wallet-art-plate-front"><span className="wallet-art-chip"/><span className="wallet-art-mark">A</span><i/><i/></div>
+					<div className="wallet-art-pocket"><span>AUREVIA · INVEST</span></div>
+				</div>
 				<div className="wallet-balance-heading"><span className="wallet-eyebrow">{data.accountMode==='DEMO'?'VIRTUAL USD BALANCE':'AUREVIA USD LEDGER'}</span><button type="button" className="wallet-balance-toggle" aria-label={balanceVisible?'Hide balance':'Show balance'} aria-pressed={!balanceVisible} onClick={()=>setBalanceVisible(value=>!value)}>{balanceVisible?<EyeOff size={16}/>:<Eye size={16}/>}<span>{balanceVisible?'Hide':'Show'}</span></button></div>
 				<div className="wallet-balance-caption">Available balance</div>
 				<div className="wallet-balance-value" aria-live="polite">{loading?translate('loading'):!hasWalletData||availableBalance===null?'Unavailable':balanceVisible?money(availableBalance,'USD'):'•••••• USD'}</div>

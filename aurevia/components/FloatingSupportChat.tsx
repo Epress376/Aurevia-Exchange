@@ -28,6 +28,7 @@ function clampPosition(position:Position,expanded:boolean):Position{
 export default function FloatingSupportChat(){
 	const {data:session,status}=useSession();
 	const [open,setOpen]=useState(false);
+	const [launcherRevealed,setLauncherRevealed]=useState(false);
 	const [hasUnread,setHasUnread]=useState(false);
 	const [position,setPosition]=useState<Position|null>(null);
 	const [conversations,setConversations]=useState<Conversation[]>([]);
@@ -87,7 +88,7 @@ export default function FloatingSupportChat(){
 	useEffect(()=>{
 		let saved:Position|null=null;
 		try{const value=localStorage.getItem(positionKey);if(value)saved=JSON.parse(value) as Position}catch{}
-		setPosition(clampPosition(saved||{left:window.innerWidth-widgetWidth-20,top:window.innerHeight-84},false));
+		setPosition(clampPosition(saved||{left:window.innerWidth-launcherSize-12,top:window.innerHeight-84},false));
 	},[]);
 	useEffect(()=>{
 		if(!position)return;
@@ -150,6 +151,10 @@ export default function FloatingSupportChat(){
 		}
 		setOpen(!open);
 	}
+	function closeChat(){
+		setOpen(false);
+		setLauncherRevealed(false);
+	}
 
 	async function createTicket(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();if(busy)return;
@@ -178,10 +183,10 @@ export default function FloatingSupportChat(){
 
 	if(!position)return null;
 	return <aside className={`floating-support ${open?'is-open':''}`} style={{left:0,top:0,transform:`translate3d(${position.left}px,${position.top}px,0)`}} aria-label="Chat support">
-		{!open?<button className="floating-support-launcher" type="button" aria-label={hasUnread?'Open chat support, new messages':'Open chat support'} title="Drag to move, click to open" onPointerDown={beginDrag} onClick={toggleOpen}><MessageCircle size={21}/><Move size={12} aria-hidden="true"/>{hasUnread&&<span className="floating-support-unread-dot" aria-label="Unread support message"/>}</button>:<section className="floating-support-panel" aria-label="Admin chat support">
+		{!open?(launcherRevealed?<button className="floating-support-launcher" type="button" aria-label={hasUnread?'Open chat support, new messages':'Open chat support'} title="Drag to move, click to open" onPointerDown={beginDrag} onClick={toggleOpen}><MessageCircle size={21}/><Move size={12} aria-hidden="true"/>{hasUnread&&<span className="floating-support-unread-dot" aria-label="Unread support message"/>}</button>:<button className="floating-support-peek" type="button" aria-label="Show chat support" title="Show chat support" onClick={()=>setLauncherRevealed(true)}><MessageCircle size={18}/><span>Chat</span>{hasUnread&&<span className="floating-support-unread-dot" aria-label="Unread support message"/>}</button>):<section className="floating-support-panel" aria-label="Admin chat support">
 			<header className="floating-support-header" onPointerDown={beginDrag}>
 				<span className="floating-support-icon"><LifeBuoy size={17}/></span><div><b>Admin support</b><small>Private account conversation</small></div>
-				<button type="button" aria-label="Minimize chat support" onClick={()=>setOpen(false)}><Minus size={16}/></button><button type="button" aria-label="Close chat support" onClick={()=>setOpen(false)}><X size={16}/></button>
+				<button type="button" aria-label="Minimize chat support" onClick={closeChat}><Minus size={16}/></button><button type="button" aria-label="Close chat support" onClick={closeChat}><X size={16}/></button>
 			</header>
 			{status!=='authenticated'?<div className="floating-support-guest"><p>Sign in to send a private message to admin support.</p><Link href="/login" className="button-primary">Sign in</Link><Link href="/support" className="text-link">Visit support</Link></div>:<>
 				{conversations.length>0&&<label className="floating-support-select"><span>Conversation</span><select className="input" aria-label="Support conversation" value={selectedId} onChange={event=>setSelectedId(event.target.value)}><option value="">New message</option>{conversations.map(item=><option value={item.id} key={item.id}>{item.subject} · {item.status.replaceAll('_',' ')}</option>)}</select></label>}

@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {Activity,Bell,Check,ChevronRight,CreditCard,Download,HeartHandshake,KeyRound,Search,Settings2,ShieldCheck,Store,Trash2,UserRound,WalletCards} from 'lucide-react';
 import Nav from '@/components/Nav';
 import BrowserPushSettings from '@/components/BrowserPushSettings';
+import ThemeToggle from '@/components/ThemeToggle';
 import ProfileAvatar,{notifyProfileAvatarUpdated} from '@/components/ProfileAvatar';
 import {useLocale} from '@/lib/i18n-context';
 
@@ -166,7 +167,13 @@ export default function Settings(){
 						</form>}
 					</section>
 				</section>}
-				{section==='preferences'&&<BrowserPushSettings/>}
+				{section==='preferences'&&<div className="settings-preferences">
+					<section className="account-panel card settings-appearance-panel" aria-labelledby="settings-appearance-title">
+						<div className="account-panel-title"><div><h2 id="settings-appearance-title">Appearance</h2><p className="account-panel-subtitle">Choose the theme used across Aurevia.</p></div><Settings2 size={18} className="gold" aria-hidden="true"/></div>
+						<div className="settings-appearance-control"><div><b>Display theme</b><p>Switch between light and dark mode. Your choice is saved on this device.</p></div><ThemeToggle/></div>
+					</section>
+					<BrowserPushSettings/>
+				</div>}
 			</div>
 		</div>
 	</main></>;

@@ -8,6 +8,7 @@ import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
 import ProfileAvatar from '@/components/ProfileAvatar';
+import ThemeToggle from '@/components/ThemeToggle';
 import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
 
@@ -204,7 +205,7 @@ export default function Nav(){
     <button type="button" aria-pressed={data.user.accountMode==='DEMO'} disabled={modeBusy||loggingOut||data.user.accountMode==='DEMO'} onClick={()=>void changeMode('DEMO')}>Demo</button>
     <button type="button" aria-pressed={data.user.accountMode==='REAL'} disabled={modeBusy||loggingOut||data.user.accountMode==='REAL'} onClick={()=>void changeMode('REAL')}>Real</button>
    </div>
-   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><button ref={userMenuButtonRef} type="button" className={`user-account-back${open||moreMenuGroups.some(group=>group.links.some(item=>active(item.href)))?' is-active':''}`} aria-label="More account navigation" aria-expanded={open} aria-controls="user-more-menu" onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={17} aria-hidden="true"/></button><LanguageSelector/></div>
+   <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><ThemeToggle/><button ref={userMenuButtonRef} type="button" className={`user-account-back${open||moreMenuGroups.some(group=>group.links.some(item=>active(item.href)))?' is-active':''}`} aria-label="More account navigation" aria-expanded={open} aria-controls="user-more-menu" onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={17} aria-hidden="true"/></button><LanguageSelector/></div>
    <span className="user-topbar-identity"><ProfileAvatar className="user-topbar-avatar" size={32} alt="Your profile picture"/><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
    {modeError&&<span className="user-mode-error" role="alert">{modeError}</span>}
   </div>
@@ -298,7 +299,7 @@ export default function Nav(){
      </div>}
     </>}
    </nav>
-   <div className="nav-actions"><NotificationBell/><LanguageSelector/><button className="menu-button" type="button" aria-label={open?translate('closeMenu'):translate('openMenu')} aria-expanded={open} aria-controls="primary-navigation" onClick={()=>setOpen(!open)}>{open?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div>
+   <div className="nav-actions"><NotificationBell/><ThemeToggle/><LanguageSelector/><button className="menu-button" type="button" aria-label={open?translate('closeMenu'):translate('openMenu')} aria-expanded={open} aria-controls="primary-navigation" onClick={()=>setOpen(!open)}>{open?<X aria-hidden="true"/>:<Menu aria-hidden="true"/>}</button></div>
  </div></header>
 }
 

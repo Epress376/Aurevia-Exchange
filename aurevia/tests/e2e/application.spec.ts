@@ -1,4 +1,5 @@
 import {randomUUID} from 'node:crypto';
+import type {Page} from '@playwright/test';
 import bcrypt from 'bcryptjs';
 import {FundingStatus,FundingType,Prisma} from '@prisma/client';
 import {PNG} from 'pngjs';
@@ -28,6 +29,12 @@ const authenticatedRoutes=['/dashboard','/trade','/markets','/portfolio','/order
 const adminRoutes=['/admin/login','/admin','/admin/users','/admin/content','/admin/positions','/admin/settings','/admin/deleted-items','/admin/broadcasts','/admin/investments','/admin/payments','/admin/approved-deposits','/admin/approved-withdrawals','/admin/settlements','/admin/kyc','/admin/support','/admin/waitlist','/admin/providers','/admin/operations','/admin/receipts','/admin/nova','/admin/audit-logs','/admin/tiers','/admin/verified-accounts','/admin/markets'];
 const appOrigin=process.env.AUREVIA_E2E_APP_URL||'http://127.0.0.1:4310';
 const providerOrigin=process.env.AUREVIA_E2E_PROVIDER_URL||'http://127.0.0.1:4311';
+
+async function revealSupportChat(page:Page){
+	const peek=page.getByRole('button',{name:'Show chat support'});
+	if(await peek.isVisible())await peek.click();
+	return page.getByRole('button',{name:/Open chat support/});
+}
 
 test.afterEach(async()=>{
 	await db.user.updateMany({
@@ -175,7 +182,7 @@ test('floating support launcher can be dragged horizontally and vertically',asyn
 	await page.addInitScript(()=>localStorage.setItem('aurevia-support-chat-position',JSON.stringify({left:1100,top:650})));
 	await page.goto('/');
 	await waitForStartup(page);
-	const launcher=page.getByRole('button',{name:'Open chat support'});
+	const launcher=await revealSupportChat(page);
 	const initial=await launcher.boundingBox();
 	expect(initial).not.toBeNull();
 	if(!initial)return;
@@ -374,15 +381,16 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 test('global chat support persists its position and exchanges private admin messages',async({browser,page})=>{
 	await page.setViewportSize({width:390,height:844});
 	await page.goto('/login');
-	const launcher=page.getByRole('button',{name:'Open chat support'});
+	await expect(page.getByRole('button',{name:'Show chat support'})).toBeVisible();
+	const launcher=await revealSupportChat(page);
 	await expect(launcher).toBeVisible();
 	await launcher.click();
 	await expect(page.getByText('Sign in to send a private message to admin support.')).toBeVisible();
 	await page.getByRole('button',{name:'Close chat support'}).click();
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	const floatingLauncher=page.getByRole('button',{name:'Open chat support'});
 	await page.evaluate(()=>localStorage.setItem('aurevia-support-chat-position',JSON.stringify({left:220,top:500})));
 	await page.reload();
+	const floatingLauncher=await revealSupportChat(page);
 	const before=await floatingLauncher.boundingBox();
 	expect(before).not.toBeNull();
 	const startX=before!.x+before!.width/2;
@@ -401,12 +409,12 @@ test('global chat support persists its position and exchanges private admin mess
 	});
 	expect(savedPosition).not.toBeNull();
 	await page.goto('/markets');
-	const restoredLauncher=page.getByRole('button',{name:'Open chat support'});
+	const restoredLauncher=await revealSupportChat(page);
 	await expect.poll(async()=>{
 		const afterNavigation=await restoredLauncher.boundingBox();
 		return afterNavigation?{x:Math.round(afterNavigation.x),y:Math.round(afterNavigation.y)}:null;
 	}).toEqual({x:Math.round(savedPosition!.left),y:Math.round(savedPosition!.top)});
-	await page.getByRole('button',{name:'Open chat support'}).click();
+	await (await revealSupportChat(page)).click();
 	const subject=`Floating support ${randomUUID().slice(0,8)}`;
 	await page.getByLabel('Subject').fill(subject);
 	await page.getByRole('textbox',{name:'Message',exact:true}).fill('Please have an administrator reply to this private support request.');
@@ -449,7 +457,7 @@ test('global chat support persists its position and exchanges private admin mess
 	}finally{await adminContext.close()}
 	await page.getByRole('button',{name:'Close chat support'}).click();
 	await expect(page.locator('.floating-support-unread-dot')).toBeVisible({timeout:15_000});
-	await page.getByRole('button',{name:'Open chat support'}).click();
+	await (await revealSupportChat(page)).click();
 	await expect(page.locator('.floating-support-unread-dot')).toHaveCount(0);
 	await expect(page.locator('.floating-support-messages')).toContainText('Admin reply from the isolated end-to-end test.');
 	await expectNoHorizontalOverflow(page);
@@ -970,6 +978,10 @@ test('Wallet shows the internal funding workflow only in REAL Mode and survives 
 		await selectAccountMode(page,'DEMO');
 		await page.goto('/wallet');
 		await expect(page.getByRole('heading',{name:/wallet|funding/i}).first()).toBeVisible();
+		await expect(page.locator('.wallet-signature-brand')).toContainText('AUREVIA');
+		await expect(page.locator('.wallet-signature-brand')).toContainText('ACCOUNT WALLET');
+		await expect(page.locator('.wallet-card-art')).toBeVisible();
+		await expect(page.locator('.wallet-signature-card')).toContainText('Available balance');
 		await expect(page.locator('.wallet-balance-value')).toHaveText('$5,000.00');
 		await expect(page.locator('.wallet-page-heading')).toContainText('DEMO · VIRTUAL');
 		await expect(page.locator('.wallet-balance-foot')).toContainText('Practice account · no real funds');
@@ -977,8 +989,10 @@ test('Wallet shows the internal funding workflow only in REAL Mode and survives 
 		await expect(page.locator('.wallet-type-switch')).toHaveCount(0);
 		await expect(page.getByLabel('Amount',{exact:true})).toHaveCount(0);
 		await page.getByRole('button',{name:'Hide balance'}).click();
+		await expect(page.locator('.wallet-balance-value')).toHaveText('•••••• USD');
 		await expect(page.getByRole('button',{name:'Show balance'})).toBeVisible();
 		await page.getByRole('button',{name:'Show balance'}).click();
+		await expect(page.locator('.wallet-balance-value')).toHaveText('$5,000.00');
 		await page.route('**/api/payment-methods',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Payment methods are temporarily unavailable.'})}));
 		await page.getByRole('button',{name:'Refresh wallet'}).click();
 		await expect(page.getByText('Loading wallet data…')).toHaveCount(0);
@@ -2277,8 +2291,18 @@ test('browser notification settings explain denied permission without prompting 
 	const settingsUser=await createIsolatedDemoUser('push-denied');
 	await page.context().grantPermissions([],{origin:appOrigin});
 	await loginAs(page,settingsUser.email,settingsUser.password);
-	await page.goto('/settings#preferences');
+	await page.setViewportSize({width:390,height:844});
+	await page.goto('/settings');
+	await page.getByRole('link',{name:/Preferences/}).click();
 	await waitForStartup(page);
+	await expect(page.getByRole('heading',{name:'Appearance'})).toBeVisible();
+	await page.getByRole('button',{name:'Switch to light mode'}).last().click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+	await expect(page.locator('body')).toHaveCSS('background-color','rgb(249, 251, 253)');
+	await expect(page.getByRole('button',{name:'Switch to dark mode'})).toHaveCount(2);
+	await page.getByRole('button',{name:'Switch to dark mode'}).last().click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+	await expect(page.locator('body')).toHaveCSS('background-color','rgb(11, 15, 26)');
 	await expect(page.getByRole('heading',{name:'Browser notifications'})).toBeVisible();
 	await expect(page.getByText('Permission: Blocked')).toBeVisible();
 	await expect(page.getByText(/Aurevia cannot prompt again/)).toBeVisible();

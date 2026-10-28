@@ -7,6 +7,7 @@ import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
 import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,Handshake,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 import ProfileAvatar from '@/components/ProfileAvatar';
+import ThemeToggle from '@/components/ThemeToggle';
 
 const groups=[
 	{title:'Dashboards',links:[
@@ -196,6 +197,7 @@ export default function AdminNav(){
 			</form>
 			<div className="admin-topbar-meta">
 				<time className="admin-clock" dateTime={now?.toISOString()}>{now?now.toLocaleString(undefined,{weekday:'short',month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}):'—'}</time>
+				<ThemeToggle/>
 				<Link href="/admin/audit-logs" className="admin-topbar-icon" aria-label={hasUnreadActivity?'View notifications and audit activity, new activity':'View notifications and audit activity'} title="Notifications & audit"><Bell size={17}/>{hasUnreadActivity&&<span className="admin-unread-dot" aria-label="New admin activity"/>}</Link>
 				<span className="admin-topbar-profile"><ProfileAvatar className="admin-profile-avatar" size={30} alt="Administrator profile picture"/><span><b>{data?.user?.name||'Administrator'}</b><small>ADMIN</small></span></span>
 			</div>

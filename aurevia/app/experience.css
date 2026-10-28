@@ -629,6 +629,12 @@ a:focus-visible,button:focus-visible,input:focus-visible,select:focus-visible,su
 .settings-tabs button.is-active svg{color:var(--a-brass)}
 .settings-tabs svg{width:15px;height:15px}
 .settings-content{min-width:0}
+.settings-preferences{display:grid;gap:14px}
+.settings-appearance-panel{padding:18px}
+.settings-appearance-control{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:15px;padding-top:15px;border-top:1px solid var(--a-line)}
+.settings-appearance-control>div{display:grid;gap:5px}
+.settings-appearance-control b{color:#e8ece5;font-size:11px;font-weight:650}
+.settings-appearance-control p{margin:0;color:#929f95;font-size:10px;line-height:1.55}
 .market-ticker-track{display:flex;gap:9px;min-width:0;overflow-x:auto;padding:4px 1px 8px;scrollbar-width:thin}
 .market-ticker-card{display:grid;min-width:148px;gap:7px;padding:12px;border:1px solid var(--a-line);border-radius:5px;background:linear-gradient(145deg,rgba(255,255,255,.03),rgba(255,255,255,.008))}
 .market-ticker-head{display:flex;align-items:center;justify-content:space-between;gap:8px;color:#bdc8bd;font-size:9px}
@@ -1858,6 +1864,30 @@ button.floating-support-launcher{
   transform:translateY(-2px) scale(1.03);
   box-shadow:0 16px 40px rgba(212,167,44,.35),0 0 0 1px rgba(255,255,255,.18) inset;
   outline:none;
+}
+.floating-support-peek{
+  position:relative;
+  display:flex;
+  width:56px;
+  height:44px;
+  align-items:center;
+  justify-content:center;
+  gap:5px;
+  padding:0 7px;
+  border:1px solid rgba(212,167,44,.35);
+  border-radius:14px 0 0 14px;
+  background:linear-gradient(155deg,#e7c75b 0%,#d4a72c 42%,#8f6a19 100%);
+  color:#07100c;
+  box-shadow:0 12px 32px rgba(0,0,0,.4),0 0 0 1px rgba(255,255,255,.12) inset;
+  cursor:pointer;
+  font-family:inherit;
+  font-size:10px;
+  font-weight:700;
+  line-height:1;
+}
+.floating-support-peek:focus-visible{
+  outline:2px solid var(--av-gold);
+  outline-offset:3px;
 }
 .floating-support-panel,
 section.floating-support-panel{
@@ -3935,7 +3965,53 @@ body:has(.dashboard-sidebar) .user-dashboard-footnote{color:#7c8780}
 	.mobile-settings-page .security-row p,.mobile-settings-page .muted{color:#718397}
 	.mobile-settings-page .account-callout{border-color:rgba(156,121,69,.17);background:#faf7f0;color:#52677b}
 	.mobile-settings-page .account-callout svg{color:#9c7945}
+	.mobile-settings-page .settings-appearance-panel{padding:16px}
+	.mobile-settings-page .settings-appearance-control{align-items:flex-start;flex-direction:column;gap:12px}
+	.mobile-settings-page .settings-appearance-control b{color:#0f3054}
+	.mobile-settings-page .settings-appearance-control p{color:#718397}
 }
+
+html[data-theme="dark"] body:has(.mobile-settings-page){background:#0b0f1a;color:#f8fafc}
+html[data-theme="dark"] body:has(.mobile-settings-page) main.mobile-settings-page{color:#f8fafc}
+html[data-theme="dark"] .mobile-settings-heading h1,
+html[data-theme="dark"] .mobile-settings-row,
+html[data-theme="dark"] .mobile-settings-row b,
+html[data-theme="dark"] .mobile-settings-page[data-mobile-home=false]>.account-heading h1,
+html[data-theme="dark"] .mobile-settings-page .account-panel-title h2,
+html[data-theme="dark"] .mobile-settings-page .account-page h2,
+html[data-theme="dark"] .mobile-settings-page .security-row b{color:#f1f5f9}
+html[data-theme="dark"] .mobile-settings-search,
+html[data-theme="dark"] .mobile-settings-group>div,
+html[data-theme="dark"] .mobile-settings-empty,
+html[data-theme="dark"] .mobile-settings-page .settings-tabs,
+html[data-theme="dark"] .mobile-settings-page .settings-content .account-panel{border-color:rgba(148,163,184,.18);background:#1e293b;color:#f1f5f9;box-shadow:0 8px 22px rgba(0,0,0,.2)}
+html[data-theme="dark"] .mobile-settings-search input,
+html[data-theme="dark"] .mobile-settings-page .input,
+html[data-theme="dark"] .mobile-settings-page input,
+html[data-theme="dark"] .mobile-settings-page select,
+html[data-theme="dark"] .mobile-settings-page textarea{border-color:rgba(148,163,184,.2);background:#0f172a;color:#f1f5f9}
+html[data-theme="dark"] .mobile-settings-row+.mobile-settings-row,
+html[data-theme="dark"] .mobile-settings-page .security-row{border-color:rgba(148,163,184,.15)}
+html[data-theme="dark"] .mobile-settings-row:hover,
+html[data-theme="dark"] .mobile-settings-row:active,
+html[data-theme="dark"] .mobile-settings-page .settings-tabs button:hover,
+html[data-theme="dark"] .mobile-settings-page .settings-tabs button.is-active{background:rgba(156,121,69,.16);color:#f1f5f9}
+html[data-theme="dark"] .mobile-settings-icon{border-color:rgba(148,163,184,.18);background:#26344a;color:#dbeafe}
+html[data-theme="dark"] .mobile-settings-group--payments .mobile-settings-icon{background:linear-gradient(145deg,#20382e,#26344a);color:#a7c7b1}
+html[data-theme="dark"] .mobile-settings-group--more .mobile-settings-icon{background:linear-gradient(145deg,#3b2d2a,#302c29);color:#e0bb83}
+html[data-theme="dark"] .mobile-settings-page .account-label{color:#cbd5e1}
+html[data-theme="dark"] .mobile-settings-page .account-panel-subtitle,
+html[data-theme="dark"] .mobile-settings-page[data-mobile-home=false]>.account-heading p,
+html[data-theme="dark"] .mobile-settings-page .security-row p,
+html[data-theme="dark"] .mobile-settings-page .muted,
+html[data-theme="dark"] .mobile-settings-row small{color:#a0aec0}
+html[data-theme="dark"] .mobile-settings-page .account-callout{border-color:rgba(156,121,69,.3);background:rgba(156,121,69,.08);color:#cbd5e1}
+html[data-theme="dark"] .mobile-settings-page .settings-tabs button{color:#a0aec0}
+html[data-theme="dark"] .mobile-settings-page .settings-tabs button.is-active{color:#f1f5f9}
+html[data-theme="dark"] .mobile-settings-page .mobile-settings-back{color:#e8c77a}
+html[data-theme="dark"] .mobile-settings-page .settings-appearance-control{border-color:rgba(148,163,184,.15)}
+html[data-theme="dark"] .mobile-settings-page .settings-appearance-control b{color:#f1f5f9}
+html[data-theme="dark"] .mobile-settings-page .settings-appearance-control p{color:#a0aec0}
 
 /* Light Aurevia admin CRM treatment, keeping all displayed metrics live. */
 body:has(.admin-shell-chrome){background:#f9fbfd;color:#0f3054}
@@ -4238,4 +4314,191 @@ body:has(.admin-shell-chrome){background:#f9fbfd;color:#0f3054}
 }
 @media(max-width:760px){
 	.admin-topbar-heading>b{color:#0f3054}
+}
+
+.theme-toggle{
+	display:inline-flex;
+	min-height:36px;
+	align-items:center;
+	justify-content:center;
+	gap:7px;
+	padding:0 10px;
+	border:1px solid rgba(212,175,55,.34);
+	border-radius:999px;
+	background:linear-gradient(145deg,rgba(212,175,55,.13),rgba(255,255,255,.025));
+	color:var(--a-paper);
+	font-size:10px;
+	font-weight:700;
+	white-space:nowrap;
+	cursor:pointer;
+	transition:border-color .18s ease,background .18s ease,transform .18s ease,color .18s ease;
+}
+.theme-toggle svg{color:var(--a-brass-soft)}
+.theme-toggle:hover{transform:translateY(-1px);border-color:rgba(212,175,55,.65);background:rgba(212,175,55,.14)}
+.theme-toggle:focus-visible{outline:2px solid var(--a-brass-soft);outline-offset:3px}
+.user-topbar-actions .theme-toggle{min-width:36px;padding:0 8px}
+.admin-topbar-meta .theme-toggle{flex:none}
+.wallet-balance-toggle{
+	min-height:38px;
+	gap:8px;
+	padding:0 13px;
+	border:1px solid rgba(212,175,55,.42);
+	border-radius:999px;
+	background:linear-gradient(145deg,rgba(212,175,55,.2),rgba(212,175,55,.06) 58%,rgba(255,255,255,.04));
+	color:#f0dfbd;
+	font-size:11px;
+	font-weight:700;
+	box-shadow:inset 0 1px rgba(255,255,255,.12),0 5px 16px rgba(0,0,0,.16);
+	cursor:pointer;
+	transition:transform .18s ease,border-color .18s ease,background .18s ease,box-shadow .18s ease;
+}
+.wallet-balance-toggle svg{color:#f0c040}
+.wallet-balance-toggle:hover{transform:translateY(-1px);border-color:rgba(240,192,64,.72);background:linear-gradient(145deg,rgba(212,175,55,.27),rgba(212,175,55,.1));color:#fff3d4;box-shadow:inset 0 1px rgba(255,255,255,.15),0 8px 20px rgba(0,0,0,.22)}
+.wallet-balance-toggle:active{transform:translateY(0) scale(.98)}
+
+html[data-theme="light"]{
+	color-scheme:light;
+	--a-ink:#f9fbfd;
+	--a-forest:#0f3054;
+	--a-forest-soft:#eaf0f6;
+	--a-panel:#fff;
+	--a-panel-raised:#f3f6fa;
+	--a-surface-raised:#fff;
+	--a-surface-deep:#f3f6fa;
+	--a-line:rgba(15,48,84,.14);
+	--a-muted:#5e7184;
+	--a-paper:#122d49;
+	--a-brass:#9c7945;
+	--a-brass-soft:#886638;
+	--a-shadow-panel:0 12px 32px rgba(15,48,84,.09);
+}
+html[data-theme="light"],html[data-theme="light"] body{background:#f9fbfd;color:#122d49}
+html[data-theme="light"] .scene-depth{background:radial-gradient(ellipse at 72% 36%,rgba(156,121,69,.09),transparent 42%),#f9fbfd}
+html[data-theme="light"] .scene-depth:before{opacity:.18}
+html[data-theme="light"] .site-nav{background:rgba(255,255,255,.94);border-color:rgba(15,48,84,.1)}
+html[data-theme="light"] .brand,html[data-theme="light"] .brand-copy strong{color:#0f3054}
+html[data-theme="light"] .brand-copy small{color:#9c7945}
+html[data-theme="light"] .nav-links a,html[data-theme="light"] .nav-links button{color:#304a63}
+html[data-theme="light"] .nav-links a:hover,html[data-theme="light"] .nav-links button:hover,html[data-theme="light"] .nav-links a.nav-active,html[data-theme="light"] .nav-links a[aria-current="page"]{background:rgba(15,48,84,.07);color:#0f3054}
+html[data-theme="light"] .nav-links .nav-contact{color:#0f3054}
+html[data-theme="light"] .dropdown-panel,html[data-theme="light"] .nav-links.nav-open{background:#fff;border-color:rgba(15,48,84,.13)}
+html[data-theme="light"] .menu-button{color:#0f3054}
+html[data-theme="light"] .user-topbar-actions .user-account-back{border-color:rgba(15,48,84,.13);background:#fff;color:#0f3054}
+html[data-theme="light"] .user-topbar-identity b,html[data-theme="light"] .user-topbar-identity small{color:#0f3054}
+html[data-theme="light"] .user-mode-control{background:#edf2f7}
+html[data-theme="light"] .user-bottom-navigation{background:rgba(255,255,255,.96);border-color:rgba(15,48,84,.12)}
+html[data-theme="light"] .user-bottom-navigation a{color:#526a80}
+html[data-theme="light"] .user-bottom-navigation a.is-active{color:#0f3054}
+html[data-theme="light"] .card,html[data-theme="light"] .account-panel,html[data-theme="light"] .user-dashboard-panel,html[data-theme="light"] .user-market-card,html[data-theme="light"] .account-card{
+	border-color:rgba(15,48,84,.13);
+	background:linear-gradient(145deg,#fff,#f6f8fb);
+	box-shadow:0 14px 36px rgba(15,48,84,.08),inset 0 1px rgba(255,255,255,.9);
+	color:#122d49;
+}
+html[data-theme="light"] .account-page,html[data-theme="light"] .admin-main,html[data-theme="light"] .admin-content,html[data-theme="light"] .mobile-settings-page{color:#122d49}
+html[data-theme="light"] .account-page h1,html[data-theme="light"] .account-page h2,html[data-theme="light"] .account-page h3,html[data-theme="light"] .account-page h4,
+html[data-theme="light"] .account-page p,html[data-theme="light"] .account-page label,html[data-theme="light"] .account-page .account-panel-title,
+html[data-theme="light"] .account-page .account-panel-title h2,html[data-theme="light"] .account-page .account-heading h1,
+html[data-theme="light"] .admin-main h1,html[data-theme="light"] .admin-main h2,html[data-theme="light"] .admin-main h3{color:#173b5b}
+html[data-theme="light"] .account-page .muted,html[data-theme="light"] .account-page .account-panel-subtitle,html[data-theme="light"] .account-page .account-empty{color:#5e7184}
+html[data-theme="light"] .input,html[data-theme="light"] .auth-input,html[data-theme="light"] input,html[data-theme="light"] select,html[data-theme="light"] textarea{
+	border-color:rgba(15,48,84,.19);
+	background-color:#fff;
+	color:#122d49;
+}
+html[data-theme="light"] input::placeholder,html[data-theme="light"] textarea::placeholder{color:#718398}
+html[data-theme="light"] .auth-card,html[data-theme="light"] .waitlist-card{
+	border-color:rgba(15,48,84,.14);
+	background:linear-gradient(145deg,#fff,#f4f7fa);
+	color:#122d49;
+}
+html[data-theme="light"] .auth-card h1,html[data-theme="light"] .auth-card h2,html[data-theme="light"] .auth-card p,html[data-theme="light"] .auth-card label{color:#173b5b}
+html[data-theme="light"] .home-hero:before{background:radial-gradient(ellipse at 77% 42%,rgba(156,121,69,.1),transparent 42%),linear-gradient(120deg,#f9fbfd 2%,#edf3f8 55%,#f9fbfd)}
+html[data-theme="light"] .home-hero h1,html[data-theme="light"] .home-hero p,html[data-theme="light"] .experience-section h2,html[data-theme="light"] .preview-section h2{color:#0f3054}
+html[data-theme="light"] .experience-section,html[data-theme="light"] .preview-section{border-color:rgba(15,48,84,.1);background:linear-gradient(110deg,#f5f8fb,#eaf0f6 53%,#f5f8fb)}
+html[data-theme="light"] .admin-sidebar{background:linear-gradient(180deg,#fff,#f3f6fa);border-color:rgba(15,48,84,.12)}
+html[data-theme="light"] .admin-topbar{background:rgba(255,255,255,.96);border-color:rgba(15,48,84,.12)}
+html[data-theme="light"] .admin-main,html[data-theme="light"] .admin-dashboard{background:#f9fbfd;color:#122d49}
+html[data-theme="light"] .admin-panel,html[data-theme="light"] .admin-metric-card{border-color:rgba(15,48,84,.13);background:#fff;color:#173b5b;box-shadow:0 12px 32px rgba(15,48,84,.07)}
+html[data-theme="light"] .admin-panel p,html[data-theme="light"] .admin-panel td,html[data-theme="light"] .admin-panel th,html[data-theme="light"] .admin-metric-card strong{color:#173b5b}
+html[data-theme="light"] .floating-support-panel{background:linear-gradient(155deg,#fff,#f5f7fa)!important;color:#173b5b}
+html[data-theme="light"] .floating-support-header{background:linear-gradient(145deg,#edf2f7,#fff);border-color:rgba(15,48,84,.12)}
+html[data-theme="light"] .floating-support-header b,html[data-theme="light"] .floating-support-message p{color:#173b5b}
+html[data-theme="light"] .floating-support-header small,html[data-theme="light"] .floating-support-message small{color:#5e7184}
+html[data-theme="light"] .floating-support-message{border-color:rgba(15,48,84,.12);background:#f3f6fa}
+html[data-theme="light"] .wallet-signature-card{background:radial-gradient(ellipse at 83% 14%,rgba(156,121,69,.17),transparent 42%),linear-gradient(137deg,#fff 0%,#f1f5f9 52%,#e8eef5 100%);color:#0f3054;box-shadow:0 20px 46px rgba(15,48,84,.12),inset 0 1px #fff}
+html[data-theme="light"] .wallet-signature-card .wallet-balance-value,html[data-theme="light"] .wallet-signature-card .wallet-reservation-row,html[data-theme="light"] .wallet-signature-card .wallet-reservation-row strong{color:#0f3054}
+html[data-theme="light"] .wallet-balance-toggle{border-color:rgba(156,121,69,.38);background:linear-gradient(145deg,rgba(156,121,69,.14),rgba(255,255,255,.88));color:#173b5b;box-shadow:0 4px 12px rgba(15,48,84,.08)}
+html[data-theme="light"] .wallet-balance-toggle svg{color:#9c7945}
+html[data-theme="light"] .theme-toggle{border-color:rgba(156,121,69,.32);background:linear-gradient(145deg,rgba(156,121,69,.11),#fff);color:#173b5b}
+html[data-theme="light"] .theme-toggle svg{color:#9c7945}
+@media(max-width:640px){
+	.user-topbar-actions .theme-toggle{width:36px;min-width:36px;padding:0}
+	.user-topbar-actions .theme-toggle span{display:none}
+	.nav-actions .theme-toggle{width:36px;padding:0}
+	.nav-actions .theme-toggle span{display:none}
+}
+
+.wallet-signature-card{
+	min-height:0;
+	padding:clamp(20px,3vw,29px);
+	border-color:rgba(217,182,110,.42);
+	background:radial-gradient(ellipse at 50% 34%,rgba(23,104,70,.3),transparent 55%),linear-gradient(145deg,#102b20,#06160f 58%,#020906);
+	box-shadow:0 25px 65px rgba(0,0,0,.4),inset 0 1px rgba(255,255,255,.1),inset 0 -1px rgba(217,182,110,.16);
+}
+.wallet-signature-card:before{display:none}
+.wallet-signature-card:after{right:-55px;bottom:-105px;width:230px;height:230px;border-color:rgba(217,182,110,.11);box-shadow:0 0 0 24px rgba(217,182,110,.025),0 0 0 48px rgba(217,182,110,.014);pointer-events:none}
+.wallet-signature-brand{position:relative;z-index:2;display:flex;align-items:center;gap:10px}
+.wallet-brand-mark{display:grid;width:36px;height:36px;flex:none;place-items:center;border:1px solid rgba(248,228,173,.7);border-radius:50%;background:radial-gradient(circle at 30% 20%,rgba(255,255,255,.2),transparent 55%),linear-gradient(145deg,#8b713a,#4c3b19);box-shadow:inset 0 1px rgba(255,255,255,.36),0 4px 12px rgba(0,0,0,.28);color:#fff0c1;font-family:Georgia,serif;font-size:21px}
+.wallet-brand-copy{display:grid;gap:3px}
+.wallet-brand-copy strong{color:#f8e4ad;font-family:Georgia,serif;font-size:13px;font-weight:600;letter-spacing:.18em}
+.wallet-brand-copy small{color:#d9b66e;font-size:7px;font-weight:700;letter-spacing:.3em}
+.wallet-secure-label{display:inline-flex;align-items:center;gap:6px;margin-left:auto;color:#c3d0c5;font-size:8px;font-weight:650;letter-spacing:.1em}
+.wallet-secure-label svg{color:#d9b66e}
+.wallet-card-art{position:relative;z-index:1;height:142px;margin:9px auto 5px;perspective:900px}
+.wallet-art-plate{position:absolute;overflow:hidden;box-sizing:border-box;width:min(66%,330px);height:104px;border:1px solid rgba(236,207,139,.56);border-radius:14px;box-shadow:0 14px 28px rgba(0,0,0,.35),inset 0 1px rgba(255,255,255,.12)}
+.wallet-art-plate-back{top:7px;left:30%;transform:rotate(7deg) rotateY(-12deg);background:radial-gradient(circle at 85% 15%,rgba(244,222,167,.18),transparent 34%),linear-gradient(135deg,#1b5338,#08271b 68%,#03130e)}
+.wallet-art-plate-back>span{position:absolute;right:13%;bottom:16%;width:44px;height:44px;border:1px solid rgba(231,205,136,.37);border-radius:50%;box-shadow:0 0 0 8px rgba(231,205,136,.045),0 0 0 17px rgba(231,205,136,.025)}
+.wallet-art-plate-front{top:22px;left:13%;z-index:2;transform:rotate(-5deg) rotateY(9deg);background:radial-gradient(ellipse at 80% 6%,rgba(255,255,255,.16),transparent 44%),linear-gradient(145deg,#214b36,#0c2418 64%,#07140d)}
+.wallet-art-chip{position:absolute;top:15px;left:16px;width:29px;height:22px;border:1px solid #f3d58a;border-radius:5px;background:linear-gradient(90deg,transparent 46%,#a57c37 48% 52%,transparent 54%),linear-gradient(0deg,transparent 45%,#a57c37 48% 52%,transparent 55%),linear-gradient(135deg,#fff0b0,#b98b36);box-shadow:inset 0 0 0 2px rgba(255,255,255,.15)}
+.wallet-art-mark{position:absolute;right:15px;top:12px;color:rgba(248,228,173,.83);font-family:Georgia,serif;font-size:24px;text-shadow:0 1px 8px rgba(0,0,0,.4)}
+.wallet-art-plate-front i{position:absolute;right:16px;bottom:15px;width:42px;height:42px;border:1px solid rgba(241,218,162,.15);border-radius:50%;background:linear-gradient(145deg,rgba(248,228,173,.14),rgba(3,19,12,.18))}
+.wallet-art-plate-front i+i{right:42px;opacity:.65}
+.wallet-art-pocket{position:absolute;right:8%;bottom:0;left:8%;z-index:3;display:flex;height:42px;align-items:center;justify-content:center;border:1px solid rgba(209,171,89,.61);border-radius:10px 10px 16px 16px;background:linear-gradient(160deg,#12402d,#061b12 68%,#03100b);box-shadow:inset 0 2px rgba(255,232,175,.12),0 12px 20px rgba(0,0,0,.32)}
+.wallet-art-pocket span{color:#e2c77c;font-size:7px;font-weight:700;letter-spacing:.23em}
+.wallet-signature-card .wallet-balance-heading{z-index:2}
+.wallet-signature-card .wallet-balance-caption{margin-top:8px;color:#c3d0c5;font-size:10px;font-weight:600;letter-spacing:.13em;text-transform:uppercase}
+.wallet-signature-card .wallet-balance-value{margin-top:7px;color:#f8e4ad;text-shadow:0 2px 18px rgba(217,182,110,.13)}
+.wallet-signature-card .wallet-balance-foot{color:#b0beb2}
+.wallet-signature-card .wallet-reservation-row{border-color:rgba(230,235,223,.15);color:#c3d0c5}
+.wallet-signature-card .wallet-reservation-row strong{color:#f4e8c8}
+.wallet-signature-card .wallet-currency-mark{color:#f0d58b}
+.wallet-signature-card .wallet-balance-toggle{border-color:rgba(217,182,110,.5);background:linear-gradient(145deg,rgba(217,182,110,.22),rgba(255,255,255,.05));color:#f8e4ad}
+.wallet-signature-card .wallet-balance-toggle svg{color:#f8e4ad}
+.wallet-signature-card .wallet-balance-toggle:hover{border-color:#f0d58b;background:rgba(217,182,110,.23);color:#fff4d8}
+.wallet-signature-card .wallet-balance-toggle:focus-visible{outline-color:#f8e4ad}
+html[data-theme="light"] .wallet-signature-card{border-color:rgba(156,121,69,.38);background:radial-gradient(ellipse at 50% 30%,rgba(156,121,69,.12),transparent 53%),linear-gradient(145deg,#fff,#f1f5f9 68%,#e8eef5);color:#0f3054;box-shadow:0 20px 46px rgba(15,48,84,.12),inset 0 1px #fff}
+html[data-theme="light"] .wallet-signature-card .wallet-brand-copy strong{color:#0f3054}
+html[data-theme="light"] .wallet-signature-card .wallet-brand-copy small,
+html[data-theme="light"] .wallet-signature-card .wallet-secure-label,
+html[data-theme="light"] .wallet-signature-card .wallet-balance-caption,
+html[data-theme="light"] .wallet-signature-card .wallet-balance-foot,
+html[data-theme="light"] .wallet-signature-card .wallet-reservation-row{color:#52677b}
+html[data-theme="light"] .wallet-signature-card .wallet-balance-value,
+html[data-theme="light"] .wallet-signature-card .wallet-reservation-row strong{color:#0f3054}
+html[data-theme="light"] .wallet-signature-card .wallet-currency-mark{color:#9c7945}
+html[data-theme="light"] .wallet-signature-card .wallet-secure-label svg{color:#9c7945}
+@media(max-width:600px){
+	.wallet-signature-brand{gap:8px}
+	.wallet-brand-mark{width:32px;height:32px}
+	.wallet-brand-copy strong{font-size:11px}
+	.wallet-secure-label{gap:4px;font-size:7px;letter-spacing:.04em}
+	.wallet-card-art{height:128px;margin-top:8px}
+	.wallet-art-plate{width:72%;height:94px}
+	.wallet-art-plate-back{left:25%}
+	.wallet-art-plate-front{left:9%}
+	.wallet-art-pocket{right:4%;left:4%;height:37px}
+	.wallet-signature-card .wallet-balance-value{font-size:clamp(34px,10vw,46px)}
+	.wallet-signature-card .wallet-reservation-row{flex-wrap:wrap;gap:6px 9px}
+	.wallet-signature-card .wallet-reservation-row>span:last-child{margin-left:auto}
 }

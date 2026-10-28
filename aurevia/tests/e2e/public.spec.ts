@@ -68,6 +68,18 @@ test('homepage hero actions remain usable with reduced motion',async({browser,pa
 	}finally{await nextSession.close();}
 });
 
+test('site theme preference switches globally and persists across navigation',async({page})=>{
+	await page.goto('/');
+	const themeToggle=page.getByRole('button',{name:'Switch to light mode'});
+	await themeToggle.click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+	await expect(page.locator('body')).toHaveCSS('background-color','rgb(249, 251, 253)');
+	await page.goto('/about');
+	await expect(page.locator('html')).toHaveAttribute('data-theme','light');
+	await page.getByRole('button',{name:'Switch to dark mode'}).click();
+	await expect(page.locator('html')).toHaveAttribute('data-theme','dark');
+});
+
 test('public disclosures distinguish simulated activity, paper orders, and internal wallet funds',async({page})=>{
 	await page.goto('/terms');
 	await expect(page.getByText(/Alpaca Paper Trading only/)).toBeVisible();
