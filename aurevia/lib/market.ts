@@ -12,7 +12,7 @@ export interface MarketDataProvider{
 }
 
 const simulatedDatabaseProvider:MarketDataProvider={
-	source:'Aurevia simulated market loop',
+	source:'Aurevia DEMO market feed',
 	dataMode:'SIMULATED',
 	getInstruments(){return db.instrument.findMany({where:{enabled:true},orderBy:{symbol:'asc'}});},
 	async tick(){

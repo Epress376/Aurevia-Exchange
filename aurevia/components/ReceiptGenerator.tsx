@@ -7,6 +7,7 @@ import {ArrowDownLeft,ArrowLeft,ArrowUpRight,Check,ClipboardCopy,Download,FileTe
 import html2canvas from 'html2canvas-pro';
 import {jsPDF} from 'jspdf';
 import {formatUsd} from '@/lib/currency-format';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 export type ReceiptData={
 	id:string;
@@ -60,7 +61,17 @@ export default function ReceiptGenerator({receipt}:{receipt:ReceiptData}){
 	const receiptRef=useRef<HTMLElement>(null);
 	const [busy,setBusy]=useState(false);
 	const [feedback,setFeedback]=useState('');
-	const currentReceipt=receipt;
+	const currentReceipt={
+		...receipt,
+		reference:removeSimulatedLabels(receipt.reference),
+		accountReference:receipt.accountReference?removeSimulatedLabels(receipt.accountReference):receipt.accountReference,
+		externalReference:receipt.externalReference?removeSimulatedLabels(receipt.externalReference):receipt.externalReference,
+		processingReference:receipt.processingReference?removeSimulatedLabels(receipt.processingReference):receipt.processingReference,
+		adminNote:receipt.adminNote?removeSimulatedLabels(receipt.adminNote):receipt.adminNote,
+		method:removeSimulatedLabels(receipt.method),
+		purpose:receipt.purpose?removeSimulatedLabels(receipt.purpose):receipt.purpose,
+		gateway:receipt.gateway?removeSimulatedLabels(receipt.gateway):receipt.gateway,
+	};
 	const kind=currentReceipt.type||'DEPOSIT';
 	const isWithdrawal=currentReceipt.isWithdrawal===true||kind==='WITHDRAWAL';
 	const isSuccessful=currentReceipt.status==='COMPLETED';

@@ -39,7 +39,7 @@ export async function POST(req:Request){
 			const system=await ensureSystemAccount(tx,`SYSTEM:SIMULATION:WITHDRAWAL:${current.accountMode}:${current.currency}`,`Internal simulated ${current.accountMode} withdrawal clearing`,current.currency,current.accountMode);
 			await postDoubleEntry(tx,{reference:`FUNDING:${current.id}:SETTLED`,description:`Completed simulated ${current.accountMode} withdrawal`,debitAccountId:account.id,creditAccountId:system.id,amount:current.amount});
 			await tx.auditLog.create({data:{actorId:admin.id,action:'SIMULATED_WITHDRAWAL_SETTLED',entity:'FUNDING',entityId:current.id,metadata:{accountMode:current.accountMode,type:current.type,amount:current.amount.toString(),currency:current.currency,settlementReference,simulated:true,note:input.note||null}}});
-			await createNotification(tx,{userId:current.userId,type:NotificationType.WITHDRAWAL,title:'Simulated withdrawal completed',message:`Your simulated ${current.accountMode} withdrawal of ${current.amount.toString()} ${current.currency} has been completed in the internal ledger. No external money was paid.`,dedupeKey:`funding:${current.id}:settled`,relatedEntity:'FUNDING',relatedId:current.id,actionUrl:`/wallet/transactions/${current.id}`});
+			await createNotification(tx,{userId:current.userId,type:NotificationType.WITHDRAWAL,title:'Withdrawal completed',message:`Your ${current.accountMode} withdrawal of ${current.amount.toString()} ${current.currency} has been completed in the internal ledger. No external money was paid.`,dedupeKey:`funding:${current.id}:settled`,relatedEntity:'FUNDING',relatedId:current.id,actionUrl:`/wallet/transactions/${current.id}`});
 			return tx.fundingRequest.findUniqueOrThrow({where:{id:current.id}});
 		},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});
 		const {receiptKey,...safeRequest}=request;
@@ -51,6 +51,6 @@ export async function POST(req:Request){
 		if(error instanceof Error&&error.message==='DEMO_WITHDRAWAL_DISABLED')return NextResponse.json({error:'DEMO withdrawals are disabled. A legacy reservation may only be released as failed.'},{status:409});
 		if(error instanceof Error&&['WITHDRAWAL_NOT_APPROVED','WITHDRAWAL_RESTRICTED','INSUFFICIENT_FUNDS','WITHDRAWAL_ALREADY_SETTLED','WITHDRAWAL_SELF_SETTLEMENT_FORBIDDEN','REAL_PAYOUT_NOT_CONFIGURED'].includes(error.message))return NextResponse.json({error:error.message==='REAL_PAYOUT_NOT_CONFIGURED'?'A REAL external payout provider is not configured. The approved request remains reserved and is not marked complete.':error.message.replaceAll('_',' ').toLowerCase()},{status:409});
 		console.error('[admin-funding-settle] Simulated withdrawal settlement failed',error instanceof Error?error.name:'UnknownError');
-		return NextResponse.json({error:'Unable to complete the simulated withdrawal.'},{status:500});
+		return NextResponse.json({error:'Unable to complete the withdrawal.'},{status:500});
 	}
 }

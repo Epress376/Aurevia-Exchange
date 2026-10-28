@@ -22,7 +22,7 @@ export async function GET(){
 		if(error instanceof Error&&error.message==='DEMO_MODE_REQUIRED')return NextResponse.json({error:'AI recommendations are available in DEMO mode only.'},{status:403});
 		if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		if(error instanceof Error&&error.message==='AI_PROVIDER_NOT_CONFIGURED')return NextResponse.json({error:'AI recommendations are unavailable because the server AI provider is not configured.'},{status:503});
-		if(error instanceof Error&&error.message==='MARKET_DATA_UNAVAILABLE')return NextResponse.json({error:'Fresh simulated market data is unavailable. No recommendation was generated and no trade was placed.'},{status:503});
+		if(error instanceof Error&&error.message==='MARKET_DATA_UNAVAILABLE')return NextResponse.json({error:'Fresh DEMO market data is unavailable. No recommendation was generated and no trade was placed.'},{status:503});
 		if(error instanceof Error&&error.message==='AI_RECOMMENDATION_UNAVAILABLE')return NextResponse.json({error:'The AI provider did not return a recommendation. No trade was placed.'},{status:503});
 		if(error instanceof Error&&error.message==='AI_RECOMMENDATION_INVALID')return NextResponse.json({error:'The AI response could not be validated. No trade was placed.'},{status:503});
 		console.error('DEMO AI recommendation evaluation failed.',error instanceof Error?error.name:'UnknownError');

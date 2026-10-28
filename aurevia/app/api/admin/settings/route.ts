@@ -29,7 +29,7 @@ export async function PUT(request:Request){
 		if(tierBoostKeys.has(input.key)){
 			const percentage=Number(value);
 			if(!/^\d{1,4}(?:\.\d{1,4})?$/.test(value)||!Number.isFinite(percentage)||percentage>1000){
-				return NextResponse.json({error:'Enter a simulated earning boost from 0 to 1000 percent, with up to four decimal places.'},{status:400});
+				return NextResponse.json({error:'Enter an earning boost from 0 to 1000 percent, with up to four decimal places.'},{status:400});
 			}
 		}
 		const setting=await db.$transaction(async tx=>{

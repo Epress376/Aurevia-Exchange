@@ -79,7 +79,7 @@ export function InvestmentProgressCard({investment,onMaturity}:{investment:Inves
 			<span>{display.matured?'Maturity reached · settlement processing':remainingText(display.secondsRemaining)}</span>
 			<span>{(display.progress*100).toFixed(1)}% elapsed</span>
 		</div>
-		<p className="investment-live-disclosure">Illustrative, display-only estimate from the recorded simulated investment terms. No earnings are credited until the server settles the investment.</p>
+		<p className="investment-live-disclosure">Illustrative, display-only estimate from the recorded investment terms. No earnings are credited until the server settles the investment.</p>
 	</article>;
 }
 
@@ -87,7 +87,7 @@ export function InvestmentCompletionCard({investment}:{investment:InvestmentProg
 	const settled=investment.status==='SETTLED';
 	return <div className={`investment-completion-card ${settled?'is-settled':''}`}>
 		<div><b>{settled?'Investment completed':'Investment period complete'}</b><p>{settled
-			?`The server automatically credited the recorded simulated payout of ${formatUsd(investment.simulatedPayout||investment.amount)} to your ${investment.accountMode} internal USD ledger. The live earnings figure was an estimate; this settled amount is available in your wallet. No claim or separate move is needed.`
+			?`The server automatically credited the recorded payout of ${formatUsd(investment.simulatedPayout||investment.amount)} to your ${investment.accountMode} internal USD ledger. The live earnings figure was an estimate; this settled amount is available in your wallet. No claim or separate move is needed.`
 			:'The investment period is complete and settlement is pending. No payout is available in your balance until settlement is recorded.'}</p></div>
 		{settled&&<div className="investment-completion-actions"><Link href="/wallet"><WalletCards size={13}/>View wallet</Link><Link href="/investments">Browse investments <ArrowRight size={13}/></Link></div>}
 	</div>;

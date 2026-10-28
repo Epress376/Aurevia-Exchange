@@ -34,8 +34,8 @@ beforeEach(()=>{
 	}]);
 	mocks.auditLogFindMany.mockResolvedValue([activity]);
 	mocks.openAiChat.mockResolvedValue(JSON.stringify({
-		summary:'One simulated BTC/USD price update was recorded.',
-		highlights:[{activityId:'event-1',observation:'BTC/USD moved from 60000 to 60300 in a simulated update.'}],
+		summary:'One DEMO BTC/USD price update was recorded.',
+		highlights:[{activityId:'event-1',observation:'BTC/USD moved from 60000 to 60300 in a DEMO update.'}],
 	}));
 });
 
@@ -58,7 +58,7 @@ describe('admin market review API',()=>{
 
 		expect(response.status).toBe(200);
 		expect(result.model).toBe('test-model');
-		expect(result.review.summary).toContain('simulated BTC/USD');
+		expect(result.review.summary).toContain('DEMO BTC/USD');
 		expect(mocks.openAiChat.mock.calls[0][0][0].content).toContain('Do not invent market moves');
 		expect(JSON.parse(mocks.openAiChat.mock.calls[0][0][1].content).activities[0].id).toBe('event-1');
 	});

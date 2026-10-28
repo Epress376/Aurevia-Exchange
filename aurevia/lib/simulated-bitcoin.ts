@@ -21,9 +21,9 @@ export function calculateSimulatedBitcoinConversion(direction:'BUY'|'SELL',amoun
 export async function convertSimulatedBitcoinTx(tx:Prisma.TransactionClient,args:{userId:string;direction:'BUY'|'SELL';amount:Prisma.Decimal;idempotencyKey:string}){
  const reference=`DEMO:BTC:CONVERSION:${args.userId}:${args.idempotencyKey}`;
  const prior=await tx.ledgerTransaction.findUnique({where:{reference},select:{id:true,description:true,createdAt:true}});
- const prefix=`SIMULATED BTC ${args.direction} amount=${args.amount.toString()};`;
+ const prefix=`DEMO BTC ${args.direction} amount=${args.amount.toString()};`;
  if(prior){
-  if(!prior.description.startsWith(prefix))throw new Error('IDEMPOTENCY_KEY_REUSED');
+  if(!prior.description.startsWith(prefix)&&!prior.description.startsWith(`SIMULATED BTC ${args.direction} amount=${args.amount.toString()};`))throw new Error('IDEMPOTENCY_KEY_REUSED');
   return {reference,replayed:true,transactionId:prior.id};
  }
  const instrument=await tx.instrument.findUnique({where:{symbol:'BTC/USD'}});
@@ -34,11 +34,11 @@ export async function convertSimulatedBitcoinTx(tx:Prisma.TransactionClient,args
  const conversion=calculateSimulatedBitcoinConversion(args.direction,tradeAmount,price,new Decimal(instrument.takerFee));
  const cash=await ensureUserLedger(tx,args.userId,AccountMode.DEMO,'USD');
  const bitcoin=await ensureUserLedger(tx,args.userId,AccountMode.DEMO,'BTC');
- const usdClearing=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION:USD','Simulated Bitcoin conversion clearing','USD',AccountMode.DEMO);
- const btcClearing=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION:BTC','Simulated Bitcoin conversion inventory','BTC',AccountMode.DEMO);
- const feeAccount=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION_FEES:USD','Simulated Bitcoin conversion fees','USD',AccountMode.DEMO);
+ const usdClearing=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION:USD','DEMO Bitcoin conversion clearing','USD',AccountMode.DEMO);
+ const btcClearing=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION:BTC','DEMO Bitcoin conversion inventory','BTC',AccountMode.DEMO);
+ const feeAccount=await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION_FEES:USD','DEMO Bitcoin conversion fees','USD',AccountMode.DEMO);
  const dust=args.direction==='BUY'?conversion.grossUsd.minus(conversion.bitcoinAmount.mul(price)):new Decimal(0);
- const roundingAccount=dust.gt(0)?await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION_ROUNDING:USD','Simulated Bitcoin conversion rounding','USD',AccountMode.DEMO):null;
+ const roundingAccount=dust.gt(0)?await ensureSystemAccount(tx,'SYSTEM:DEMO:BTC_CONVERSION_ROUNDING:USD','DEMO Bitcoin conversion rounding','USD',AccountMode.DEMO):null;
  const entries:Prisma.LedgerEntryCreateWithoutTransactionInput[]=[];
  let pnl:Prisma.Decimal|null=null;
  if(args.direction==='BUY'){
@@ -70,6 +70,6 @@ export async function convertSimulatedBitcoinTx(tx:Prisma.TransactionClient,args
  const description=`${prefix} USD=${args.direction==='BUY'?conversion.netUsd.plus(conversion.fee).toString():conversion.netUsd.toString()}; BTC=${conversion.bitcoinAmount.toString()}; price=${price.toString()}; fee=${conversion.fee.toString()};`;
  const transaction=await tx.ledgerTransaction.create({data:{reference,description,accountMode:AccountMode.DEMO,entries:{create:postedEntries.map(entry=>({...entry,accountMode:AccountMode.DEMO}))}}});
  await tx.auditLog.create({data:{actorId:args.userId,action:`DEMO_BTC_${args.direction}`,entity:'LEDGER_TRANSACTION',entityId:transaction.id,metadata:{accountMode:AccountMode.DEMO,simulated:true,reference,direction:args.direction,usdAmount:(args.direction==='BUY'?tradeAmount:conversion.netUsd).toString(),bitcoinAmount:conversion.bitcoinAmount.toString(),executionPrice:price.toString(),fee:conversion.fee.toString(),realizedPnl:pnl?.toString()??null}}});
- await createNotification(tx,{userId:args.userId,type:NotificationType.TRADE,title:`Simulated BTC ${args.direction==='BUY'?'purchase':'sale'} complete`,message:`SIMULATED: ${args.direction==='BUY'?'Converted '+tradeAmount.toFixed(2)+' USD to '+conversion.bitcoinAmount.toString()+' BTC':'Sold '+conversion.bitcoinAmount.toString()+' BTC for '+conversion.netUsd.toFixed(2)+' USD'} at ${price.toString()} USD/BTC. Fee: ${conversion.fee.toFixed(2)} USD. Reference: ${reference}. No cryptocurrency was sent to a blockchain.`,dedupeKey:`btc-conversion:${args.userId}:${args.idempotencyKey}`,relatedEntity:'LEDGER_TRANSACTION',relatedId:transaction.id,actionUrl:'/activity'});
+ await createNotification(tx,{userId:args.userId,type:NotificationType.TRADE,title:`DEMO BTC ${args.direction==='BUY'?'purchase':'sale'} complete`,message:`DEMO: ${args.direction==='BUY'?'Converted '+tradeAmount.toFixed(2)+' USD to '+conversion.bitcoinAmount.toString()+' BTC':'Sold '+conversion.bitcoinAmount.toString()+' BTC for '+conversion.netUsd.toFixed(2)+' USD'} at ${price.toString()} USD/BTC. Fee: ${conversion.fee.toFixed(2)} USD. Reference: ${reference}. No cryptocurrency was sent to a blockchain.`,dedupeKey:`btc-conversion:${args.userId}:${args.idempotencyKey}`,relatedEntity:'LEDGER_TRANSACTION',relatedId:transaction.id,actionUrl:'/activity'});
  return {reference,replayed:false,transactionId:transaction.id,usdAmount:(args.direction==='BUY'?tradeAmount:conversion.netUsd),bitcoinAmount:conversion.bitcoinAmount,executionPrice:price,fee:conversion.fee};
 }

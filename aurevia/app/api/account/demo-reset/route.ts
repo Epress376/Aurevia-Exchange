@@ -29,7 +29,7 @@ export async function POST(request:Request){
    const orders=await tx.order.findMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:openStatuses}},select:{id:true}});
    const cancelledOrders=await tx.order.updateMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:openStatuses}},data:{status:OrderStatus.CANCELLED}});
    if(cancelledOrders.count)await tx.auditLog.create({data:{actorId:user.id,action:'DEMO_ORDERS_CANCELLED_BY_RESET',entity:'ORDER',entityId:user.id,metadata:{oldState:openStatuses,newState:OrderStatus.CANCELLED,count:cancelledOrders.count,orderIds:orders.map(order=>order.id)}}});
-   for(const order of orders)await createNotification(tx,{userId:user.id,type:NotificationType.TRADE,title:'DEMO order cancelled by reset',message:'Your open simulated order was cancelled during the DEMO portfolio reset.',dedupeKey:`demo-reset:${user.id}:order:${order.id}`,relatedEntity:'ORDER',relatedId:order.id,actionUrl:'/orders'});
+   for(const order of orders)await createNotification(tx,{userId:user.id,type:NotificationType.TRADE,title:'DEMO order cancelled by reset',message:'Your open DEMO order was cancelled during the account reset.',dedupeKey:`demo-reset:${user.id}:order:${order.id}`,relatedEntity:'ORDER',relatedId:order.id,actionUrl:'/orders'});
 
    const investments=await tx.investmentRequest.findMany({where:{userId:user.id,accountMode:AccountMode.DEMO,status:{in:refundableStatuses}},include:{opportunity:{select:{title:true}}}});
    if(investments.length){
@@ -40,7 +40,7 @@ export async function POST(request:Request){
      if(changed.count!==1)throw new Error('DEMO_RESET_STATE_CHANGED');
      await postDoubleEntry(tx,{reference:`DEMO_RESET:INVESTMENT:${investment.id}:REFUND`,description:`Return simulated funds during DEMO reset for ${investment.opportunity.title}`,debitAccountId:escrow.id,creditAccountId:account.id,amount:investment.amount});
      await tx.auditLog.create({data:{actorId:user.id,action:'DEMO_INVESTMENT_CANCELLED_BY_RESET',entity:'INVESTMENT',entityId:investment.id,metadata:{oldState:investment.status,newState:InvestmentStatus.CANCELLED,amount:investment.amount.toString()}}});
-     await createNotification(tx,{userId:user.id,type:NotificationType.SYSTEM,title:'DEMO investment cancelled by reset',message:'The simulated investment request was cancelled and its virtual amount returned to DEMO cash.',dedupeKey:`demo-reset:${user.id}:investment:${investment.id}`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/investments'});
+     await createNotification(tx,{userId:user.id,type:NotificationType.SYSTEM,title:'DEMO investment cancelled by reset',message:'The investment request was cancelled and its virtual amount returned to DEMO cash.',dedupeKey:`demo-reset:${user.id}:investment:${investment.id}`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/investments'});
     }
    }
 
@@ -55,12 +55,12 @@ export async function POST(request:Request){
    }
    const finalBalance=await balance(tx,account.id);
    await tx.auditLog.create({data:{actorId:user.id,action:'DEMO_ACCOUNT_RESET',entity:'LEDGER_ACCOUNT',entityId:account.id,metadata:{accountMode:AccountMode.DEMO,previousBalance:currentBalance.toString(),finalBalance:finalBalance.toFixed(2),cancelledOrders:cancelledOrders.count,cancelledInvestments:investments.length,closedPositions:positions.length,historyRetained:true}}});
-   await createNotification(tx,{userId:user.id,type:NotificationType.ACCOUNT,title:'DEMO portfolio reset',message:`Simulated cash was reset to ${finalBalance.toFixed(2)} USD. Open orders and positions were closed and unsettled DEMO investments cancelled. Historical ledger and audit records remain available.`,dedupeKey:`demo-reset:${user.id}:${randomUUID()}`,actionUrl:'/portfolio'});
+   await createNotification(tx,{userId:user.id,type:NotificationType.ACCOUNT,title:'DEMO portfolio reset',message:`Virtual cash was reset to ${finalBalance.toFixed(2)} USD. Open orders and positions were closed and unsettled DEMO investments cancelled. Historical ledger and audit records remain available.`,dedupeKey:`demo-reset:${user.id}:${randomUUID()}`,actionUrl:'/portfolio'});
    return {balance:finalBalance,cancelledOrders:cancelledOrders.count,cancelledInvestments:investments.length,closedPositions:positions.length};
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
   return NextResponse.json({ok:true,...result},{headers:{'Cache-Control':'private, no-store'}});
  }catch(error){
-  if(error instanceof ZodError)return NextResponse.json({error:'Type RESET DEMO ACCOUNT to confirm this simulated-account reset.'},{status:400});
+  if(error instanceof ZodError)return NextResponse.json({error:'Type RESET DEMO ACCOUNT to confirm this account reset.'},{status:400});
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
   if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Too many reset attempts. Try again tomorrow.'},{status:429});
   if(error instanceof Error&&error.message==='ACCOUNT_UNAVAILABLE')return NextResponse.json({error:'This account is unavailable.'},{status:403});

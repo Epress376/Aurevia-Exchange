@@ -124,11 +124,11 @@ export default function PortfolioExperience(){
 			<div><span className="account-kicker">{translate('accountOverview')}</span><h1>My Portfolio</h1><p>Account-specific balances, positions, investments and recorded performance.</p></div>
 			<div className="portfolio-heading-actions">
 				<span className={`status-pill ${data?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?translate('portfolioAccount',{mode:data.accountMode}):translate('portfolioLoadingAccount')}</span>
-				{data&&<span className="portfolio-mark-status" role="status" aria-label={`Market data source: ${data.marketDataMode.toLowerCase()} prices`}><i aria-hidden="true"/>{data.marketDataMode} PRICES</span>}
+				{data&&<span className="portfolio-mark-status" role="status" aria-label="Market data source: in-app prices"><i aria-hidden="true"/>{data.accountMode==='DEMO'?'DEMO':'IN-APP'} PRICES</span>}
 				<button className="icon-action" type="button" aria-label={translate('portfolioRefresh')} onClick={()=>void load(true)}><RefreshCw size={15}/></button>
 			</div>
 		</header>
-		{data?.accountMode==='REAL'&&<div className="account-callout mb-4"><span>REAL wallet balances are Aurevia’s internal ledger. Alpaca Paper holdings are valued separately using current simulated marks and are not wallet cash or withdrawable. BTC credits require manual verification; investment return targets are estimates, not settled funds.</span></div>}
+		{data?.accountMode==='REAL'&&<div className="account-callout mb-4"><span>REAL wallet balances are Aurevia’s internal ledger. Alpaca Paper holdings are valued separately using current in-app prices and are not wallet cash or withdrawable. BTC credits require manual verification; investment return targets are estimates, not settled funds.</span></div>}
 		{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}
 		{error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" onClick={()=>void load(true)}>{translate('portfolioRetry')}</button></div>}
 		{loading&&!data?<p className="account-empty" role="status">{translate('portfolioLoading')}</p>:data&&<>
@@ -154,7 +154,7 @@ export default function PortfolioExperience(){
 			</nav>
 			{data.accountMode==='DEMO'&&<div className="account-callout mt-4" role="status">This is a virtual practice account. Its balance and trading records are separate from REAL account records.</div>}
 			<section className="portfolio-summary">
-				<div className="portfolio-total"><span>Aurevia account value</span><strong>{money(data.totalValue)}</strong><small>{data.accountMode==='DEMO'?'Virtual cash and open simulated positions':'Internal cash, open positions and allocated investment principal; Paper holdings are separate'}</small></div>
+				<div className="portfolio-total"><span>Aurevia account value</span><strong>{money(data.totalValue)}</strong><small>{data.accountMode==='DEMO'?'Virtual cash and open DEMO positions':'Internal cash, open positions and allocated investment principal; Paper holdings are separate'}</small></div>
 				<div className="portfolio-metric"><span>Available internal cash</span><b>{money(data.availableCashBalance)}</b><small>After pending withdrawals and Paper reserves</small></div>
 				<div className="portfolio-metric"><span>Open position value</span><b>{money(data.positionValue)}</b></div>
 				{data.accountMode==='REAL'&&<div className="portfolio-metric"><span>Allocated investment principal</span><b>{money(data.investmentValue)}</b></div>}
@@ -163,19 +163,19 @@ export default function PortfolioExperience(){
 				<div className="account-panel-title"><div><h2>Alpaca Paper holdings</h2><p className="account-panel-subtitle">Your confirmed fills only · shown separately from the Aurevia wallet</p></div><span className="status-pill mode-real">{data.paperPositions.length} open</span></div>
 				<div className="portfolio-paper-summary">
 					<article><span>Net marked position value</span><b>{money(data.paperPositionValue)}</b></article>
-					<article><span>Unrealized simulated P/L</span><b className={data.paperUnrealizedPnl===null?'':Number(data.paperUnrealizedPnl)>=0?'text-profit':'text-loss'}>{signed(data.paperUnrealizedPnl)}</b></article>
+					<article><span>Unrealized Paper P/L</span><b className={data.paperUnrealizedPnl===null?'':Number(data.paperUnrealizedPnl)>=0?'text-profit':'text-loss'}>{signed(data.paperUnrealizedPnl)}</b></article>
 					<article><span>Paper-order reserves</span><b>{money(data.paperReservedBalance)}</b></article>
 					<article><span>Available buying power</span><b>{money(data.paperAvailableBalance)}</b></article>
 				</div>
 				{data.paperPositions.length?<div className="portfolio-paper-list" aria-label="Alpaca Paper open holdings">{data.paperPositions.map(position=><article key={position.id} className="portfolio-paper-position">
 					<div><strong>{position.symbol}</strong><small>{position.name} · {position.side} · {Number(position.quantity).toLocaleString()} units</small></div>
 					<div><span>Average fill</span><b>{money(position.averageEntryPrice)}</b></div>
-					<div><span>Current simulated mark</span><b>{position.valuationStatus==='CURRENT'?money(position.currentPrice):'—'}</b></div>
+					<div><span>Current Paper mark</span><b>{position.valuationStatus==='CURRENT'?money(position.currentPrice):'—'}</b></div>
 					<div><span>Marked position value</span><b>{position.valuationStatus==='CURRENT'?money(position.marketValue):'—'}</b></div>
 					<div><span>Unrealized P/L</span><b className={position.unrealizedPnl===null?'':Number(position.unrealizedPnl)>=0?'text-profit':'text-loss'}>{signed(position.unrealizedPnl)}</b></div>
-					<div className={`portfolio-paper-quote portfolio-paper-quote--${position.valuationStatus.toLowerCase()}`}>{position.valuationStatus==='CURRENT'&&position.valuationAsOf?`Simulated mark · ${new Date(position.valuationAsOf).toLocaleString()}`:position.valuationStatus==='STALE'&&position.valuationAsOf?`Last quote is stale · ${new Date(position.valuationAsOf).toLocaleString()}`:'No recent simulated quote available'}</div>
+					<div className={`portfolio-paper-quote portfolio-paper-quote--${position.valuationStatus.toLowerCase()}`}>{position.valuationStatus==='CURRENT'&&position.valuationAsOf?`Paper mark · ${new Date(position.valuationAsOf).toLocaleString()}`:position.valuationStatus==='STALE'&&position.valuationAsOf?`Last quote is stale · ${new Date(position.valuationAsOf).toLocaleString()}`:'No recent Paper quote available'}</div>
 				</article>)}</div>:<p className="account-empty mt-3">Confirmed Alpaca Paper fills will appear here. Provider-wide positions are not copied into your account.</p>}
-				<p className="portfolio-paper-disclosure" role="status">{data.paperValuation.valuedCount} of {data.paperValuation.openCount} open positions have a current simulated mark. Paper holdings are valued from Aurevia’s latest simulated instrument marks (up to 60 seconds old). These estimates are not live external quotes, are excluded from Aurevia account value and wallet balances, and cannot be withdrawn. A stale or invalid quote is left unvalued instead of being presented as current.</p>
+				<p className="portfolio-paper-disclosure" role="status">{data.paperValuation.valuedCount} of {data.paperValuation.openCount} open positions have a current in-app mark. Paper holdings are valued from Aurevia’s latest internal instrument prices (up to 60 seconds old). These estimates are not live external quotes, are excluded from Aurevia account value and wallet balances, and cannot be withdrawn. A stale or invalid quote is left unvalued instead of being presented as current.</p>
 			</section>}
 			<DisplayCurrencyPanel values={[
 				{label:'Recorded total value',amount:data.totalValue},
@@ -184,7 +184,7 @@ export default function PortfolioExperience(){
 				...(data.accountMode==='REAL'?[{label:'Allocated investment principal',amount:data.investmentValue}]:[]),
 				...(data.accountMode==='REAL'&&data.paperPositions.length?[
 					{label:'Separate Paper estimated mark value',amount:data.paperPositionValue},
-					{label:'Separate Paper simulated unrealized P/L',amount:data.paperUnrealizedPnl},
+					{label:'Separate Paper unrealized P/L',amount:data.paperUnrealizedPnl},
 				]:[]),
 			]}/>
 			{data.accountMode==='DEMO'&&<section className="demo-reset-control"><div><b>{translate('portfolioResetTitle')}</b><p>{translate('resetPortfolioDescription')}</p></div>{!resetOpen?<button type="button" className="button-secondary" onClick={()=>setResetOpen(true)}>{translate('resetDemo')}</button>:<form onSubmit={event=>void resetDemo(event)}><label className="account-label">{translate('typeResetConfirmation')}<input className="input" autoComplete="off" value={resetConfirmation} onChange={event=>setResetConfirmation(event.target.value)}/></label><div className="flex flex-wrap gap-2"><button className="btn bg-loss" disabled={resetBusy||resetConfirmation!=='RESET DEMO ACCOUNT'}>{resetBusy?translate('portfolioResetting'):translate('portfolioConfirmReset')}</button><button className="btn bg-white/5" type="button" onClick={()=>{setResetOpen(false);setResetConfirmation('');}}>{translate('cancel')}</button></div></form>}</section>}
@@ -205,7 +205,7 @@ export default function PortfolioExperience(){
 					{performance.length>1&&<p className="portfolio-period-note">Showing {new Date(performance[0].snapshotBucket).toLocaleDateString()} – {new Date(performance[performance.length-1].snapshotBucket).toLocaleDateString()} from saved account snapshots.</p>}
 				</section>
 				<section className="account-panel card p-5">
-					<div className="account-panel-title"><div><h2>Asset allocation</h2><p className="account-panel-subtitle">{data.accountMode==='DEMO'?'Based on available virtual cash and simulated trading positions':'Based on current recorded holdings and active investments'}</p></div></div>
+					<div className="account-panel-title"><div><h2>Asset allocation</h2><p className="account-panel-subtitle">{data.accountMode==='DEMO'?'Based on available virtual cash and DEMO positions':'Based on current recorded holdings and active investments'}</p></div></div>
 					{data.allocations.length?<div className="portfolio-donut-layout">
 						<div className="portfolio-donut"><ResponsiveContainer width="100%" height="100%"><PieChart><Tooltip formatter={(value)=>money(String(value))}/><Pie data={data.allocations} dataKey="value" nameKey="category" innerRadius="62%" outerRadius="88%" paddingAngle={2} stroke="none">{data.allocations.map((item,index)=><Cell key={item.category} fill={categoryColor(item.category,index)}/>)}</Pie></PieChart></ResponsiveContainer></div>
 						<ul className="portfolio-legend">{data.allocations.map((item,index)=><li key={item.category}><i style={{background:categoryColor(item.category,index)}}/><span>{item.category}</span><b>{Number(item.percentage).toFixed(1)}%</b></li>)}</ul>
@@ -213,7 +213,7 @@ export default function PortfolioExperience(){
 				</section>
 			</div>
 			<section className="account-panel card p-5 mt-4">
-				<div className="account-panel-title"><div><h2>Holdings</h2><p className="account-panel-subtitle">Current values are internal simulated valuations, not external assets.</p></div><span className="muted text-sm">{data.holdings.length} records</span></div>
+				<div className="account-panel-title"><div><h2>Holdings</h2><p className="account-panel-subtitle">Current values are internal reference values, not external assets.</p></div><span className="muted text-sm">{data.holdings.length} records</span></div>
 				{data.holdings.length===0?<p className="account-empty">No holdings are recorded for this account yet.</p>:<>
 					<div className="investment-opportunity-filters">
 						<label className="account-label">Search holdings<input className="input" type="search" value={holdingSearch} onChange={event=>setHoldingSearch(event.target.value)} placeholder="Name, category or status"/></label>
@@ -223,7 +223,7 @@ export default function PortfolioExperience(){
 						<div className="portfolio-holdings-head" aria-hidden="true"><span>Asset</span><span>% of portfolio</span><span>Cost basis</span><span>Current value</span><span>Unrealized P/L</span></div>
 						<div className="portfolio-holdings">{visibleHoldings.map(holding=><details className="portfolio-holding" key={holding.id}>
 							<summary><span className="portfolio-holding-asset"><AssetIcon category={holding.category} name={holding.name}/><span><b>{holding.name}</b><small>{holding.category} · {holding.status.replaceAll('_',' ').toLowerCase()}</small></span></span><span>{Number(data.totalValue)>0?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(1)}%`:'0.0%'}</span><span>{money(holding.invested)}</span><span>{money(holding.value)}</span><strong className={Number(holding.gainLoss)>=0?'text-profit':'text-loss'}>{signed(holding.gainLoss)}</strong></summary>
-							<dl><div><dt>Recorded asset</dt><dd>{holding.name}</dd></div><div><dt>Category</dt><dd>{holding.category}</dd></div><div><dt>Portfolio share</dt><dd>{Number(data.totalValue)>0?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(2)}%`:'0.00%'}</dd></div><div><dt>Position status</dt><dd>{holding.status.replaceAll('_',' ')}</dd></div><div><dt>Valuation source</dt><dd>{data.marketDataMode} account record</dd></div></dl>
+							<dl><div><dt>Recorded asset</dt><dd>{holding.name}</dd></div><div><dt>Category</dt><dd>{holding.category}</dd></div><div><dt>Portfolio share</dt><dd>{Number(data.totalValue)>0?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(2)}%`:'0.00%'}</dd></div><div><dt>Position status</dt><dd>{holding.status.replaceAll('_',' ')}</dd></div><div><dt>Valuation source</dt><dd>{data.accountMode==='DEMO'?'DEMO':'Internal'} account record</dd></div></dl>
 						</details>)}</div>
 					</>}
 				</>}
@@ -234,10 +234,10 @@ export default function PortfolioExperience(){
 				<article><span>{data.accountMode==='DEMO'?'Recorded trading P/L':'Recorded gain/loss'}</span><b className={data.totalPnl===null?'':positive?'text-profit':'text-loss'}>{signed(data.totalPnl)}</b></article>
 			</section>
 			{data.accountMode==='REAL'&&<section className="account-panel card p-5 mt-4">
-				<div className="account-panel-title"><div><h2>Investment activity</h2><p className="account-panel-subtitle">Configured terms, actual statuses, and persisted simulated outcomes</p></div><Link className="text-link" href="/investments">Browse opportunities <TrendingUp size={14}/></Link></div>
+				<div className="account-panel-title"><div><h2>Investment activity</h2><p className="account-panel-subtitle">Configured terms, actual statuses, and persisted account outcomes</p></div><Link className="text-link" href="/investments">Browse opportunities <TrendingUp size={14}/></Link></div>
 				{data.investments.length?<div className="portfolio-investment-list">{data.investments.map(item=>{
 					const payout=item.simulatedPayout===null?null:Number(item.simulatedPayout)-Number(item.amount);
-					return <details key={item.id} className="portfolio-investment-row"><summary><span><b>{item.opportunity.title}</b><small>{item.opportunity.category} · {money(item.amount)} principal</small></span><span className={`status-pill ${data.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{item.status.replaceAll('_',' ')}</span></summary><dl><div><dt>Configured duration</dt><dd>{item.opportunity.durationDays} days</dd></div><div><dt>Risk classification</dt><dd>{item.opportunity.riskLevel.replaceAll('_',' ')}</dd></div><div><dt>Target return</dt><dd>{percentage(item.targetReturnPercent)}</dd></div><div><dt>Captured tier boost</dt><dd>{percentage(item.tierBoostPercent)}</dd></div><div><dt>Simulated result</dt><dd>{item.simulatedPayout===null?'Not settled':`${money(item.simulatedPayout)} payout · ${signed(payout)}`}</dd></div><div><dt>Reference</dt><dd className="break-all">{item.settlementReference||'Not settled'}</dd></div><div><dt>Requested</dt><dd>{new Date(item.requestedAt).toLocaleString()}</dd></div></dl><small>Simulated returns are estimates, not guarantees or external assets.</small></details>;
+					return <details key={item.id} className="portfolio-investment-row"><summary><span><b>{item.opportunity.title}</b><small>{item.opportunity.category} · {money(item.amount)} principal</small></span><span className={`status-pill ${data.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{item.status.replaceAll('_',' ')}</span></summary><dl><div><dt>Configured duration</dt><dd>{item.opportunity.durationDays} days</dd></div><div><dt>Risk classification</dt><dd>{item.opportunity.riskLevel.replaceAll('_',' ')}</dd></div><div><dt>Target return</dt><dd>{percentage(item.targetReturnPercent)}</dd></div><div><dt>Captured tier boost</dt><dd>{percentage(item.tierBoostPercent)}</dd></div><div><dt>Recorded result</dt><dd>{item.simulatedPayout===null?'Not settled':`${money(item.simulatedPayout)} payout · ${signed(payout)}`}</dd></div><div><dt>Reference</dt><dd className="break-all">{item.settlementReference||'Not settled'}</dd></div><div><dt>Requested</dt><dd>{new Date(item.requestedAt).toLocaleString()}</dd></div></dl><small>Returns are estimates, not guarantees or external assets.</small></details>;
 				})}</div>:<p className="account-empty">No investment requests are recorded in this account.</p>}
 			</section>}
 			{data.accountMode==='REAL'&&<section className="account-panel card p-5 mt-4">
@@ -245,11 +245,11 @@ export default function PortfolioExperience(){
 				{data.recentFunding.length?<div className="portfolio-investment-list">{data.recentFunding.map(item=><Link className="portfolio-recent-funding" href={`/wallet/transactions/${encodeURIComponent(item.id)}`} key={item.id}><span className="portfolio-recent-funding-icon">{item.type==='DEPOSIT'?<ArrowDownLeft size={16}/>:<ArrowUpRight size={16}/>}</span><span><b>{item.type} · {fundingAmount(item.amount,item.currency)}</b><small>{item.method} · {new Date(item.createdAt).toLocaleString()}</small></span><span className="status-pill">{item.status.replaceAll('_',' ')}</span></Link>)}</div>:<p className="account-empty">No recent funding requests in this account.</p>}
 			</section>}
 			{data.accountMode==='REAL'&&<section className="account-panel card p-5 mt-4">
-				<div className="account-panel-title"><div><h2>Investment opportunities</h2><p className="account-panel-subtitle">Available simulated allocations that can be funded from your account balance.</p></div><Link className="text-link" href="/investments">Explore all <TrendingUp size={14}/></Link></div>
+				<div className="account-panel-title"><div><h2>Investment opportunities</h2><p className="account-panel-subtitle">Available allocations that can be funded from your account balance.</p></div><Link className="text-link" href="/investments">Explore all <TrendingUp size={14}/></Link></div>
 				{data.availableOpportunities.length?<div className="portfolio-opportunity-grid">{data.availableOpportunities.map(item=><Link className="portfolio-opportunity-card" href="/investments" key={item.id}><span><AssetIcon category={item.category} name={item.assetSymbol||item.title}/></span><b>{item.title}</b><small>{item.category} · {item.riskLevel.replaceAll('_',' ')}</small><span className="portfolio-opportunity-terms">Min. {money(item.minimumAmount)}{item.targetReturnPercent===null?'':` · Target ${percentage(item.targetReturnPercent)}`}</span></Link>)}</div>:<p className="account-empty">There are no available opportunities for this account right now.</p>}
 			</section>}
 			<section className="account-panel card p-5 mt-4">
-				<div className="account-panel-title"><div><h2>Simulated position details</h2><p className="account-panel-subtitle">Positions are kept separate from investment opportunity allocations.</p></div></div>
+				<div className="account-panel-title"><div><h2>Position details</h2><p className="account-panel-subtitle">Positions are kept separate from investment opportunity allocations.</p></div></div>
 				<div className="portfolio-metrics-grid"><article><span>Recorded gain/loss</span><b className={data.totalPnl===null?'':positive?'text-profit':'text-loss'}>{signed(data.totalPnl)}</b></article><article><span>Realized trading & settled investment P/L</span><b>{signed(data.realizedPnl)}</b></article><article><span>Unrealized trading P/L</span><b>{signed(data.unrealizedPnl)}</b></article><article><span>Change since first snapshot today</span><b>{signed(data.dailyPnl)}</b></article><article><span>Return vs. recorded funding</span><b>{percentage(data.returnPercent)}</b></article></div>
 			</section>
 		</>}

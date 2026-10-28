@@ -37,8 +37,8 @@ export async function executeOrderTx(tx:Prisma.TransactionClient,orderId:string,
  const feeRate=Prisma.Decimal.max(order.instrument.takerFee,configuredDemoFee);
  const fee=roundUsdAmount(notional.mul(feeRate));
  const userAcct=await ensureUserLedger(tx,order.userId,order.accountMode);
- const fees=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:FEES`,'Simulated trading fees','USD',order.accountMode);
- const clearing=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:CLEARING`,'Simulated spot clearing','USD',order.accountMode);
+ const fees=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:FEES`,'DEMO trading fees','USD',order.accountMode);
+ const clearing=await ensureSystemAccount(tx,`SYSTEM:${order.accountMode}:CLEARING`,'DEMO spot clearing','USD',order.accountMode);
  const existing=await tx.position.findFirst({where:{userId:order.userId,instrumentId:order.instrumentId,accountMode:order.accountMode,status:'OPEN',side:OrderSide.BUY}});
  if(order.side===OrderSide.BUY){
   const [ledgerBalance,pendingWithdrawals]=await Promise.all([
@@ -47,8 +47,8 @@ export async function executeOrderTx(tx:Prisma.TransactionClient,orderId:string,
   ]);
   const available=ledgerBalance.minus(pendingWithdrawals._sum.amount??new Prisma.Decimal(0));
   if(available.lt(notional.plus(fee)))throw new Error('INSUFFICIENT_SIMULATED_BALANCE');
-  await postDoubleEntry(tx,{reference:`TRADE:BUY:${order.id}`,description:`Simulated purchase of ${order.instrument.symbol}`,debitAccountId:userAcct.id,creditAccountId:clearing.id,amount:notional});
-  if(fee.gt(0))await postDoubleEntry(tx,{reference:`TRADE:FEE:${order.id}`,description:`Simulated ${order.instrument.symbol} trading fee`,debitAccountId:userAcct.id,creditAccountId:fees.id,amount:fee});
+  await postDoubleEntry(tx,{reference:`TRADE:BUY:${order.id}`,description:`DEMO purchase of ${order.instrument.symbol}`,debitAccountId:userAcct.id,creditAccountId:clearing.id,amount:notional});
+  if(fee.gt(0))await postDoubleEntry(tx,{reference:`TRADE:FEE:${order.id}`,description:`DEMO ${order.instrument.symbol} trading fee`,debitAccountId:userAcct.id,creditAccountId:fees.id,amount:fee});
   if(existing){
    const average=averageEntryPrice(existing.quantity,existing.entryPrice,quantity,fillPrice,fee);
    await tx.position.update({where:{id:existing.id},data:{quantity:{increment:quantity},entryPrice:average,margin:{increment:notional.plus(fee)},leverage:1}});
@@ -61,8 +61,8 @@ export async function executeOrderTx(tx:Prisma.TransactionClient,orderId:string,
   const reserved=await tx.order.aggregate({where:{userId:order.userId,instrumentId:order.instrumentId,accountMode:order.accountMode,side:OrderSide.SELL,status:OrderStatus.OPEN,id:{not:order.id}},_sum:{quantity:true}});
   assertSellableQuantity(existing.quantity,reserved._sum.quantity??new Prisma.Decimal(0),quantity);
   const pnl=realizedSpotPnl(existing.entryPrice,fillPrice,quantity,fee);
-  await postDoubleEntry(tx,{reference:`TRADE:SELL:${order.id}`,description:`Simulated sale of ${order.instrument.symbol}`,debitAccountId:clearing.id,creditAccountId:userAcct.id,amount:notional});
-  if(fee.gt(0))await postDoubleEntry(tx,{reference:`TRADE:FEE:${order.id}`,description:`Simulated ${order.instrument.symbol} trading fee`,debitAccountId:userAcct.id,creditAccountId:fees.id,amount:fee});
+  await postDoubleEntry(tx,{reference:`TRADE:SELL:${order.id}`,description:`DEMO sale of ${order.instrument.symbol}`,debitAccountId:clearing.id,creditAccountId:userAcct.id,amount:notional});
+  if(fee.gt(0))await postDoubleEntry(tx,{reference:`TRADE:FEE:${order.id}`,description:`DEMO ${order.instrument.symbol} trading fee`,debitAccountId:userAcct.id,creditAccountId:fees.id,amount:fee});
   const remaining=existing.quantity.minus(quantity);
   const basisReduction=existing.margin.mul(quantity).div(existing.quantity);
   await tx.position.update({where:{id:existing.id},data:remaining.isZero()?{status:'CLOSED',closedAt:new Date(),margin:0,realizedPnl:{increment:pnl}}:{quantity:remaining,margin:existing.margin.minus(basisReduction),realizedPnl:{increment:pnl}}});
@@ -87,17 +87,17 @@ export async function closeSimulatedPositionTx(tx:Prisma.TransactionClient,userI
   const quantity=position.quantity;
   const proceeds=roundUsdAmount(price.mul(quantity));
   fee=roundUsdAmount(proceeds.mul(position.instrument.takerFee));
-  const clearing=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:CLEARING`,'Simulated spot clearing','USD',position.accountMode);
-  const fees=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:FEES`,'Simulated trading fees','USD',position.accountMode);
-  await postDoubleEntry(tx,{reference:`${position.accountMode}:POSITION_CLOSE:${position.id}`,description:`Simulated sale of ${position.instrument.symbol}`,debitAccountId:clearing.id,creditAccountId:userAccount.id,amount:proceeds});
-  if(fee.gt(0))await postDoubleEntry(tx,{reference:`${position.accountMode}:POSITION_CLOSE_FEE:${position.id}`,description:`Simulated ${position.instrument.symbol} closing fee`,debitAccountId:userAccount.id,creditAccountId:fees.id,amount:fee});
+  const clearing=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:CLEARING`,'DEMO spot clearing','USD',position.accountMode);
+  const fees=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:FEES`,'DEMO trading fees','USD',position.accountMode);
+  await postDoubleEntry(tx,{reference:`${position.accountMode}:POSITION_CLOSE:${position.id}`,description:`DEMO sale of ${position.instrument.symbol}`,debitAccountId:clearing.id,creditAccountId:userAccount.id,amount:proceeds});
+  if(fee.gt(0))await postDoubleEntry(tx,{reference:`${position.accountMode}:POSITION_CLOSE_FEE:${position.id}`,description:`DEMO ${position.instrument.symbol} closing fee`,debitAccountId:userAccount.id,creditAccountId:fees.id,amount:fee});
   pnl=realizedSpotPnl(position.entryPrice,price,quantity,fee);
  }else{
-  const clearing=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:CLEARING`,'Simulated clearing','USD',position.accountMode);
+  const clearing=await ensureSystemAccount(tx,`SYSTEM:${position.accountMode}:CLEARING`,'DEMO clearing','USD',position.accountMode);
   pnl=position.entryPrice.minus(price).mul(position.quantity);
   const settlement=position.margin.plus(pnl);
   if(settlement.lte(0))throw new Error('POSITION_LIQUIDATED');
-  await postDoubleEntry(tx,{reference:`${position.accountMode}:LEGACY_POSITION_CLOSE:${position.id}`,description:'Simulated legacy position close',debitAccountId:clearing.id,creditAccountId:userAccount.id,amount:settlement});
+  await postDoubleEntry(tx,{reference:`${position.accountMode}:LEGACY_POSITION_CLOSE:${position.id}`,description:'DEMO legacy position close',debitAccountId:clearing.id,creditAccountId:userAccount.id,amount:settlement});
  }
  const closingOrder=await tx.order.create({data:{
   userId,
@@ -116,7 +116,7 @@ export async function closeSimulatedPositionTx(tx:Prisma.TransactionClient,userI
  const closed=await tx.position.update({where:{id:position.id},data:{status:'CLOSED',closedAt:new Date(),margin:0,realizedPnl:{increment:pnl}}});
  await tx.auditLog.create({data:{actorId,action:`${position.accountMode}_SIMULATED_POSITION_${actorId===userId?'CLOSED':'ADMIN_CLOSED'}`,entity:'POSITION',entityId:position.id,metadata:{accountMode:position.accountMode,simulated:true,symbol:position.instrument.symbol,quantity:position.quantity.toString(),exitPrice:price.toString(),realizedPnl:pnl.toString(),closingOrderId:closingOrder.id}}});
  await tx.auditLog.create({data:{actorId,action:`${position.accountMode==='DEMO'?'DEMO':'REAL_SIMULATED'}_ORDER_${closingOrder.side}_FILLED`,entity:'ORDER',entityId:closingOrder.id,metadata:{oldState:OrderStatus.OPEN,newState:OrderStatus.FILLED,accountMode:position.accountMode,simulated:true,positionId:position.id,instrument:position.instrument.symbol,quantity:position.quantity.toString(),fillPrice:price.toString(),fee:fee.toString()}}});
- await createNotification(tx,{userId,type:NotificationType.TRADE,title:`${position.accountMode} simulated position closed`,message:`Your ${position.instrument.symbol} position was closed by a simulated ${closingOrder.side.toLowerCase()} order. No external order was placed.`,dedupeKey:`order:${closingOrder.id}:filled`,relatedEntity:'ORDER',relatedId:closingOrder.id,actionUrl:'/trade'});
+ await createNotification(tx,{userId,type:NotificationType.TRADE,title:`${position.accountMode} position closed`,message:`Your ${position.instrument.symbol} position was closed by an internal ${position.accountMode==='DEMO'?'DEMO':'PAPER'} ${closingOrder.side.toLowerCase()} order. No external order was placed.`,dedupeKey:`order:${closingOrder.id}:filled`,relatedEntity:'ORDER',relatedId:closingOrder.id,actionUrl:'/trade'});
  return closed;
 }
 
@@ -173,6 +173,6 @@ export async function processOpenOrders(){
    const p=Number(o.instrument.price); const hit=executable(o.type,o.side,p,o.price===null?undefined:Number(o.price),o.stopPrice===null?undefined:Number(o.stopPrice));
    if(!hit)continue;
   try{await db.$transaction(tx=>executeOrderTx(tx,o.id,p),{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});}
-  catch(e){if(e instanceof Error&&['INSUFFICIENT_SIMULATED_BALANCE','INSUFFICIENT_POSITION','ORDER_NOT_OPEN','ORDER_FILLED'].includes(e.message))await db.$transaction(async tx=>{const rejected=await tx.order.updateMany({where:{id:o.id,status:OrderStatus.OPEN},data:{status:OrderStatus.REJECTED}});if(rejected.count){await tx.auditLog.create({data:{actorId:o.userId,action:`${o.accountMode}_SIMULATED_ORDER_REJECTED`,entity:'ORDER',entityId:o.id,metadata:{oldState:OrderStatus.OPEN,newState:OrderStatus.REJECTED,accountMode:o.accountMode,simulated:true,reason:e.message}}});await createNotification(tx,{userId:o.userId,type:NotificationType.TRADE,title:`${o.accountMode} simulated order rejected`,message:`Your ${o.side.toLowerCase()} order for ${o.instrument.symbol} was rejected in the simulated account.`,dedupeKey:`order:${o.id}:rejected`,relatedEntity:'ORDER',relatedId:o.id,actionUrl:'/trade'});}});}
+  catch(e){if(e instanceof Error&&['INSUFFICIENT_SIMULATED_BALANCE','INSUFFICIENT_POSITION','ORDER_NOT_OPEN','ORDER_FILLED'].includes(e.message))await db.$transaction(async tx=>{const rejected=await tx.order.updateMany({where:{id:o.id,status:OrderStatus.OPEN},data:{status:OrderStatus.REJECTED}});if(rejected.count){await tx.auditLog.create({data:{actorId:o.userId,action:`${o.accountMode}_SIMULATED_ORDER_REJECTED`,entity:'ORDER',entityId:o.id,metadata:{oldState:OrderStatus.OPEN,newState:OrderStatus.REJECTED,accountMode:o.accountMode,simulated:true,reason:e.message}}});await createNotification(tx,{userId:o.userId,type:NotificationType.TRADE,title:`${o.accountMode} order rejected`,message:`Your ${o.side.toLowerCase()} order for ${o.instrument.symbol} was rejected in the ${o.accountMode==='DEMO'?'DEMO':'PAPER'} account.`,dedupeKey:`order:${o.id}:rejected`,relatedEntity:'ORDER',relatedId:o.id,actionUrl:'/trade'});}});}
  }
 }

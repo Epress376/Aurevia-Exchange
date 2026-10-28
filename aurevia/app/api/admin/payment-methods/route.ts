@@ -15,7 +15,7 @@ export async function GET(){
 export async function POST(){
 	try{
 		await requireAdmin();
-		return NextResponse.json({error:'External payment processing is disabled. Funding requests use internal simulation.'},{status:409});
+		return NextResponse.json({error:'External payment processing is disabled. Funding requests use internal ledger records only.'},{status:409});
 	}catch(error){
 		const status=error instanceof Error&&error.message==='UNAUTHORIZED'?401:403;
 		return NextResponse.json({error:status===401?'Unauthorized':'Forbidden'},{status});

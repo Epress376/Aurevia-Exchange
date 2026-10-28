@@ -125,7 +125,7 @@ export default function AdminUsersPanel(){
 		setBusy(true);setBusyUserId(user.id);setError('');setNotice('');
 		try{
 			const response=await fetch('/api/admin/balances',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({userId:user.id,accountMode:adjustment.accountMode,currency:adjustment.currency,amount:adjustment.amount,direction:adjustment.direction,category:adjustment.category,reason:adjustment.reason.trim(),idempotencyKey})});
-			const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to record the simulated ledger adjustment.');
+			const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to record the ledger adjustment.');
 			setNotice(`${result.replayed?'Previously recorded':'Recorded'} ${adjustment.direction.toLowerCase()} of ${Number(adjustment.amount).toFixed(2)} ${adjustment.currency} in ${adjustment.accountMode} for ${user.email}. Reference: ${result.reference}`);
 			setAdjustmentReceipt({userId:user.id,receipt:{
 				id:result.transactionId,
@@ -143,7 +143,7 @@ export default function AdminUsersPanel(){
 				purpose:`${adjustment.category.replaceAll('_',' ')} · ${adjustment.reason.trim()}`,
 			}});
 			setAdjustments(current=>({...current,[user.id]:emptyAdjustment(adjustment.accountMode)}));
-		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to record the simulated ledger adjustment. Retry without changing the request.')}
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to record the ledger adjustment. Retry without changing the request.')}
 		finally{setBusy(false);setBusyUserId('')}
 	}
 
@@ -180,15 +180,15 @@ export default function AdminUsersPanel(){
 						<button className="btn min-h-11 bg-loss text-black" type="button" disabled={busy||user.status==='CLOSED'} onClick={()=>void updateAccountControl(user,'accountRestricted',!user.accountRestricted)}>{user.accountRestricted?'Remove account restriction':'Restrict account'}</button>
 					</div>
 					<form className="mt-4 grid gap-3 border-t border-white/10 pt-4 sm:grid-cols-2 lg:grid-cols-4" onSubmit={event=>void adjustBalance(event,user)}>
-						<p className="text-sm font-semibold sm:col-span-2 lg:col-span-4">Fund User Account · mode-specific simulated ledger</p>
-						<label className="account-label">Account<select className="input mt-1" value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).accountMode} onChange={event=>updateAdjustment(user.id,user.accountMode,'accountMode',event.target.value)}><option value="DEMO">DEMO</option><option value="REAL">REAL · simulated ledger</option></select></label>
+						<p className="text-sm font-semibold sm:col-span-2 lg:col-span-4">Fund User Account · mode-specific ledger</p>
+						<label className="account-label">Account<select className="input mt-1" value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).accountMode} onChange={event=>updateAdjustment(user.id,user.accountMode,'accountMode',event.target.value)}><option value="DEMO">DEMO</option><option value="REAL">REAL · internal ledger</option></select></label>
 						<label className="account-label">Direction<select className="input mt-1" value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).direction} onChange={event=>updateAdjustment(user.id,user.accountMode,'direction',event.target.value)}><option value="CREDIT">Credit</option><option value="DEBIT">Debit</option></select></label>
 						<label className="account-label">Category<select className="input mt-1" value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).category} onChange={event=>updateAdjustment(user.id,user.accountMode,'category',event.target.value)}><option value="ADMIN_ALLOCATION">Admin allocation</option><option value="CORRECTION">Correction</option><option value="PROMOTIONAL">Promotional</option><option value="REVERSAL">Reversal</option></select></label>
 						<label className="account-label">Currency<select className="input mt-1" value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).currency} onChange={event=>updateAdjustment(user.id,user.accountMode,'currency',event.target.value)}>{SUPPORTED_CURRENCIES.map(currency=><option key={currency}>{currency}</option>)}</select></label>
 						<label className="account-label">Amount<input className="input mt-1" type="number" min="0.01" step="0.01" required value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).amount} onChange={event=>updateAdjustment(user.id,user.accountMode,'amount',event.target.value)}/></label>
 						<label className="account-label sm:col-span-2">Reason<input className="input mt-1" minLength={3} maxLength={300} required value={(adjustments[user.id]||emptyAdjustment(user.accountMode)).reason} onChange={event=>updateAdjustment(user.id,user.accountMode,'reason',event.target.value)}/></label>
-						<button className="btn min-h-11 bg-gold text-black" type="submit" disabled={busy||user.role!=='USER'||user.status!=='ACTIVE'} title={user.role!=='USER'||user.status!=='ACTIVE'?'Only active customer accounts can receive ledger adjustments.':'Record an audited simulated ledger adjustment.'}>{busyUserId===user.id?'Recording…':'Record ledger adjustment'}</button>
-						<p className="sm:col-span-2 lg:col-span-4 text-xs muted">Balance changes are simulated ledger entries, audited with a reason and request key. REAL-mode entries do not move external funds.</p>
+						<button className="btn min-h-11 bg-gold text-black" type="submit" disabled={busy||user.role!=='USER'||user.status!=='ACTIVE'} title={user.role!=='USER'||user.status!=='ACTIVE'?'Only active customer accounts can receive ledger adjustments.':'Record an audited ledger adjustment.'}>{busyUserId===user.id?'Recording…':'Record ledger adjustment'}</button>
+						<p className="sm:col-span-2 lg:col-span-4 text-xs muted">Balance changes are ledger entries, audited with a reason and request key. REAL-mode entries do not move external funds.</p>
 					</form>
 					{adjustmentReceipt?.userId===user.id&&<section className="mt-4 border-t border-white/10 pt-4"><div className="account-panel-title"><div><h3>Direct funding receipt</h3><p className="account-panel-subtitle">Printable record of the mode-specific ledger entry.</p></div></div><ReceiptGenerator receipt={adjustmentReceipt.receipt}/></section>}
 				</div>}</details>}

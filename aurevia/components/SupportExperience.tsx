@@ -14,13 +14,13 @@ type DemoOrderDraft={instrumentId:string;symbol:string;side:'BUY'|'SELL';type:'M
 
 function answerFor(question:string,mode:'DEMO'|'REAL'){
 	const text=question.toLowerCase();
-	if(/demo|real|account mode/.test(text))return 'DEMO and REAL accounts use separate Aurevia ledgers. DEMO trades are simulated. Eligible REAL orders use Alpaca Paper Trading when enabled; they are not live trades. Submit funding or withdrawal requests in Wallet for review. These requests remain internal ledger records; the application does not send an external payment or payout.';
+	if(/demo|real|account mode/.test(text))return 'DEMO and REAL accounts use separate Aurevia ledgers. DEMO trades are for practice and do not affect REAL balances. Eligible REAL orders use Alpaca Paper Trading when enabled; they are not live trades. Submit funding or withdrawal requests in Wallet for review. These requests remain internal ledger records; the application does not send an external payment or payout.';
 	if(/deposit|payment|bitcoin|bank/.test(text))return 'Open Wallet to submit an available funding request. Approved REAL credits are posted to Aurevia’s internal ledger after review. A request or ledger credit is not confirmation of an external payment; no payment processor transfer is initiated here.';
 	if(/withdraw|payout/.test(text))return 'Open Wallet, choose Withdraw, and provide the destination details. The amount is reserved while review is pending. It is debited only after administrator approval; this application does not send bank or cryptocurrency payouts.';
 	if(/kyc|identity|verification/.test(text))return 'Open Verification to submit your identity details and supported identity documents for administrator review. REAL-account access may require approved verification. External identity verification is not configured.';
 	if(/status|transaction|reference|id/.test(text))return 'Open Wallet and select the request reference to see its status, timestamps, review note, and recorded history. I cannot verify payment receipt or invent an external transaction ID.';
 	if(/setting|profile|password|security/.test(text))return 'Open Settings to review your profile and available account controls. Use Logout in the navigation when you want to end your session.';
-	if(/trade|market|order/.test(text))return mode==='DEMO'?'Open Trade to use the simulated market workspace. DEMO prices and executions are simulated and remain separate from REAL activity.':'Open Trade to submit an eligible REAL-mode order to Alpaca Paper Trading when the paper integration is enabled. Paper orders are not live trades; check the provider status if submission is unavailable.';
+	if(/trade|market|order/.test(text))return mode==='DEMO'?'Open Trade to use the DEMO market workspace. DEMO prices and executions are for practice and remain separate from REAL activity.':'Open Trade to submit an eligible REAL-mode order to Alpaca Paper Trading when the paper integration is enabled. Paper orders are not live trades; check the provider status if submission is unavailable.';
 	return 'I can help with account modes, deposits, withdrawals, verification, settings, and transaction statuses. For account-specific review, choose Contact Admin to open a support ticket.';
 }
 
@@ -82,7 +82,7 @@ export default function SupportExperience(){
 			})});
 			const result=await response.json();
 			if(!response.ok)throw new Error(result.error||'The DEMO order could not be submitted.');
-			setMessages(current=>[...current,{speaker:'nova',text:`Your explicitly confirmed DEMO order was accepted by the simulated trading system. Recorded status: ${String(result.status||'unknown').replaceAll('_',' ').toLowerCase()}. Order reference: ${result.id}. This is not a REAL trade.`}]);
+			setMessages(current=>[...current,{speaker:'nova',text:`Your explicitly confirmed DEMO order was accepted by the practice trading system. Recorded status: ${String(result.status||'unknown').replaceAll('_',' ').toLowerCase()}. Order reference: ${result.id}. This is not a REAL trade.`}]);
 			setOrderDraft(null);
 		}catch(exception){setError(exception instanceof Error?exception.message:'The DEMO order could not be submitted.');}
 		finally{setBusy(false)}

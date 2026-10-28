@@ -14,6 +14,7 @@ import {calculateTradePlan,formatTradePlan,hasDemoOrderIntent,missingTradePlanIn
 import {rateLimit} from '@/lib/rate-limit';
 import {isIP} from 'node:net';
 import {openAiChat,NOVA_SYSTEM_PROMPT} from '@/lib/openai-client';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 const schema=z.object({question:z.string().trim().min(1).max(800),conversationId:z.string().uuid().optional()});
 
@@ -132,7 +133,7 @@ export async function POST(request:Request){
 					if(ledger){
 						const [current,reserved]=await Promise.all([balance(db,ledger.id),user.accountMode===AccountMode.REAL?reservedWithdrawalAmount(db,user.id,user.accountMode,'USD'):Promise.resolve(new Prisma.Decimal(0))]);
 						const available=Prisma.Decimal.max(new Prisma.Decimal(0),current.minus(reserved));
-						answers.push(`${user.accountMode} USD ledger balance: ${current.toString()} USD. Pending withdrawals reserve ${reserved.toString()} USD, leaving ${available.toString()} USD available before other account restrictions. Pending deposits are not included until approved. This is simulated ledger data.`);
+						answers.push(`${user.accountMode} USD ledger balance: ${current.toString()} USD. Pending withdrawals reserve ${reserved.toString()} USD, leaving ${available.toString()} USD available before other account restrictions. Pending deposits are not included until approved. This is internal account ledger data.`);
 					}
 					else answers.push(`No ${user.accountMode} USD ledger account is available to report.`);
 					eventTypes.push('WALLET_BALANCE_LOOKUP');
@@ -146,9 +147,9 @@ export async function POST(request:Request){
 						const mark=new Prisma.Decimal(position.instrument.price);
 						const difference=position.side==='BUY'?mark.minus(position.entryPrice):position.entryPrice.minus(mark);
 						const unrealized=difference.mul(position.quantity);
-						return `${position.side} ${position.quantity.toString()} ${position.instrument.symbol} at entry ${position.entryPrice.toString()}, latest stored simulated mark ${mark.toString()}, unrealized mark-to-market ${unrealized.toString()} USD (price updated ${position.instrument.updatedAt.toISOString()})`;
+						return `${position.side} ${position.quantity.toString()} ${position.instrument.symbol} at entry ${position.entryPrice.toString()}, latest stored DEMO mark ${mark.toString()}, unrealized mark-to-market ${unrealized.toString()} USD (price updated ${position.instrument.updatedAt.toISOString()})`;
 					}).join('; ');
-					answers.push(`${user.accountMode} account has ${openPositionCount} open position${openPositionCount===1?'':'s'}${holdings?`. Latest records: ${holdings}`:'. No open positions are recorded.'} Mark-to-market figures are estimates from stored simulated prices, not realized profit or external valuations.`);
+					answers.push(`${user.accountMode} account has ${openPositionCount} open position${openPositionCount===1?'':'s'}${holdings?`. Latest records: ${holdings}`:'. No open positions are recorded.'} Mark-to-market figures are estimates from stored DEMO prices, not realized profit or external valuations.`);
 					eventTypes.push('PORTFOLIO_SUMMARY_LOOKUP');
 				}
 				if(/\b(orders?|trades?|execution|fill)\b/.test(requested)){
@@ -162,7 +163,7 @@ export async function POST(request:Request){
 				}
 				if(/\binvestments?\b/.test(requested)){
 					if(user.accountMode===AccountMode.DEMO){
-						answers.push('Investment allocations are not available in DEMO mode. The DEMO workspace is limited to virtual cash, simulated orders, positions, trading history, and profit/loss.');
+						answers.push('Investment allocations are not available in DEMO mode. The DEMO workspace is limited to virtual cash, practice orders, positions, trading history, and profit/loss.');
 					}else{
 						const [count,investments,opportunities]=await Promise.all([
 							db.investmentRequest.count({where:{userId:user.id,accountMode:user.accountMode}}),
@@ -170,8 +171,8 @@ export async function POST(request:Request){
 							db.investmentOpportunity.findMany({where:{status:'AVAILABLE',realEligible:true},orderBy:{createdAt:'desc'},take:5,select:{title:true,minimumAmount:true,durationDays:true,targetReturnPercent:true}}),
 						]);
 						const recent=investments.map(item=>`${item.opportunity.title}: ${item.amount.toString()} USD · ${item.status.replaceAll('_',' ')}${item.maturesAt?` · matures ${item.maturesAt.toISOString()}`:''}${item.status==='SETTLED'&&item.simulatedPayout?` · virtual payout ${item.simulatedPayout.toString()} USD`:''}`).join('; ');
-						const plans=opportunities.map(item=>`${item.title} · minimum ${item.minimumAmount.toString()} USD · ${item.durationDays} days${item.targetReturnPercent===null?'':` · configured simulation target ${item.targetReturnPercent.toString()}%`}`).join('; ');
-						answers.push(`Your REAL account has ${count} simulated investment request${count===1?'':'s'}${recent?`. Recent activity: ${recent}`:'. No investment requests are recorded.'}${plans?` Available simulated plans: ${plans}.`:''} Any configured target and payout are virtual simulation results, not guaranteed or external investment returns.`);
+						const plans=opportunities.map(item=>`${item.title} · minimum ${item.minimumAmount.toString()} USD · ${item.durationDays} days${item.targetReturnPercent===null?'':` · configured target ${item.targetReturnPercent.toString()}%`}`).join('; ');
+						answers.push(`Your REAL account has ${count} investment request${count===1?'':'s'}${recent?`. Recent activity: ${recent}`:'. No investment requests are recorded.'}${plans?` Available plans: ${plans}.`:''} Any configured target and payout are virtual practice results, not guaranteed or external investment returns.`);
 					}
 					eventTypes.push('INVESTMENT_CONTEXT_LOOKUP');
 				}
@@ -225,7 +226,7 @@ export async function POST(request:Request){
 			aiAssisted=Boolean(ai);
 			answer=ai||(/\b(support|contact|email)\b/i.test(input.question)?`Official Aurevia support email: ${contact.email}. You can also create a private support ticket from this page.`:/\b(deposit|payment|bitcoin|bank)\b/i.test(input.question)?'Open Wallet to submit an internal deposit or withdrawal request for administrator review.':/\b(real|demo|trade|order)\b/i.test(input.question)?'DEMO and REAL use separate account ledgers. Market data availability is separate. Nova cannot submit orders.':'I can explain platform workflows and common investing terms. For account-specific questions, sign in. I do not execute trades or confirm payments.');
 		}
-		return NextResponse.json({answer,aiAssisted,...(orderDraft?{orderDraft}:{}),activity:auditAction||quoteAudit||orderDraft?'recorded-without-conversation-content':'none'},{headers:{'Cache-Control':'private, no-store'}});
+		return NextResponse.json({answer:removeSimulatedLabels(answer),aiAssisted,...(orderDraft?{orderDraft}:{}),activity:auditAction||quoteAudit||orderDraft?'recorded-without-conversation-content':'none'},{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof ZodError)return NextResponse.json({error:'Ask a question of at most 800 characters.'},{status:400});
 		if(error instanceof Error&&error.message==='RATE_LIMITED')return NextResponse.json({error:'Nova requests are temporarily rate limited. Try again shortly.'},{status:429});

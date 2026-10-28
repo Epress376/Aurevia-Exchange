@@ -61,6 +61,6 @@ export default function DemoAiTradingPanel(){
 			<small><ShieldCheck size={12}/> Risk cap {item.risk.riskPerTradePercent.toFixed(2)}% · max position {formatUsd(item.risk.maxPositionUsd)} · fee {((item.risk.feeRate)*100).toFixed(3)}% · spread/slippage {item.risk.spreadBps.toFixed(1)}/{item.risk.slippageBps.toFixed(1)} bps. Market quote captured {new Date(item.observedAt).toLocaleTimeString()}.</small>
 			<Link href={`/trade?instrumentId=${encodeURIComponent(item.instrumentId)}&side=${item.action}&quantity=${encodeURIComponent(String(item.quantity))}`}>Review in trade terminal <ArrowRight size={14}/></Link>
 		</article>)}
-		<footer>Uses timestamped Aurevia simulated market prices. Recommendations are not orders, are not guaranteed, and may be stale; order submission rechecks price, cash, mode and risk limits.</footer>
+		<footer>Uses timestamped Aurevia DEMO prices. Recommendations are not orders, are not guaranteed, and may be stale; order submission rechecks price, cash, mode and risk limits.</footer>
 	</section>;
 }

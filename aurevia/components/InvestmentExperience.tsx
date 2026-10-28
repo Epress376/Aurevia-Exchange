@@ -79,7 +79,7 @@ export default function InvestmentExperience(){
     const submitted:Request={id:result.id,opportunityId:opportunity.id,accountMode:result.accountMode||data.accountMode,amount:result.amount||String(value),status:result.status,requestedAt:result.requestedAt||new Date().toISOString(),activatedAt:result.activatedAt||null,maturesAt:result.maturesAt||null,settlementReference:result.settlementReference||null,simulatedPayout:result.simulatedPayout||null,displayTargetPayout:null,durationDays:result.durationDays||opportunity.durationDays,opportunity:{title:opportunity.title,category:opportunity.category,riskLevel:opportunity.riskLevel,targetReturnPercent:opportunity.targetReturnPercent,durationDays:opportunity.durationDays}};
     setData(current=>current?{...current,requests:[submitted,...current.requests.filter(item=>item.id!==submitted.id)]}:current);
    }
-   setNotice(`${data?.accountMode||'Account'} simulated investment request recorded.`);
+   setNotice(`${data?.accountMode||'Account'} investment request recorded.`);
    setAmounts(current=>({...current,[opportunity.id]:''}));
    setConfirmOpportunityId('');
    await load();
@@ -90,7 +90,7 @@ export default function InvestmentExperience(){
  function reinvestPrincipal(request:Request){
   if(!data)return;
   const opportunity=data.opportunities.find(item=>item.id===request.opportunityId);
-  if(!opportunity){setNotice('This opportunity is no longer available. Choose another currently available simulated opportunity.');return;}
+  if(!opportunity){setNotice('This opportunity is no longer available. Choose another currently available opportunity.');return;}
   const returnedPrincipal=Number(request.simulatedPayout??request.amount);
   const available=Number(data.availableBalance);
   if(!Number.isFinite(returnedPrincipal)||returnedPrincipal<=0||!Number.isFinite(available)||available<=0){setError('No available returned principal can be selected for reinvestment.');return;}
@@ -98,13 +98,13 @@ export default function InvestmentExperience(){
   if(allocation<Number(opportunity.minimumAmount)){setError('The available returned principal is below this opportunity’s minimum allocation.');return;}
   setError('');
   setAmounts(current=>({...current,[opportunity.id]:allocation.toFixed(2)}));
-  setNotice(`${amount(allocation,translate('investmentNotSet'))} of the returned simulated payout selected for reinvestment. It may include previously settled simulated earnings; review and confirm the new allocation separately.`);
+  setNotice(`${amount(allocation,translate('investmentNotSet'))} of the returned payout selected for reinvestment. It may include previously settled earnings; review and confirm the new allocation separately.`);
   document.getElementById('opportunities')?.scrollIntoView({behavior:'smooth',block:'start'});
  }
 
  return <><Nav/><main className="account-page">
   <header className="account-heading"><div><span className="account-kicker">{translate('investmentsKicker')}</span><h1>{translate('investmentsTitle')}</h1><p>{translate('investmentSubtitle')}</p></div><span className={`status-pill ${data?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?translate('portfolioAccount',{mode:data.accountMode}):translate('investmentLoadingAccount')}</span></header>
-  {data&&<div className="account-callout mb-4" role="status"><span>{data.accountMode} investment activity is simulated. Requests reserve available internal ledger funds. Configured targets are estimates only; no return is guaranteed or credited as earnings.</span></div>}
+  {data&&<div className="account-callout mb-4" role="status"><span>{data.accountMode} investment activity uses internal records. Requests reserve available internal ledger funds. Configured targets are estimates only; no return is guaranteed or credited as earnings.</span></div>}
   {notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}{error&&<div className="account-callout mb-3" role="alert"><span>{error}</span><button type="button" className="text-link" onClick={()=>void load(true)}><RefreshCw size={14}/> Retry</button></div>}
   <section id="opportunities" className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('availableOpportunities')}</h2><p className="account-panel-subtitle">{translate('targetFigures')}</p></div>{data&&<span className="muted text-sm">{translate('availableCashLabel')} {amount(data.availableBalance,translate('investmentNotSet'))}</span>}</div>
    {data&&data.opportunities.length>0&&<div className="investment-opportunity-filters"><label className="account-label">Search opportunities<input className="input" type="search" value={search} onChange={event=>setSearch(event.target.value)} placeholder="Name, category or asset"/></label><label className="account-label">Category<select className="input" value={category} onChange={event=>setCategory(event.target.value)}><option value="ALL">All categories</option>{categories.map(item=><option key={item}>{item}</option>)}</select></label></div>}
@@ -117,7 +117,7 @@ export default function InvestmentExperience(){
      {(opportunity.targetPrice||opportunity.stopPrice)&&<p className="investment-levels">{translate('referenceLevels')}: {translate('targetReturn')} {amount(opportunity.targetPrice,translate('investmentNotSet'))} · {translate('stopPrice')} {amount(opportunity.stopPrice,translate('investmentNotSet'))}</p>}
      <form className="investment-request-form" onSubmit={event=>reviewAllocation(event,opportunity)}><label className="account-label">{translate('amountUsd')}<input className="input" inputMode="decimal" type="number" min={Number(opportunity.minimumAmount)} max={opportunity.maximumAmount?Number(opportunity.maximumAmount):undefined} step="0.01" required value={amounts[opportunity.id]||''} onChange={event=>{setConfirmOpportunityId('');setAmounts(current=>({...current,[opportunity.id]:event.target.value}));}}/></label><div className="investment-projection"><span>{translate('illustrativeTarget')}</span><b>{target===null?translate('unavailableTarget'):amount(target,translate('unavailableTarget'))}</b><small>{translate('projectionOnly')}</small></div><button className="btn bg-gold text-black" disabled={busy===opportunity.id||!data}>{busy===opportunity.id?translate('submitting'):'Review allocation'} <ArrowUpRight size={15}/></button><button type="button" className="text-link" onClick={()=>setAmounts(current=>({...current,[opportunity.id]:String(Math.min(Number(data?.availableBalance||0),opportunity.maximumAmount?Number(opportunity.maximumAmount):Number(data?.availableBalance||0)).toFixed(2))}))} disabled={!data||Number(data.availableBalance)<Number(opportunity.minimumAmount)}>Use available balance</button></form>
      {confirmOpportunityId===opportunity.id&&<div className="investment-confirmation" role="group" aria-label={`Review ${opportunity.title} allocation`}><p>Review allocation: <b>{amount(value,translate('investmentNotSet'))}</b> from your {data?.accountMode} account to <b>{opportunity.title}</b>. The server will recheck your balance, minimum, maximum and eligibility before reserving funds.</p><p>{target===null?'No target estimate is configured.':`Illustrative target ${amount(target,translate('unavailableTarget'))}; Estimate only.`}</p><div><button type="button" className="btn bg-white/5" onClick={()=>setConfirmOpportunityId('')} disabled={busy===opportunity.id}>Edit allocation</button><button type="button" className="btn bg-gold text-black" onClick={()=>void confirmAllocation(opportunity)} disabled={busy===opportunity.id}>{busy===opportunity.id?translate('submitting'):'Confirm allocation'}</button></div></div>}
-     <p className="investment-disclosure"><ShieldCheck size={14}/> Simulated account activity only. No external investment is placed.</p>
+     <p className="investment-disclosure"><ShieldCheck size={14}/> DEMO account activity only. No external investment is placed.</p>
     </article>;
    })}</div>:data?.opportunities.length?<p className="account-empty">No opportunities match these filters.</p>:<p className="account-empty">{translate('noOpportunities')}</p>}
   </section>

@@ -1,5 +1,6 @@
 import {randomUUID} from 'node:crypto';
 import {NotificationType,Prisma,PrismaClient} from '@prisma/client';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 type NotificationStore=PrismaClient|Prisma.TransactionClient;
 
@@ -22,11 +23,13 @@ export async function createNotification(tx:NotificationStore,input:{
 	relatedEntity?:string;
 	relatedId?:string;
 }){
+	const title=removeSimulatedLabels(input.title);
+	const message=removeSimulatedLabels(input.message);
 	const accountMode=await resolveNotificationMode(tx,input.relatedEntity,input.relatedId);
 	const notification=await tx.notification.upsert({
 		where:{dedupeKey:input.dedupeKey},
 		update:{},
-		create:{...input,accountMode},
+		create:{...input,title,message,accountMode},
 	});
 	await tx.pushOutbox.upsert({
 		where:{notificationId:notification.id},
@@ -49,8 +52,8 @@ export async function notifyActiveUsers(tx:NotificationStore,input:Omit<Paramete
 		id:randomUUID(),
 		userId:user.id,
 		type:input.type,
-		title:input.title,
-		message:input.message,
+		title:removeSimulatedLabels(input.title),
+		message:removeSimulatedLabels(input.message),
 		dedupeKey:`${input.dedupeKey}:${user.id}`,
 		relatedEntity:input.relatedEntity,
 		relatedId:input.relatedId,

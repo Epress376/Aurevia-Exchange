@@ -9,7 +9,7 @@ export async function updateActivityVisibility(
   input:{userId:string;accountMode:AccountMode;source:ManagedActivitySource;id:string;action:ActivityVisibilityAction},
 ){
   const {userId,accountMode,source,id,action}=input;
-  if(accountMode===AccountMode.DEMO&&source!=='order'&&source!=='position'&&source!=='notification')return {eligible:false,reason:'DEMO activity management is limited to simulated trades, positions, and mode-scoped notifications.'};
+  if(accountMode===AccountMode.DEMO&&source!=='order'&&source!=='position'&&source!=='notification')return {eligible:false,reason:'DEMO activity management is limited to practice trades, positions, and mode-scoped notifications.'};
   if(source==='notification'){
     const row=await tx.notification.findFirst({where:{id,userId,OR:[{accountMode},{accountMode:null}]},select:{id:true}});
     if(!row)return {eligible:false,reason:'Notification not found for this account mode.'};

@@ -41,7 +41,7 @@ export async function POST(request:Request){
  }catch(error){
   if(error instanceof ZodError)return NextResponse.json({error:'Invalid position.'},{status:400});
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
-  if(error instanceof Error&&error.message==='POSITION_NOT_FOUND')return NextResponse.json({error:'Open simulated position not found.'},{status:404});
+  if(error instanceof Error&&error.message==='POSITION_NOT_FOUND')return NextResponse.json({error:'Open position not found.'},{status:404});
   if(error instanceof Error&&error.message==='PROVIDER_POSITION_REQUIRES_PROVIDER_ORDER')return NextResponse.json({error:'Submit a REAL sell order to Alpaca Paper to close this position.'},{status:409});
   return NextResponse.json({error:error instanceof Error?error.message:'Close failed'},{status:400});
  }

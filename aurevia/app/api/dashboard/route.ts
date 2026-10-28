@@ -7,6 +7,7 @@ import {getUserActivity} from '@/lib/activity';
 import {getAccountTier} from '@/lib/production-policy';
 import {jsonSafe} from '@/lib/serializers';
 import {filterSupportedMarketAssets} from '@/lib/live-market';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 export const dynamic='force-dynamic';
 
@@ -49,9 +50,10 @@ export async function GET(){
     const unrealized=validPositions.reduce((sum,p)=>sum.plus((p.side==='BUY'?p.instrument.price.minus(p.entryPrice):p.entryPrice.minus(p.instrument.price)).mul(p.quantity)),new Prisma.Decimal(0));
     const activity=await optionalData('recent activity',()=>getUserActivity(user.id,mode,'all',8),{items:[],total:0,hasMore:false,cursor:null});
     const recentActivity=activity.items.map(item=>({id:item.id,category:item.category,action:item.action,timestamp:item.timestamp,asset:item.asset,amount:item.amount,status:item.status,source:item.sourceLabel,pnl:item.pnl,adminInitiated:item.adminInitiated,link:item.link}));
+    const displayNotifications=notifications.map(notification=>({...notification,title:removeSimulatedLabels(notification.title),message:removeSimulatedLabels(notification.message)}));
     const tier=getAccountTier({accountMode:mode,kycStatus:mode===AccountMode.REAL?profile?.kycStatus||'PENDING':'PENDING',verificationDocuments,verificationSubmitted:mode===AccountMode.REAL&&!!kyc?.submittedAt,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??undefined:undefined});
     const safeProfile={id:user.id,email:profile?.email??user.email??null,name:profile?.name??user.name??null,hasAvatar:!!profile?.avatarKey,role:profile?.role??user.role??'USER',status:profile?.status??null,accountMode:mode,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??null:null,kycStatus:mode===AccountMode.REAL?profile?.kycStatus??null:null,verifiedAt:mode===AccountMode.REAL?profile?.verifiedAt??null:null,verifiedChannel:mode===AccountMode.REAL?profile?.verifiedChannel??null:null,phoneVerified:mode===AccountMode.REAL?profile?.phoneVerified??false:false,phone:mode===AccountMode.REAL?profile?.phone??null:null,country:mode===AccountMode.REAL?profile?.country??null:null,createdAt:profile?.createdAt??null,...tier};
-    return NextResponse.json(jsonSafe({accountMode:mode,cash,financialDataAvailable:cash!==null,positionValue,invested,unrealized,portfolioValue:cash?.plus(positionValue).plus(invested)??null,openOrders:validOrders.filter(o=>o.status==='OPEN').length,activePositions:validPositions.length,activity:recentActivity,orders:validOrders,positions:validPositions,investments:validInvestments,notifications,profile:safeProfile,marketInstruments:supportedMarketInstruments.map(i=>({id:i.id,symbol:i.symbol,name:i.name,price:Number(i.price),changePercent:0,updatedAt:i.updatedAt.toISOString()}))}),{headers:{'Cache-Control':'private, no-store'}});
+    return NextResponse.json(jsonSafe({accountMode:mode,cash,financialDataAvailable:cash!==null,positionValue,invested,unrealized,portfolioValue:cash?.plus(positionValue).plus(invested)??null,openOrders:validOrders.filter(o=>o.status==='OPEN').length,activePositions:validPositions.length,activity:recentActivity,orders:validOrders,positions:validPositions,investments:validInvestments,notifications:displayNotifications,profile:safeProfile,marketInstruments:supportedMarketInstruments.map(i=>({id:i.id,symbol:i.symbol,name:i.name,price:Number(i.price),changePercent:0,updatedAt:i.updatedAt.toISOString()}))}),{headers:{'Cache-Control':'private, no-store'}});
   }catch(error){
     const unauthorized=error instanceof Error&&error.message==='UNAUTHORIZED';
     if(!unauthorized)console.error('[dashboard] Request failed',errorDetails(error));

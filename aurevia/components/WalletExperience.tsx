@@ -32,8 +32,7 @@ const receiptStatus=(status:string):ReceiptData['status']=>{
 const reserves=['PENDING','PENDING_REVIEW','APPROVED','PROCESSING'];
 const formatFundingMethodLabel=(method:string)=>{
 	const value=String(method||'');
-	if(/^Internal simulated\b/i.test(value))return value;
-	return value.replace(/^Admin configured\s+/i,'Administrator ').replace(/\s+REAL deposit$/i,' Real Account deposit').replace(/\s+simulated\s+/i,' ');
+	return value.replace(/^Internal\s+simulated\b/i,'Internal').replace(/^Admin configured\s+/i,'Administrator ').replace(/\s+REAL deposit$/i,' Real Account deposit').replace(/\bsimulated\b/gi,'').replace(/\s+/g,' ').trim();
 };
 const fundingUnavailableMessage=(status:PaymentMethodsResponse['fundingStatus'])=>status==='DISABLED'?'Internal ledger requests are temporarily disabled for this account. No balance was changed.':'Internal ledger requests are temporarily unavailable. No balance was changed.';
 const validateFundingAmount=(amountText:string,mode:'DEPOSIT'|'WITHDRAWAL',balance:number|null,minimum:number|undefined,maximum:number|undefined)=>{
@@ -305,7 +304,7 @@ export default function WalletExperience(){
 	}
 
 	return <><Nav/><main className="account-page wallet-premium-page" data-wallet-view={workflow?'workflow':'overview'}>
-		<header className="wallet-page-heading"><div><span className="wallet-eyebrow">{data.accountMode} ACCOUNT · PRIVATE WALLET</span><h1>{workflow?`${type==='DEPOSIT'?'Deposit':'Withdraw'} funds`:'Wallet'}</h1><p>{data.accountMode==='DEMO'?'A separate virtual USD wallet for simulated activity.':'Your Aurevia REAL account ledger, requests and reservations.'}</p></div><div className="wallet-heading-actions"><span className={`status-pill ${data.accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{data.accountMode==='DEMO'?'DEMO · VIRTUAL':'REAL · LEDGER'}</span><button type="button" className="wallet-refresh" aria-label="Refresh wallet" title="Refresh wallet" onClick={()=>void load(true)} disabled={loading}><RefreshCw size={16}/></button></div></header>
+		<header className="wallet-page-heading"><div><span className="wallet-eyebrow">{data.accountMode} ACCOUNT · PRIVATE WALLET</span><h1>{workflow?`${type==='DEPOSIT'?'Deposit':'Withdraw'} funds`:'Wallet'}</h1><p>{data.accountMode==='DEMO'?'A separate virtual USD wallet for practice activity.':'Your Aurevia REAL account ledger, requests and reservations.'}</p></div><div className="wallet-heading-actions"><span className={`status-pill ${data.accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{data.accountMode==='DEMO'?'DEMO · VIRTUAL':'REAL · LEDGER'}</span><button type="button" className="wallet-refresh" aria-label="Refresh wallet" title="Refresh wallet" onClick={()=>void load(true)} disabled={loading}><RefreshCw size={16}/></button></div></header>
 		{!workflow&&<>
 			{error&&<p className="wallet-feedback is-error" role="alert">{error}</p>}
 			<section className="wallet-balance-panel wallet-signature-card">

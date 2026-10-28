@@ -16,7 +16,7 @@ async function activateScheduledSimulatedInvestments(now:Date){
 			const changed=await tx.investmentRequest.updateMany({where:{id:current.id,status:InvestmentStatus.APPROVED,activatedAt:{lte:now}},data:{status:InvestmentStatus.ACTIVE}});
 			if(changed.count!==1)return false;
 			await tx.auditLog.create({data:{actorId:null,action:'SIMULATED_INVESTMENT_AUTO_ACTIVATED',entity:'INVESTMENT',entityId:current.id,metadata:{accountMode:current.accountMode,simulated:true,activatedAt:current.activatedAt.toISOString(),maturesAt:current.maturesAt.toISOString()}}});
-			await createNotification(tx,{userId:current.userId,type:NotificationType.SYSTEM,title:'Simulated investment started',message:'Your administrator-scheduled simulated investment is now active.',dedupeKey:`investment:${current.id}:auto-activated`,relatedEntity:'INVESTMENT',relatedId:current.id,actionUrl:'/investments'});
+			await createNotification(tx,{userId:current.userId,type:NotificationType.SYSTEM,title:'Practice investment started',message:'Your administrator-scheduled practice investment is now active.',dedupeKey:`investment:${current.id}:auto-activated`,relatedEntity:'INVESTMENT',relatedId:current.id,actionUrl:'/investments'});
 			return true;
 		},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
 		if(activated)activatedCount++;
@@ -44,7 +44,7 @@ export async function settleMaturedSimulatedInvestments(now=new Date()){
 
 			await postSimulatedInvestmentPayout(tx,{investmentId:current.id,userId:current.userId,accountMode:current.accountMode,principal:current.amount,payout,opportunityTitle:current.opportunity.title});
 			await tx.auditLog.create({data:{actorId:null,action:'SIMULATED_INVESTMENT_AUTO_SETTLED',entity:'INVESTMENT',entityId:current.id,metadata:{accountMode:current.accountMode,simulated:true,principal:current.amount.toString(),targetReturnPercent:current.targetReturnPercent?.toString()??null,tierBoostPercent:current.tierBoostPercent.toString(),simulatedPayout:payout.toString(),settlementReference}}});
-			await createNotification(tx,{userId:current.userId,type:NotificationType.SYSTEM,title:`${current.accountMode} simulated investment matured`,message:`Your ${current.accountMode} simulated investment matured and a simulated payout of ${payout.toFixed(2)} USD was credited to your internal ledger. The payout used the configured target return and the tier boost captured when you allocated; simulated returns are not guaranteed.`,dedupeKey:`investment:${current.id}:auto-settled`,relatedEntity:'INVESTMENT',relatedId:current.id,actionUrl:'/investments'});
+			await createNotification(tx,{userId:current.userId,type:NotificationType.SYSTEM,title:`${current.accountMode} practice investment matured`,message:`Your ${current.accountMode} practice investment matured and a payout of ${payout.toFixed(2)} USD was credited to your internal ledger. The payout used the configured target return and the tier boost captured when you allocated; returns are not guaranteed.`,dedupeKey:`investment:${current.id}:auto-settled`,relatedEntity:'INVESTMENT',relatedId:current.id,actionUrl:'/investments'});
 			return true;
 				},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable});
 				break;

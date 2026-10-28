@@ -3,6 +3,7 @@ import {db} from '@/lib/db';
 import {balance} from '@/lib/ledger';
 import {getOpenAiConfig,openAiChat} from '@/lib/openai-client';
 import {getDemoAiConfig,sizeDemoRecommendation} from '@/lib/demo-ai-config';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 type RecommendationCandidate={
 	instrumentId:string;
@@ -22,7 +23,7 @@ function parseDecision(content:string){
 	if(!value||typeof value!=='object'||!('instrumentId'in value)||!('action'in value)||!('rationale'in value))throw new Error('INVALID_AI_DECISION');
 	const decision=value as Record<string,unknown>;
 	if(typeof decision.instrumentId!=='string'||(decision.action!=='BUY'&&decision.action!=='SELL'&&decision.action!=='HOLD')||typeof decision.rationale!=='string')throw new Error('INVALID_AI_DECISION');
-	return {instrumentId:decision.instrumentId,action:decision.action,rationale:decision.rationale.trim().slice(0,400)};
+	return {instrumentId:decision.instrumentId,action:decision.action,rationale:removeSimulatedLabels(decision.rationale.trim().slice(0,400))};
 }
 
 export async function getDemoAiRecommendations(userId:string){
@@ -102,7 +103,7 @@ export async function getDemoAiRecommendations(userId:string){
 			takeProfitPrice:candidate.action==='BUY'?candidate.price*(1+config.takeProfitPercent):null,
 			rationale:decision.rationale,
 			strategy:candidate.strategy,
-			marketDataLabel:'Aurevia simulated market data',
+			marketDataLabel:'Aurevia DEMO market data',
 			risk:{riskPerTradePercent:config.riskPerTrade*100,maxPositionUsd:config.maxPositionUsd,stopLossPercent:config.stopLossPercent,takeProfitPercent:config.takeProfitPercent,feeRate:Math.max(Number(instrument.takerFee),config.feeRate),spreadBps:config.spreadBps,slippageBps:config.slippageBps},
 		}],
 	};

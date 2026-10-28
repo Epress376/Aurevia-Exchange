@@ -115,7 +115,7 @@ function MarketChartPanel({selectedSymbol,quotes,internalInstrumentId}:{selected
 						open:Number(row.open),high:Number(row.high),low:Number(row.low),close:Number(row.close),volume:Number(row.volume),
 					})).filter(candle=>Number.isFinite(candle.time)&&[candle.open,candle.high,candle.low,candle.close].every(Number.isFinite));
 					if(candles.length<2)throw new Error('There is not enough stored market history for this range.');
-					result={...result,candles,source:'Aurevia simulated market loop'};
+					result={...result,candles,source:'Aurevia DEMO market feed'};
 				}
 				if(active)setHistory(result);
 			})
@@ -131,8 +131,8 @@ function MarketChartPanel({selectedSymbol,quotes,internalInstrumentId}:{selected
 			<div className="user-market-quote">{quote?<><strong>{formatMarketPrice(quote.price,quote.asset.currency)}</strong><span className={quote.changePercent>=0?'is-positive':'is-negative'}>{quote.changePercent>=0?'+':''}{quote.changePercent.toFixed(2)}%</span></>:<span className="user-dashboard-muted">Quote unavailable</span>}</div>
 		</header>
 		<div className="user-chart-toolbar"><div className="user-chart-timeframes" role="group" aria-label="Market chart range">{timeframes.map(item=><button key={item.value} type="button" aria-pressed={timeframe===item.value} className={timeframe===item.value?'is-selected':''} onClick={()=>setTimeframe(item.value)}>{item.label}</button>)}</div><Link href={`/markets?symbol=${encodeURIComponent(selectedSymbol)}`} className="user-dashboard-panel-link">Full market view <ExternalLink size={13}/></Link></div>
-		{history?<LivePriceChart candles={history.candles} quote={history.source==='Aurevia simulated market loop'?undefined:quote} timeframe={timeframe} loading={loading} error={error}/>:loading?<div className="user-chart-empty" role="status">Loading market history…</div>:<div className="user-chart-empty" role="status">{error||'No historical market data is available for this range.'}</div>}
-		<p className="user-dashboard-footnote">Provider quotes are shown when available. Internal market values are labeled as simulated; charts use provider history or recorded database candles only.</p>
+		{history?<LivePriceChart candles={history.candles} quote={history.source==='Aurevia DEMO market feed'?undefined:quote} timeframe={timeframe} loading={loading} error={error}/>:loading?<div className="user-chart-empty" role="status">Loading market history…</div>:<div className="user-chart-empty" role="status">{error||'No historical market data is available for this range.'}</div>}
+		<p className="user-dashboard-footnote">Provider quotes are shown when available. DEMO prices are internal reference values; charts use provider history or recorded database candles only.</p>
 	</section>;
 }
 
@@ -308,7 +308,7 @@ export default function UserDashboardExperience(){
 				<div className="user-dashboard-primary">
 					<MarketChartPanel selectedSymbol={selectedSymbol} quotes={quotes} internalInstrumentId={internalInstrumentId}/>
 					{overview.accountMode==='REAL'&&overview.activeInvestments.length>0&&<section className="user-dashboard-panel" aria-labelledby="user-live-investments-heading">
-						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACTIVE {overview.accountMode} MODE</span><h2 id="user-live-investments-heading">Live investments</h2><p>Per-second estimates use your recorded simulated investment terms.</p></div><Link className="user-dashboard-panel-link" href="/investments">Investment activity <ArrowRight size={14}/></Link></header>
+						<header className="user-dashboard-panel-heading"><div><span className="user-dashboard-eyebrow">ACTIVE {overview.accountMode} MODE</span><h2 id="user-live-investments-heading">Live investments</h2><p>Per-second estimates use your recorded investment terms.</p></div><Link className="user-dashboard-panel-link" href="/investments">Investment activity <ArrowRight size={14}/></Link></header>
 						<div className="investment-live-grid">{overview.activeInvestments.map(investment=><InvestmentProgressCard key={investment.id} investment={investment} onMaturity={refreshOverview}/>)}</div>
 					</section>}
 					{overview.accountMode==='DEMO'&&<DemoAiTradingPanel/>}

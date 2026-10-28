@@ -1,5 +1,6 @@
 import {AccountMode,FundingStatus,InvestmentStatus,OrderStatus,PositionStatus,Prisma} from '@prisma/client';
 import {db} from '@/lib/db';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 export type ActivityCategory='all'|'trade'|'personal-trade'|'investment'|'deposit'|'withdrawal'|'order'|'position'|'account'|'security';
 
@@ -154,7 +155,17 @@ export async function getUserActivity(userId:string,accountMode:AccountMode,cate
     (query.state==='hidden'?record.hidden:query.state==='archived'?Boolean(record.archivedAt):query.state==='all'?true:!record.hidden&&!record.archivedAt),
   );
   const sorted=filtered.sort((a,b)=>Date.parse(b.timestamp)-Date.parse(a.timestamp)||b.id.localeCompare(a.id));
-  const page=sorted.slice(offset,offset+limit);
+  const page=sorted.slice(offset,offset+limit).map(record=>({
+    ...record,
+    action:removeSimulatedLabels(record.action),
+    asset:removeSimulatedLabels(record.asset),
+    status:removeSimulatedLabels(record.status),
+    sourceLabel:removeSimulatedLabels(record.sourceLabel),
+    details:Object.fromEntries(Object.entries(record.details).map(([key,value])=>[
+      key,
+      typeof value==='string'?removeSimulatedLabels(value):value,
+    ])),
+  }));
   return {items:page,total:sorted.length,hasMore:offset<1000&&sorted.length>offset+limit,cursor:page.at(-1)?.id||null};
 }
 

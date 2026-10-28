@@ -83,11 +83,11 @@ export async function POST(request:Request){
    const available=await balance(tx,userAccount.id);
     const reserved=await reservedWithdrawalAmount(tx,user.id,user.accountMode,'USD');
     if(available.lt(amount.plus(reserved)))throw new Error('INSUFFICIENT_SIMULATED_BALANCE');
-   const escrow=await ensureSystemAccount(tx,`SYSTEM:INVESTMENT_ESCROW:${user.accountMode}:USD`,`${user.accountMode} simulated investment escrow`,'USD',user.accountMode);
-   await postDoubleEntry(tx,{reference:`INVESTMENT:${investment.id}:RESERVE`,description:`Reserve simulated funds for ${opportunity.title}`,debitAccountId:userAccount.id,creditAccountId:escrow.id,amount});
+   const escrow=await ensureSystemAccount(tx,`SYSTEM:INVESTMENT_ESCROW:${user.accountMode}:USD`,`${user.accountMode} investment escrow`,'USD',user.accountMode);
+   await postDoubleEntry(tx,{reference:`INVESTMENT:${investment.id}:RESERVE`,description:`Reserve ${user.accountMode} investment funds for ${opportunity.title}`,debitAccountId:userAccount.id,creditAccountId:escrow.id,amount});
    await tx.auditLog.create({data:{actorId:user.id,action:'INVESTMENT_SUBMITTED',entity:'INVESTMENT',entityId:investment.id,metadata:{opportunityId:opportunity.id,accountMode:user.accountMode,amount:amount.toString(),tierBoostPercent:tierBoostPercent.toString(),status,simulated:true}}});
-  await createNotification(tx,{userId:user.id,type:NotificationType.SYSTEM,title:opportunity.requiresApproval?'Simulated investment request submitted':'Simulated investment started',message:`Your ${user.accountMode} simulated investment is ${opportunity.requiresApproval?'pending administrator approval':status===InvestmentStatus.ACTIVE?'active':`scheduled to start ${activatedAt.toISOString()}`}. The principal is reserved in the internal ledger; no external investment was made.`,dedupeKey:`investment:${investment.id}:submitted`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/investments'});
-  if(opportunity.requiresApproval)await notifyActiveAdmins(tx,{type:NotificationType.SYSTEM,title:'Simulated investment request awaiting review',message:`A ${user.accountMode} simulated investment request is awaiting administrator review.`,dedupeKey:`investment:${investment.id}:admin`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/admin/investments'});
+  await createNotification(tx,{userId:user.id,type:NotificationType.SYSTEM,title:opportunity.requiresApproval?'Investment request submitted':'Investment started',message:`Your ${user.accountMode} investment is ${opportunity.requiresApproval?'pending administrator approval':status===InvestmentStatus.ACTIVE?'active':`scheduled to start ${activatedAt.toISOString()}`}. The principal is reserved in the internal ledger; no external investment was made.`,dedupeKey:`investment:${investment.id}:submitted`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/investments'});
+  if(opportunity.requiresApproval)await notifyActiveAdmins(tx,{type:NotificationType.SYSTEM,title:'Investment request awaiting review',message:`A ${user.accountMode} investment request is awaiting administrator review.`,dedupeKey:`investment:${investment.id}:admin`,relatedEntity:'INVESTMENT',relatedId:investment.id,actionUrl:'/admin/investments'});
    return {investment,replay:false};
   },{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});
   let result:Awaited<ReturnType<typeof submit>>|undefined;
@@ -107,9 +107,10 @@ export async function POST(request:Request){
   if(error instanceof ZodError)return NextResponse.json({error:'Enter an amount within the opportunity limits.'},{status:400});
   if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
   if(error instanceof Error&&error.message==='ACCOUNT_MODE_CHANGED')return NextResponse.json({error:'Your active account mode changed. Refresh and submit the allocation again.'},{status:409});
-  if(error instanceof Error&&error.message==='DEMO_INVESTING_DISABLED')return NextResponse.json({error:'Investment requests are unavailable in DEMO. Use DEMO mode for simulated trading only.'},{status:403});
+  if(error instanceof Error&&error.message==='DEMO_INVESTING_DISABLED')return NextResponse.json({error:'Investment requests are unavailable in DEMO. Use DEMO mode for practice trading only.'},{status:403});
   if(error instanceof Error&&['IDEMPOTENCY_KEY_REUSED','INVESTMENT_UNAVAILABLE','INVESTMENT_MODE_UNAVAILABLE','INVESTMENT_MATURED','INVESTMENT_USER_UNAVAILABLE','INVESTMENT_USER_RESTRICTED'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:409});
-  if(error instanceof Error&&['INVESTMENT_AMOUNT_OUT_OF_RANGE','INSUFFICIENT_SIMULATED_BALANCE','INVALID_AMOUNT'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:400});
+  if(error instanceof Error&&error.message==='INSUFFICIENT_SIMULATED_BALANCE')return NextResponse.json({error:'Insufficient available account cash for this investment.'},{status:400});
+  if(error instanceof Error&&['INVESTMENT_AMOUNT_OUT_OF_RANGE','INVALID_AMOUNT'].includes(error.message))return NextResponse.json({error:error.message.replaceAll('_',' ').toLowerCase()},{status:400});
   if(error&&typeof error==='object'&&'code'in error&&String(error.code)==='P2002')return NextResponse.json({error:'This investment request was already received.'},{status:409});
   const code=error&&typeof error==='object'&&'code'in error?String(error.code):'';
   console.error(`Investment submission failed (${/^[A-Z0-9_]{2,32}$/.test(code)?code:error instanceof Error?error.name:'UnknownError'}).`);

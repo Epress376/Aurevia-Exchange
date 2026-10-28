@@ -12,7 +12,7 @@ export async function POST(request:Request){
 	try{
 		const admin=await requireAdmin();
 		const input=schema.parse(await request.json());
-		if(input.action!=='FAIL')return NextResponse.json({error:'Only legacy DEMO withdrawal reservations may be released; simulated execution is unavailable.'},{status:409});
+		if(input.action!=='FAIL')return NextResponse.json({error:'Only legacy DEMO withdrawal reservations may be released; external execution is unavailable.'},{status:409});
 		const idempotencyKey=request.headers.get('Idempotency-Key')||'';
 		if(!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey))return NextResponse.json({error:'A valid idempotency key is required.'},{status:400});
 		const result=await db.$transaction(async tx=>{

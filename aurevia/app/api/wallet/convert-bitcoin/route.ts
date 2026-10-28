@@ -9,7 +9,7 @@ export async function POST(){
 		const activeUser=await db.user.findUnique({where:{id:user.id},select:{accountMode:true,status:true}});
 		if(!activeUser||activeUser.status!=='ACTIVE')return NextResponse.json({error:'Unauthorized'},{status:401});
 		return activeUser.accountMode===AccountMode.DEMO
-			?NextResponse.json({error:'Currency conversion is not part of DEMO trading. Place simulated trades in the trade terminal.'},{status:403})
+			?NextResponse.json({error:'Currency conversion is not part of DEMO trading. Place DEMO orders in the trade terminal.'},{status:403})
 			:NextResponse.json({error:'Bitcoin conversion is not available in REAL mode.'},{status:409});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});

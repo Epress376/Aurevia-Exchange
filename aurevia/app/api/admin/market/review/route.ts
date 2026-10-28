@@ -5,6 +5,7 @@ import {db} from '@/lib/db';
 import {getOpenAiConfig,openAiChat} from '@/lib/openai-client';
 import {rateLimit} from '@/lib/rate-limit';
 import {jsonSafe} from '@/lib/serializers';
+import {removeSimulatedLabels} from '@/lib/display-copy';
 
 export const dynamic='force-dynamic';
 
@@ -89,7 +90,8 @@ Use only facts explicitly present in the supplied snapshot. Do not invent market
 		if(!validation.success||validation.data.highlights.some(highlight=>!activityIds.has(highlight.activityId))){
 			return NextResponse.json({error:'AI returned an unsupported market review.'},{status:502,headers:{'Cache-Control':'private, no-store'}});
 		}
-		return NextResponse.json(jsonSafe({review:validation.data,model,generatedAt:data.generatedAt}),{headers:{'Cache-Control':'private, no-store'}});
+		const review={...validation.data,summary:removeSimulatedLabels(validation.data.summary),highlights:validation.data.highlights.map(highlight=>({...highlight,observation:removeSimulatedLabels(highlight.observation)}))};
+		return NextResponse.json(jsonSafe({review,model,generatedAt:data.generatedAt}),{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){
 		if(error instanceof Error&&error.message==='UNAUTHORIZED')return NextResponse.json({error:'Unauthorized'},{status:401});
 		if(error instanceof Error&&error.message==='FORBIDDEN')return NextResponse.json({error:'Forbidden'},{status:403});

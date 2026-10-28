@@ -29,15 +29,15 @@ export default function AdminPositionsPanel(){
 		try{
 			const response=await fetch('/api/admin/positions',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({positionId:position.id})});
 			const result=await response.json();
-			if(!response.ok)throw new Error(result.error||'Unable to close this simulated position.');
+			if(!response.ok)throw new Error(result.error||'Unable to close this position.');
 			setPositions(current=>current.filter(item=>item.id!==position.id));
 			setNotice(`Closed ${position.instrument.symbol} for ${position.user.email}.`);
-		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to close this simulated position.')}
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to close this position.')}
 		finally{setBusyId('')}
 	}
 
 	return <section className="account-panel card p-5">
-		<header className="account-panel-title"><div><h2>Open simulated positions</h2><p className="account-panel-subtitle">Administrator force-close settles the position through its owner’s simulated ledger.</p></div><button type="button" className="btn min-h-11 bg-white/5" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/>Refresh</button></header>
+		<header className="account-panel-title"><div><h2>Open positions</h2><p className="account-panel-subtitle">Administrator force-close settles the position through its owner’s internal ledger.</p></div><button type="button" className="btn min-h-11 bg-white/5" onClick={()=>void load()} disabled={loading}><RefreshCw size={15}/>Refresh</button></header>
 		{notice&&<p className="mt-3 text-sm text-profit" role="status">{notice}</p>}{error&&<p className="mt-3 text-sm text-loss" role="alert">{error}</p>}
 		{loading&&!positions.length?<p className="account-empty" role="status">Loading open positions…</p>:positions.length?<div className="mt-3 divide-y divide-white/10">{positions.map(position=><article className="flex flex-wrap items-center justify-between gap-3 py-3" key={position.id}><div className="min-w-0"><b>{position.instrument.symbol} · {position.user.email}</b><p className="break-all text-xs muted">{position.id} · {Number(position.quantity).toLocaleString()} units · entry {Number(position.entryPrice).toLocaleString()} · opened {new Date(position.openedAt).toLocaleString()}</p></div><button className="btn min-h-11 bg-loss text-black" type="button" disabled={Boolean(busyId)} onClick={()=>void closePosition(position)}>{busyId===position.id?'Closing…':'Force close'}</button></article>)}</div>:<p className="account-empty">No open positions.</p>}
 	</section>;

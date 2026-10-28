@@ -1048,7 +1048,7 @@ test('DEMO trading supports cash-backed buy and owned-unit sell execution',async
 		await expect(instrument).toBeVisible();
 		await instrument.click();
 		await expect(tradePage.locator('.recharts-surface').first()).toBeVisible();
-		await expect(tradePage.getByText('Internal simulated market')).toBeVisible();
+		await expect(tradePage.getByText('Internal practice market')).toBeVisible();
 		const orderResponsePromise=tradePage.waitForResponse(response=>response.url().endsWith('/api/orders')&&response.request().method()==='POST');
 		await tradePage.getByRole('button',{name:'Place BUY order'}).click();
 		await expect(tradePage.getByRole('status')).toContainText('Order filled.');

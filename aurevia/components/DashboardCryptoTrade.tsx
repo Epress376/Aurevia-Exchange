@@ -24,14 +24,14 @@ export default function DashboardCryptoTrade({accountMode,cash,onTradeComplete}:
   try{
    const [marketResponse,positionResponse]=await Promise.all([fetch('/api/market',{cache:'no-store'}),fetch('/api/positions',{cache:'no-store'})]);
    const [marketResult,positionResult]=await Promise.all([marketResponse.json(),positionResponse.json()]);
-   if(!marketResponse.ok)throw new Error(marketResult.error||'Simulated crypto prices are unavailable.');
+   if(!marketResponse.ok)throw new Error(marketResult.error||'DEMO crypto prices are unavailable.');
    if(!positionResponse.ok)throw new Error(positionResult.error||`${accountMode} positions are unavailable.`);
    const nextInstruments=(marketResult as CryptoInstrument[]).filter(item=>cryptoBases.has(item.baseAsset)&&item.quoteAsset==='USD');
    setInstruments(nextInstruments);
    setSelectedId(current=>nextInstruments.some(item=>item.id===current)?current:nextInstruments[0]?.id||'');
    setPositions(positionResult as CryptoPosition[]);
    setError('');
-  }catch(exception){setError(exception instanceof Error?exception.message:'Unable to load simulated crypto trading.');}
+  }catch(exception){setError(exception instanceof Error?exception.message:'Unable to load DEMO crypto trading.');}
   finally{setLoading(false);}
  },[accountMode]);
 
@@ -59,17 +59,17 @@ export default function DashboardCryptoTrade({accountMode,cash,onTradeComplete}:
    const observedAt=selected.lastUpdatedAt||selected.updatedAt;
    const response=await fetch('/api/orders',{method:'POST',headers:{'content-type':'application/json','Idempotency-Key':window.crypto.randomUUID()},body:JSON.stringify({instrumentId:selected.id,side,type:'MARKET',quantity:amount,expectedPrice:Number(selected.price),observedAt})});
    const result=await response.json();
-   if(!response.ok)throw new Error(result.error||'The simulated order was rejected.');
+   if(!response.ok)throw new Error(result.error||'The DEMO order was rejected.');
    setNotice(`${side==='BUY'?'Bought':'Sold'} ${amount} ${selected.baseAsset} in ${accountMode}. ${String(result.status||'').replaceAll('_',' ')}.`);
    await load();
    await onTradeComplete();
-  }catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit the simulated order.');}
+  }catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit the DEMO order.');}
   finally{setSubmitting(false);}
  }
 
  return <section className="dashboard-panel card dashboard-crypto-trade" aria-labelledby="dashboard-crypto-title">
-  <div className="dashboard-panel-title"><div><h2 id="dashboard-crypto-title"><TrendingUp size={15} className="gold"/>Simulated crypto trading</h2><p>Market orders use your {accountMode} simulated cash and positions.</p></div><span className={`status-pill ${accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{accountMode} · SIMULATED</span></div>
-  {loading?<div className="crypto-trade-loading" role="status"><LoaderCircle size={16} className="animate-spin"/>Loading simulated prices</div>:!instruments.length?<div className="dashboard-empty"><div><b>No simulated crypto instruments available</b><p>Check back when crypto markets are enabled.</p></div></div>:<form className="crypto-trade-form" onSubmit={submit}>
+  <div className="dashboard-panel-title"><div><h2 id="dashboard-crypto-title"><TrendingUp size={15} className="gold"/>DEMO crypto trading</h2><p>Market orders use your {accountMode} virtual cash and positions.</p></div><span className={`status-pill ${accountMode==='DEMO'?'mode-demo':'mode-real'}`}>{accountMode}</span></div>
+  {loading?<div className="crypto-trade-loading" role="status"><LoaderCircle size={16} className="animate-spin"/>Loading DEMO prices</div>:!instruments.length?<div className="dashboard-empty"><div><b>No DEMO crypto instruments available</b><p>Check back when crypto markets are enabled.</p></div></div>:<form className="crypto-trade-form" onSubmit={submit}>
    <div className="crypto-trade-market"><label>Crypto<select className="input" value={selectedId} onChange={event=>setSelectedId(event.target.value)}>{instruments.map(item=><option key={item.id} value={item.id}>{item.baseAsset}/USD · {item.name}</option>)}</select></label><div><span>Price</span><b>{selected?priceFormat.format(Number(selected.price)):'--'}</b></div></div>
    <div className="crypto-trade-controls"><div className="crypto-trade-side" role="group" aria-label="Trade side"><button type="button" className={side==='BUY'?'is-active':''} aria-pressed={side==='BUY'} onClick={()=>setSide('BUY')}><ArrowUpRight size={14}/>Buy</button><button type="button" className={side==='SELL'?'is-active is-sell':''} aria-pressed={side==='SELL'} onClick={()=>setSide('SELL')}><ArrowDownRight size={14}/>Sell</button></div><label>Quantity ({selected?.baseAsset||'crypto'})<input className="input" type="number" min="0.00000001" step="any" max={side==='SELL'?heldQuantity:undefined} value={quantity} onChange={event=>setQuantity(event.target.value)} inputMode="decimal" required/></label></div>
    <div className="crypto-trade-summary"><span>{accountMode} cash <b>{formatUsd(availableCash)}</b></span><span>Held <b>{heldQuantity.toLocaleString('en-US',{maximumFractionDigits:8})} {selected?.baseAsset||''}</b></span><span>Est. fee <b>{formatUsd(fee)}</b></span><span>{side==='BUY'?'Est. total':'Est. proceeds'} <b>{formatUsd(side==='BUY'?notional+fee:notional)}</b></span></div>
