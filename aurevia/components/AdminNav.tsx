@@ -5,7 +5,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 import {signOut,useSession} from 'next-auth/react';
 import {usePathname,useRouter,useSearchParams} from 'next/navigation';
-import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
+import {Activity,ArrowLeft,ArrowRight,BadgeCheck,Bell,BriefcaseBusiness,Building2,ClipboardCheck,CreditCard,FileCheck2,Handshake,LayoutDashboard,LogOut,Menu,MessageSquareText,Radio,ReceiptText,Search,Settings2,ShieldCheck,SlidersHorizontal,Trash2,UsersRound,X} from 'lucide-react';
 
 const groups=[
 	{title:'Dashboards',links:[
@@ -26,6 +26,7 @@ const groups=[
 		{href:'/admin/approved-withdrawals',label:'Approved withdrawals',icon:ReceiptText},
 		{href:'/admin/settlements',label:'Settlements',icon:ReceiptText},
 		{href:'/admin/investments',label:'Investments',icon:BriefcaseBusiness},
+		{href:'/admin/community',label:'Community finance',icon:Handshake},
 		{href:'/admin/operations',label:'Orders & ledger',icon:Activity},
 		{href:'/admin/positions',label:'Positions',icon:BriefcaseBusiness},
 		{href:'/admin/markets',label:'Markets',icon:Settings2},

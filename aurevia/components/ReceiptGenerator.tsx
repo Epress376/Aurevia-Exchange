@@ -41,6 +41,7 @@ export type ReceiptData={
 	destinationNumber?:string|null;
 	purpose?:string|null;
 	fee?:number|string|null;
+	feeTreatment?:'ADDED'|'DEDUCTED';
 	gateway?:string|null;
 };
 
@@ -88,7 +89,7 @@ export default function ReceiptGenerator({receipt}:{receipt:ReceiptData}){
 	const fileName=`aurevia-${kind.toLowerCase()}-${currentReceipt.status.toLowerCase()}-${currentReceipt.id}`;
 	const numericAmount=Number(currentReceipt.amount);
 	const numericFee=currentReceipt.fee===null||currentReceipt.fee===undefined?null:Number(currentReceipt.fee);
-	const total=numericFee!==null&&Number.isFinite(numericAmount)&&Number.isFinite(numericFee)?Math.abs(numericAmount)+Math.abs(numericFee):null;
+	const total=numericFee!==null&&Number.isFinite(numericAmount)&&Number.isFinite(numericFee)?currentReceipt.feeTreatment==='DEDUCTED'?Math.abs(numericAmount):Math.abs(numericAmount)+Math.abs(numericFee):null;
 	const feeLabel=numericFee!==null&&Number.isFinite(numericFee)?amountLabel(numericFee,currentReceipt.currency):'Not recorded';
 	const explanation=isWithdrawal
 		?currentReceipt.status==='COMPLETED'
@@ -103,7 +104,7 @@ export default function ReceiptGenerator({receipt}:{receipt:ReceiptData}){
 						?'The request did not complete. This receipt does not represent a successful payout.'
 						:'This confirms receipt of your withdrawal request only. It is not proof of payment.'
 		:currentReceipt.status==='COMPLETED'
-			?'The transaction is recorded as completed in Aurevia’s account ledger. This is an internal account record, not a bank or payment-provider receipt.'
+			?currentReceipt.feeTreatment==='DEDUCTED'?'The transaction is recorded as completed in Aurevia’s account ledger. The shown fee was deducted from the requested amount; this is not a bank or payment-provider receipt.':'The transaction is recorded as completed in Aurevia’s account ledger. This is an internal account record, not a bank or payment-provider receipt.'
 			:currentReceipt.status==='APPROVED'
 				?'This request has been approved. Refer to the ledger amount, if shown, for any amount actually posted; approval alone does not confirm external funds.'
 				:currentReceipt.status==='REVERSED'

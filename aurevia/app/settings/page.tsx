@@ -4,7 +4,7 @@ import {FormEvent,useEffect,useState} from 'react';
 import {signOut,useSession} from 'next-auth/react';
 import Image from 'next/image';
 import Link from 'next/link';
-import {Activity,Bell,Check,ChevronRight,CreditCard,Download,KeyRound,Search,Settings2,ShieldCheck,Store,Trash2,UserRound,WalletCards} from 'lucide-react';
+import {Activity,Bell,Check,ChevronRight,CreditCard,Download,HeartHandshake,KeyRound,Search,Settings2,ShieldCheck,Store,Trash2,UserRound,WalletCards} from 'lucide-react';
 import Nav from '@/components/Nav';
 import BrowserPushSettings from '@/components/BrowserPushSettings';
 import {useLocale} from '@/lib/i18n-context';
@@ -74,6 +74,7 @@ export default function Settings(){
 			{label:'Transaction history',description:'View wallet deposits and withdrawals',href:'/wallet/transactions',icon:Download},
 		]},
 		{title:'More',tone:'more',links:[
+			{label:'Community finance',description:'Campaign contributions and loan eligibility',href:'/community',icon:HeartHandshake},
 			{label:'Explore markets',description:'Browse supported exchange markets',href:'/markets',icon:Store},
 			{label:'Support',description:'Get help with your account',href:'/support',icon:ShieldCheck},
 		]},

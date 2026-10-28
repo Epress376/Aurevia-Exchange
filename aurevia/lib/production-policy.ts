@@ -6,11 +6,12 @@ export type WithdrawalValidation={balance:string|number;pending:string|number;am
 
 const decimal=(value:string|number)=>new Prisma.Decimal(value.toString());
 
-export function validateDepositApproval(requestedAmount:string|number,creditedAmount:string|number){
+export function validateDepositApproval(requestedAmount:string|number,creditedAmount:string|number,feeAmount:string|number=0){
 	const request=decimal(requestedAmount);
 	const credit=decimal(creditedAmount);
-	if(!credit.equals(request))throw new Error('DEPOSIT_AMOUNT_MISMATCH');
-	return {requestedAmount:request.toString(),creditedAmount:credit.toString()};
+	const fee=decimal(feeAmount);
+	if(credit.lt(0)||fee.lt(0)||!credit.plus(fee).equals(request))throw new Error('DEPOSIT_AMOUNT_MISMATCH');
+	return {requestedAmount:request.toString(),creditedAmount:credit.toString(),feeAmount:fee.toString()};
 }
 
 export function getAccountTier(context:TierContext):{label:AccountTier;progress:number;eligibleForRealTrading:boolean;verified:boolean}{

@@ -4067,6 +4067,160 @@ body:has(.admin-shell-chrome){background:#f9fbfd;color:#0f3054}
 	.admin-kpi-grid{grid-template-columns:minmax(0,1fr)}
 }
 .admin-refresh-button:focus-visible,.admin-shell-chrome a:focus-visible,.admin-shell-chrome button:focus-visible{outline:2px solid #9c7945;outline-offset:3px}
+
+/* Community finance uses verified ledger data and the Aurevia navy/gold system. */
+.community-finance-page{max-width:1180px}
+.community-finance-heading,.community-section-heading{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.community-finance-heading{margin-bottom:24px}
+.community-finance-heading h1{margin:4px 0 6px}
+.community-finance-heading p,.community-section-copy{max-width:72ch;margin:0;color:#718397}
+.community-summary-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;margin-bottom:32px}
+.community-summary-card,.community-card,.community-loan-form,.community-eligibility-card{border:1px solid rgba(15,48,84,.09);border-radius:16px;background:#fff;box-shadow:0 10px 28px rgba(15,48,84,.06)}
+.community-summary-card{display:grid;min-width:0;gap:8px;padding:18px}
+.community-summary-card>span,.community-card-heading .community-status{color:#718397;font-size:10px;font-weight:750;letter-spacing:.1em}
+.community-summary-card>strong{overflow:hidden;color:#0f3054;font-size:clamp(17px,2vw,24px);text-overflow:ellipsis}
+.community-summary-card>small{min-height:18px;color:#718397;font-size:11px}
+.community-summary-card>small a{display:inline-flex;align-items:center;gap:5px;color:#9c7945;text-decoration:none}
+.community-summary-card .is-eligible{color:#56836b}
+.community-summary-card .is-pending{color:#a76c5e}
+.community-summary-card--balance{background:linear-gradient(130deg,#0f3054,#254663 64%,#9c7945);color:white}
+.community-summary-card--balance>span,.community-summary-card--balance>strong,.community-summary-card--balance>small,.community-summary-card--balance>small a{color:white}
+.community-section{display:grid;gap:14px;margin:32px 0}
+.community-section-heading{color:#9c7945}
+.community-section-heading>div{display:grid;gap:4px}
+.community-section-heading h2{margin:0;color:#0f3054;font-size:22px}
+.community-section-heading .account-kicker{color:#9c7945}
+.community-section-copy{margin-top:-5px;font-size:12px}
+.community-campaign-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.community-card{min-width:0;padding:19px;color:#0f3054}
+.community-card-heading{display:flex;align-items:center;justify-content:space-between}
+.community-card-icon,.community-history-icon{display:grid;width:38px;height:38px;flex:none;place-items:center;border:1px solid rgba(156,121,69,.15);border-radius:12px;background:linear-gradient(145deg,#f6f0e5,#f9fbfd);color:#9c7945}
+.community-status{display:inline-flex;align-items:center;justify-content:center;padding:5px 9px;border-radius:999px;background:#f4f6f8;color:#526a80;font-size:9px;font-weight:750;letter-spacing:.07em}
+.community-status--active,.community-status--paid_off{background:#edf5ef;color:#56836b}
+.community-status--pending_review,.community-status--approved,.community-status--upcoming{background:#f8f2e7;color:#9c7945}
+.community-status--rejected{background:#faefed;color:#a76c5e}
+.community-card h3{margin:14px 0 6px;color:#0f3054;font-size:16px}
+.community-card>p{margin:0;color:#718397;font-size:11px;line-height:1.6}
+.community-campaign-total{display:flex;align-items:end;justify-content:space-between;gap:10px;margin:16px 0 13px;padding-top:13px;border-top:1px solid rgba(15,48,84,.08)}
+.community-campaign-total strong{color:#0f3054;font-size:20px}
+.community-campaign-total small{color:#718397;font-size:10px}
+.community-donation-form,.community-loan-form{display:grid;gap:12px}
+.community-donation-form label,.community-loan-form label{display:grid;gap:6px;color:#526a80;font-size:11px;font-weight:650}
+.community-donation-form input,.community-loan-form input,.community-loan-form select,.community-loan-form textarea,.community-finance-page input,.community-finance-page select,.community-finance-page textarea{border-color:rgba(15,48,84,.14)!important;border-radius:10px!important;background:#f9fbfd!important;color:#0f3054!important;accent-color:#9c7945}
+.community-donation-form .btn,.community-loan-form .btn{width:100%;border-radius:10px;background:linear-gradient(135deg,#b99a61,#9c7945);color:white}
+.community-empty,.community-inline-note{padding:14px;border:1px solid rgba(15,48,84,.08);border-radius:12px;background:#fff;color:#718397;font-size:11px}
+.community-inline-note{background:#faf7f0;color:#765f37}
+.community-eligibility-card{padding:18px}
+.community-eligibility-card>span{font-size:13px;font-weight:750}
+.community-eligibility-card>p{margin:7px 0;color:#0f3054;font-size:12px}
+.community-eligibility-card>small{color:#718397;font-size:10px;line-height:1.5}
+.community-eligibility-card.is-eligible{border-color:rgba(86,131,107,.2);background:#f4f8f4}
+.community-eligibility-card.is-eligible>span{color:#56836b}
+.community-eligibility-card.is-ineligible{border-color:rgba(167,108,94,.2);background:#fbf4f2}
+.community-eligibility-card.is-ineligible>span{color:#a76c5e}
+.community-loan-form{max-width:760px;padding:20px}
+.community-loan-form-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.community-loan-form-heading h3{margin:0;color:#0f3054;font-size:17px}
+.community-loan-form-heading small{color:#718397;font-size:10px}
+.community-loan-inputs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.community-loan-estimate{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:13px;border-radius:10px;background:#f6f0e5;color:#526a80;font-size:11px}
+.community-loan-estimate strong{color:#9c7945;font-size:18px}
+.community-loan-terms{padding:14px;border:1px solid rgba(15,48,84,.08);border-radius:11px;background:#f9fbfd;color:#526a80;font-size:11px;line-height:1.55}
+.community-loan-terms strong{color:#0f3054}
+.community-loan-terms ul{display:grid;gap:6px;margin:8px 0 0;padding-left:17px}
+.community-terms-accept{display:flex!important;grid-template-columns:18px 1fr;align-items:start;gap:9px!important;color:#526a80!important;font-size:11px!important;line-height:1.5}
+.community-terms-accept input{margin-top:2px}
+.community-loan-list{display:grid;gap:12px}
+.community-loan-card>header{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.community-loan-card>header h3{margin:5px 0;color:#0f3054}
+.community-loan-disbursed{margin-top:10px!important;color:#56836b!important;font-weight:700}
+.community-installments{display:grid;gap:7px;margin-top:16px}
+.community-installments h4{margin:0 0 3px;color:#0f3054;font-size:12px}
+.community-installment,.community-history-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 0;border-top:1px solid rgba(15,48,84,.08);color:#0f3054}
+.community-installment>span,.community-history-row>span:nth-child(2){display:grid;min-width:0;gap:4px}
+.community-installment small,.community-history-row small{color:#718397;font-size:10px}
+.community-installment strong,.community-history-row>strong{flex:none;color:#0f3054;font-size:11px}
+.community-history-list{overflow:hidden;padding:0 15px;border:1px solid rgba(15,48,84,.08);border-radius:14px;background:#fff}
+.community-history-row{justify-content:start}
+.community-history-row>span:nth-child(2){flex:1}
+.community-history-row>strong{margin-left:auto}
+.community-disclosure{max-width:90ch;margin:30px 0 0;color:#718397;font-size:10px;line-height:1.6}
+.community-feedback{margin:0 0 16px}
+.community-feedback--success,.admin-community-message{display:flex;align-items:center;gap:8px;padding:12px 14px;border:1px solid rgba(86,131,107,.18);border-radius:12px;background:#f2f7f3;color:#4b755f;font-size:12px}
+.admin-community-page .account-panel,.admin-community-page .account-panel-title h2,.admin-community-page h1,.admin-community-page h2,.admin-community-page h3{color:#0f3054}
+.admin-community-page .account-panel{border-color:rgba(15,48,84,.08);border-radius:15px;background:#fff;box-shadow:0 9px 24px rgba(15,48,84,.055)}
+.admin-community-page .account-panel-subtitle,.admin-community-page .muted{color:#718397}
+.admin-community-page .account-label{color:#526a80}
+.admin-community-page .input,.admin-community-page input,.admin-community-page select,.admin-community-page textarea{border-color:rgba(15,48,84,.14);border-radius:9px;background:#f9fbfd;color:#0f3054;accent-color:#9c7945}
+.admin-community-page .btn.bg-gold{border-radius:9px;background:linear-gradient(135deg,#b99a61,#9c7945);color:white}
+.admin-community-campaign-create{margin-bottom:22px}
+.admin-community-form{display:grid;grid-template-columns:1fr 1.4fr .7fr auto;align-items:end;gap:12px}
+.admin-community-form .account-label{display:grid;gap:6px}
+.admin-community-form button{white-space:nowrap}
+.admin-community-section{display:grid;gap:12px;margin:25px 0}
+.admin-community-campaigns,.admin-community-loans{display:grid;gap:12px}
+.admin-community-campaigns{grid-template-columns:repeat(2,minmax(0,1fr))}
+.admin-community-campaigns article header{display:flex;align-items:start;justify-content:space-between;gap:12px}
+.admin-community-campaigns article header>div{display:grid;gap:8px}
+.admin-community-campaigns article header>strong{color:#0f3054;font-size:20px}
+.admin-community-campaigns article>p{color:#718397;font-size:11px;line-height:1.5}
+.admin-community-campaigns article>small{color:#718397;font-size:10px}
+.admin-community-loan-heading{display:flex;align-items:start;justify-content:space-between;gap:14px}
+.admin-community-loan-heading h3{margin:5px 0;font-size:18px}
+.admin-community-loan-heading p,.admin-community-loan-terms{margin:0;color:#718397;font-size:11px}
+.admin-community-loan-terms{margin:14px 0}
+.admin-community-actions,.admin-community-transfer{display:grid;gap:10px}
+.admin-community-actions>div{display:flex;gap:8px}
+.admin-community-reject{border:1px solid rgba(167,108,94,.2);background:#fbf4f2;color:#a76c5e}
+.admin-community-transfer{padding:15px;border:1px solid rgba(15,48,84,.08);border-radius:12px;background:#f9fbfd}
+.admin-community-transfer>strong,.admin-community-transfer>small{color:#526a80}
+.admin-community-transfer>strong{font-size:12px}
+.admin-community-transfer>small{font-size:10px;line-height:1.5}
+.admin-community-transfer>label{display:flex;align-items:start;gap:8px;color:#526a80;font-size:10px;line-height:1.5}
+.admin-community-transfer>label input{margin-top:2px}
+.admin-community-installments{display:grid;gap:10px;margin-top:14px}
+.admin-community-installment{display:grid;grid-template-columns:minmax(0,1fr) minmax(260px,.8fr);align-items:start;gap:14px;padding-top:12px;border-top:1px solid rgba(15,48,84,.08)}
+.admin-community-installment>div:first-child{display:grid;gap:5px;color:#0f3054;font-size:11px}
+.admin-community-installment>div:first-child small{color:#718397;font-size:10px}
+.admin-community-installment.is-paid{display:flex;align-items:center;justify-content:space-between;color:#56836b}
+.admin-community-installment.is-paid>span{display:flex;align-items:center;gap:7px}
+
+@media(max-width:900px){
+	.community-campaign-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+	.admin-community-form{grid-template-columns:1fr 1fr}
+	.admin-community-form .account-label:nth-child(2){grid-column:span 2}
+	.admin-community-campaigns{grid-template-columns:1fr}
+}
+@media(max-width:640px){
+	body:has(.community-finance-page){background:#f9fbfd;color:#0f3054}
+	body:has(.site-nav-user-shell) main.account-page.community-finance-page{width:100%;max-width:760px;margin:0 auto;padding:86px 15px calc(118px + env(safe-area-inset-bottom))}
+	.community-finance-heading{align-items:start;margin-bottom:18px}
+	.community-finance-heading h1{font-size:25px}
+	.community-finance-heading p{font-size:11px;line-height:1.5}
+	.community-summary-grid{grid-template-columns:1fr 1fr;gap:8px;margin-bottom:24px}
+	.community-summary-card{padding:13px;border-radius:14px}
+	.community-summary-card:first-child{grid-column:span 2}
+	.community-summary-card>strong{font-size:17px}
+	.community-summary-card>small{font-size:9px}
+	.community-section{gap:11px;margin:25px 0}
+	.community-section-heading h2{font-size:19px}
+	.community-section-copy{font-size:10px;line-height:1.5}
+	.community-campaign-grid{grid-template-columns:1fr}
+	.community-card{padding:15px;border-radius:14px}
+	.community-loan-form{padding:15px;border-radius:14px}
+	.community-loan-form-heading{align-items:start;flex-direction:column;gap:5px}
+	.community-loan-inputs{grid-template-columns:1fr}
+	.community-loan-estimate{align-items:start;flex-direction:column;gap:4px}
+	.community-installment{align-items:start;flex-direction:column;gap:6px}
+	.community-history-list{padding:0 11px}
+	.community-history-row{align-items:start;gap:8px}
+	.community-history-row>strong{font-size:10px}
+	body:has(.admin-shell-chrome) main.account-page.admin-community-page{padding:84px 14px 30px}
+	.admin-community-form{grid-template-columns:1fr}
+	.admin-community-form .account-label:nth-child(2){grid-column:auto}
+	.admin-community-installment{grid-template-columns:1fr}
+	.admin-community-loan-heading{align-items:start;flex-direction:column}
+}
 @media(max-width:1020px){
 	.admin-sidebar{background:linear-gradient(180deg,#fff 0%,#f7f9fb 100%)}
 	.admin-sidebar-backdrop{background:rgba(15,48,84,.22)}

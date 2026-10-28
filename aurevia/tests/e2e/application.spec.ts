@@ -939,10 +939,12 @@ test('REAL funding remains available while trading stays disabled without broker
 
 		const prooflessDepositApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_DEPOSIT_NO_PROOF_ID'),decision:'APPROVED'}});
 		expect(prooflessDepositApproval.status()).toBe(200);
-		expect(Number((await prooflessDepositApproval.json()).creditedAmount)).toBe(75);
+		expect(Number((await prooflessDepositApproval.json()).creditedAmount)).toBe(67.5);
+		expect(Number((await prooflessDepositApproval.json()).feeAmount)).toBe(7.5);
 		const depositApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_DEPOSIT_ID'),decision:'APPROVED'}});
 		expect(depositApproval.status()).toBe(200);
-		expect(Number((await depositApproval.json()).creditedAmount)).toBe(125);
+		expect(Number((await depositApproval.json()).creditedAmount)).toBe(112.5);
+		expect(Number((await depositApproval.json()).feeAmount)).toBe(12.5);
 		const withdrawalApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_WITHDRAWAL_ID'),decision:'APPROVED'}});
 		expect(withdrawalApproval.status()).toBe(409);
 		expect((await withdrawalApproval.json()).error).toContain('audited approve, process, and externally confirmed completion workflow');
@@ -951,12 +953,12 @@ test('REAL funding remains available while trading stays disabled without broker
 		const duplicateApproval=await adminPage.request.patch('/api/admin/funding',{data:{id:fixture('REAL_DEPOSIT_ID'),decision:'APPROVED'}});
 		expect(duplicateApproval.status()).toBe(409);
 		const fundingHistory=await adminPage.request.get('/api/admin/funding?history=true').then(response=>response.json());
-		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_DEPOSIT_ID'))).toMatchObject({status:'APPROVED',accountMode:'REAL',creditedAmount:'125'});
+		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_DEPOSIT_ID'))).toMatchObject({status:'APPROVED',accountMode:'REAL',amount:'125',creditedAmount:'112.5',feeAmount:'12.5'});
 		expect(fundingHistory.find((row:{id:string})=>row.id===fixture('REAL_WITHDRAWAL_ID'))).toMatchObject({status:'PENDING_REVIEW',accountMode:'REAL'});
 	}finally{await adminContext.close();}
 
-	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(200);
-	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).withdrawableBalance)).toBe(175);
+	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(180);
+	await expect.poll(async()=>Number((await page.request.get('/api/wallet').then(response=>response.json())).withdrawableBalance)).toBe(155);
 	const fundedInstrument=(await page.request.get('/api/market').then(response=>response.json())).find((item:{price:number})=>Number(item.price)<100);
 	expect(fundedInstrument,'approved REAL deposits should provide an affordable market instrument').toBeTruthy();
 	if(!fundedInstrument)throw new Error('No affordable instrument is available after the simulated REAL deposits.');
@@ -2064,10 +2066,11 @@ test('REAL internal deposit request remains uncredited until administrator appro
 		expect(Number(after.withdrawableBalance)).toBe(Number(before.withdrawableBalance));
 		const approval=await adminPage.request.patch('/api/admin/funding',{data:{id:request.id,decision:'APPROVED',note:'Approved internal ledger credit'}});
 		expect(approval.status()).toBe(200);
-		expect(Number((await approval.json()).creditedAmount)).toBe(20);
+		expect(Number((await approval.json()).creditedAmount)).toBe(18);
+		expect(Number((await approval.json()).feeAmount)).toBe(2);
 		const credited=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(credited.balance)).toBe(Number(before.balance)+20);
-		expect(credited.transactions.find((item:{id:string})=>item.id===request.id)).toMatchObject({status:'APPROVED',creditedAmount:'20',accountMode:'REAL'});
+		expect(Number(credited.balance)).toBe(Number(before.balance)+18);
+		expect(credited.transactions.find((item:{id:string})=>item.id===request.id)).toMatchObject({status:'APPROVED',amount:'20',creditedAmount:'18',feeAmount:'2',accountMode:'REAL'});
 	}finally{
 		await adminContext.close();
 	}
@@ -2162,7 +2165,7 @@ test('DEMO funding stays disabled regardless of user deposit and withdrawal perm
 	}
 });
 
-test('approved internal deposit receipts show the requested ledger credit and reviewer audit',async({browser,page})=>{
+test('approved internal deposit receipts show gross amount, deducted fee, net credit, and reviewer audit',async({browser,page})=>{
 	const adminContext=await browser.newContext();
 	const adminPage=await adminContext.newPage();
 	try{
@@ -2176,19 +2179,22 @@ test('approved internal deposit receipts show the requested ledger credit and re
 		await logout(page);
 		const approval=await adminPage.request.patch('/api/admin/funding',{data:{id:request.id,decision:'APPROVED',note:'Approved internal ledger credit'}});
 		expect(approval.status()).toBe(200);
-		expect(Number((await approval.json()).creditedAmount)).toBe(100);
+		expect(Number((await approval.json()).creditedAmount)).toBe(90);
+		expect(Number((await approval.json()).feeAmount)).toBe(10);
 		await loginAs(page,fixture('INVESTOR_EMAIL'),fixture('INVESTOR_PASSWORD'));
 		await selectAccountMode(page,'REAL');
 		const wallet=await page.request.get('/api/wallet').then(response=>response.json());
-		expect(Number(wallet.balance)).toBeCloseTo(startingBalance+100,2);
+		expect(Number(wallet.balance)).toBeCloseTo(startingBalance+90,2);
 		const transaction=wallet.transactions.find((item:{id:string})=>item.id===request.id);
-		expect(transaction).toMatchObject({status:'APPROVED',creditedAmount:'100',reviewedBy:{email:fixture('ADMIN_EMAIL')}});
+		expect(transaction).toMatchObject({status:'APPROVED',amount:'100',creditedAmount:'90',feeAmount:'10',reviewedBy:{email:fixture('ADMIN_EMAIL')}});
 		expect(transaction.reviewedAt).toBeTruthy();
 		await page.goto('/wallet');
 		await page.locator('.wallet-ledger-records > summary').click();
 		const receiptDetails=page.locator('.wallet-receipt-list > details').filter({hasText:request.id}).first();
 		await receiptDetails.locator('summary').click();
 		await expect(receiptDetails.getByText('$100.00',{exact:true}).first()).toBeVisible();
+		await expect(receiptDetails.getByText('$10.00',{exact:true}).first()).toBeVisible();
+		await expect(receiptDetails.getByText('$90.00',{exact:true}).first()).toBeVisible();
 		await expect(receiptDetails.getByRole('heading',{name:'Transaction Details'})).toBeVisible();
 		await expect(receiptDetails.getByText(fixture('ADMIN_EMAIL'),{exact:true})).toHaveCount(0);
 		const downloadPromise=page.waitForEvent('download');

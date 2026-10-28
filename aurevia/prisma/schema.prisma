@@ -95,6 +95,25 @@ enum EntryType {
   CREDIT
 }
 
+enum CommunityCampaignStatus {
+  DRAFT
+  ACTIVE
+  CLOSED
+}
+
+enum LoanStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+  ACTIVE
+  PAID_OFF
+}
+
+enum LoanInstallmentStatus {
+  UPCOMING
+  PAID
+}
+
 enum SupportStatus {
   OPEN
   IN_REVIEW
@@ -284,6 +303,12 @@ model User {
   simulatedCards                   SimulatedCard[]
   cardCatalogUpdates               CardCatalogItem[]                 @relation("CardCatalogUpdater")
   cardApplicationReviews           CardApplication[]                 @relation("CardApplicationReviewer")
+  communityCampaigns               CommunityCampaign[]               @relation("CommunityCampaignCreator")
+  communityDonations                CommunityDonation[]
+  communityLoans                    CommunityLoan[]                    @relation("CommunityLoanBorrower")
+  reviewedCommunityLoans           CommunityLoan[]                    @relation("CommunityLoanReviewer")
+  disbursedCommunityLoans          CommunityLoan[]                    @relation("CommunityLoanDisburser")
+  recordedCommunityLoanPayments   CommunityLoanPayment[]              @relation("CommunityLoanPaymentRecorder")
 
   tierReviews TierUpgradeRequest[] @relation("TierRequestReviewer")
   avatarKey   String?
@@ -641,6 +666,8 @@ model FundingRequest {
   method                        String
   amount                        Decimal                        @db.Decimal(30, 10)
   creditedAmount                Decimal?                       @db.Decimal(30, 10)
+  feeAmount                     Decimal?                       @db.Decimal(30, 10)
+  feePercent                    Decimal?                       @db.Decimal(7, 4)
   creditedCurrency              String?
   currency                      String                         @default("USD")
   status                        FundingStatus                  @default(PENDING)
@@ -676,6 +703,113 @@ model FundingRequest {
   @@index([type, accountMode, status, createdAt])
   @@index([userId, accountMode, currency, type, status])
   @@index([withdrawalDestinationId])
+}
+
+model CommunityCampaign {
+  id          String                  @id @default(cuid())
+  title       String                  @db.VarChar(120)
+  description String                  @db.VarChar(3000)
+  status      CommunityCampaignStatus @default(DRAFT)
+  createdById String
+  createdBy   User                    @relation("CommunityCampaignCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime                @default(now())
+  updatedAt   DateTime                @updatedAt
+  donations   CommunityDonation[]
+
+  @@index([status, createdAt])
+}
+
+model CommunityDonation {
+  id                String           @id @default(cuid())
+  userId            String
+  user              User             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  campaignId        String
+  campaign          CommunityCampaign @relation(fields: [campaignId], references: [id], onDelete: Restrict)
+  amount            Decimal          @db.Decimal(30, 10)
+  currency          String           @default("USD")
+  accountMode       AccountMode      @default(REAL)
+  ledgerReference   String           @unique
+  idempotencyKey    String           @unique
+  createdAt         DateTime         @default(now())
+
+  @@index([userId, createdAt])
+  @@index([campaignId, createdAt])
+  @@index([accountMode, createdAt])
+}
+
+model CommunityLoan {
+  id                    String                 @id @default(cuid())
+  userId                String
+  user                  User                   @relation("CommunityLoanBorrower", fields: [userId], references: [id], onDelete: Restrict)
+  principal             Decimal                @db.Decimal(30, 10)
+  currency              String                 @default("USD")
+  aprPercent            Decimal                @default(12) @db.Decimal(7, 4)
+  processingFeePercent  Decimal                @default(2) @db.Decimal(7, 4)
+  processingFeeAmount   Decimal?               @db.Decimal(30, 10)
+  netDisbursedAmount    Decimal?               @db.Decimal(30, 10)
+  termMonths            Int
+  monthlyPayment        Decimal                @db.Decimal(30, 10)
+  qualifyingMonths      String[]               @default([])
+  status                LoanStatus             @default(PENDING_REVIEW)
+  idempotencyKey        String?                @unique
+  acceptedTermsAt       DateTime
+  policyVersion         String                 @default("2026-10-v1") @db.VarChar(32)
+  reviewNote            String?                @db.VarChar(500)
+  reviewedById          String?
+  reviewedBy            User?                  @relation("CommunityLoanReviewer", fields: [reviewedById], references: [id], onDelete: Restrict)
+  reviewedAt            DateTime?
+  disbursementReference String?                @unique @db.VarChar(180)
+  disbursementNote      String?                @db.VarChar(500)
+  disbursedById         String?
+  disbursedBy           User?                  @relation("CommunityLoanDisburser", fields: [disbursedById], references: [id], onDelete: Restrict)
+  disbursedAt           DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  installments          CommunityLoanInstallment[]
+  payments              CommunityLoanPayment[]
+
+  @@index([userId, status, createdAt])
+  @@index([status, createdAt])
+}
+
+model CommunityLoanInstallment {
+  id                 String                  @id @default(cuid())
+  loanId             String
+  loan               CommunityLoan           @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  number             Int
+  dueAt              DateTime
+  principalAmount    Decimal                 @db.Decimal(30, 10)
+  interestAmount    Decimal                 @db.Decimal(30, 10)
+  totalAmount       Decimal                 @db.Decimal(30, 10)
+  lateFeeAmount     Decimal                 @default(0) @db.Decimal(30, 10)
+  lateFeeAppliedAt  DateTime?
+  status             LoanInstallmentStatus  @default(UPCOMING)
+  paidAt             DateTime?
+  ledgerReference    String?                 @unique
+  createdAt          DateTime                @default(now())
+  payments           CommunityLoanPayment[]
+
+  @@unique([loanId, number])
+  @@index([status, dueAt])
+}
+
+model CommunityLoanPayment {
+  id                String                  @id @default(cuid())
+  loanId            String
+  loan              CommunityLoan           @relation(fields: [loanId], references: [id], onDelete: Restrict)
+  installmentId     String
+  installment       CommunityLoanInstallment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  amount            Decimal                 @db.Decimal(30, 10)
+  currency          String                  @default("USD")
+  externalReference String                  @unique @db.VarChar(180)
+  adminNote         String?                 @db.VarChar(500)
+  recordedById      String
+  recordedBy        User                    @relation("CommunityLoanPaymentRecorder", fields: [recordedById], references: [id], onDelete: Restrict)
+  ledgerReference   String                  @unique
+  createdAt         DateTime                @default(now())
+
+  @@index([loanId, createdAt])
+  @@index([installmentId])
 }
 
 model WithdrawalDestination {

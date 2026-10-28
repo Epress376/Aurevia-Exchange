@@ -31,6 +31,54 @@ export async function postDoubleEntry(tx:Tx,args:{reference:string;description:s
  if(amount.lte(0))throw new Error('INVALID_ROUNDED_AMOUNT');
  await tx.ledgerTransaction.create({data:{reference:args.reference,description:args.description,accountMode:debitMode,entries:{create:[{accountId:args.debitAccountId,accountMode:debitMode,type:EntryType.DEBIT,amount},{accountId:args.creditAccountId,accountMode:creditMode,type:EntryType.CREDIT,amount}]} }});
 }
+export async function postGrossCreditWithFee(tx:Tx,args:{reference:string;description:string;clearingAccountId:string;userAccountId:string;feeAccountId:string;grossAmount:Prisma.Decimal|string|number;creditedAmount:Prisma.Decimal|string|number;feeAmount:Prisma.Decimal|string|number}){
+ const gross=new D(args.grossAmount);
+ const credited=new D(args.creditedAmount);
+ const fee=new D(args.feeAmount);
+ if(gross.lte(0)||credited.lt(0)||fee.lt(0)||!credited.plus(fee).equals(gross))throw new Error('INVALID_DEPOSIT_ALLOCATION');
+ const accounts=await tx.ledgerAccount.findMany({where:{id:{in:[args.clearingAccountId,args.userAccountId,args.feeAccountId]}},select:{id:true,currency:true,accountMode:true}});
+ if(accounts.length!==3)throw new Error('LEDGER_ACCOUNT_NOT_FOUND');
+ const currencies=new Set(accounts.map(account=>account.currency.toUpperCase()));
+ const modes=new Set(accounts.map(account=>account.accountMode));
+ if(currencies.size!==1)throw new Error('LEDGER_CURRENCY_MISMATCH');
+ if(modes.size!==1)throw new Error('LEDGER_MODE_MISMATCH');
+ const currency=accounts[0].currency.toUpperCase();
+ const accountMode=accounts[0].accountMode;
+ const round=(value:Prisma.Decimal)=>currency==='USD'?roundUsdAmount(value):value;
+ const debitAmount=round(gross);
+ const creditAmount=round(credited);
+ const feeValue=round(fee);
+ if(debitAmount.lte(0)||!creditAmount.plus(feeValue).equals(debitAmount))throw new Error('INVALID_DEPOSIT_ALLOCATION');
+ const entries:Prisma.LedgerEntryCreateWithoutTransactionInput[]=[
+  {account:{connect:{id:args.clearingAccountId}},accountMode,type:EntryType.DEBIT,amount:debitAmount},
+  {account:{connect:{id:args.userAccountId}},accountMode,type:EntryType.CREDIT,amount:creditAmount},
+ ];
+ if(feeValue.gt(0))entries.push({account:{connect:{id:args.feeAccountId}},accountMode,type:EntryType.CREDIT,amount:feeValue});
+ await tx.ledgerTransaction.create({data:{reference:args.reference,description:args.description,accountMode,entries:{create:entries}}});
+}
+export async function postLoanRepayment(tx:Tx,args:{reference:string;description:string;cashAccountId:string;receivableAccountId:string;interestAccountId:string;lateFeeAccountId:string;principalAmount:Prisma.Decimal|string|number;interestAmount:Prisma.Decimal|string|number;lateFeeAmount:Prisma.Decimal|string|number}){
+ const principal=roundUsdAmount(args.principalAmount);
+ const interest=roundUsdAmount(args.interestAmount);
+ const lateFee=roundUsdAmount(args.lateFeeAmount);
+ const amount=principal.plus(interest).plus(lateFee);
+ if(principal.lt(0)||interest.lt(0)||lateFee.lt(0)||amount.lte(0))throw new Error('INVALID_REPAYMENT_ALLOCATION');
+ const ids=[args.cashAccountId,args.receivableAccountId,args.interestAccountId,args.lateFeeAccountId];
+ const accounts=await tx.ledgerAccount.findMany({where:{id:{in:ids}},select:{id:true,currency:true,accountMode:true}});
+ if(accounts.length!==new Set(ids).size)throw new Error('LEDGER_ACCOUNT_NOT_FOUND');
+ const currencies=new Set(accounts.map(account=>account.currency.toUpperCase()));
+ const modes=new Set(accounts.map(account=>account.accountMode));
+ if(currencies.size!==1)throw new Error('LEDGER_CURRENCY_MISMATCH');
+ if(modes.size!==1)throw new Error('LEDGER_MODE_MISMATCH');
+ if(accounts[0].currency.toUpperCase()!=='USD'||accounts[0].accountMode!==AccountMode.REAL)throw new Error('REAL_USD_LEDGER_REQUIRED');
+ const accountMode=accounts[0].accountMode;
+ const entries:Prisma.LedgerEntryCreateWithoutTransactionInput[]=[
+  {account:{connect:{id:args.cashAccountId}},accountMode,type:EntryType.DEBIT,amount},
+ ];
+ if(principal.gt(0))entries.push({account:{connect:{id:args.receivableAccountId}},accountMode,type:EntryType.CREDIT,amount:principal});
+ if(interest.gt(0))entries.push({account:{connect:{id:args.interestAccountId}},accountMode,type:EntryType.CREDIT,amount:interest});
+ if(lateFee.gt(0))entries.push({account:{connect:{id:args.lateFeeAccountId}},accountMode,type:EntryType.CREDIT,amount:lateFee});
+ await tx.ledgerTransaction.create({data:{reference:args.reference,description:args.description,accountMode,entries:{create:entries}}});
+}
 export async function ensureUserLedger(tx:Tx,userId:string,accountMode:AccountMode=AccountMode.DEMO,currency='USD'){const normalizedCurrency=currency.toUpperCase();const code=`USER:${userId}:${accountMode}:${normalizedCurrency}`;return tx.ledgerAccount.upsert({where:{code},update:{},create:{userId,accountMode,code,name:`${accountMode} account ${userId} ${normalizedCurrency}`,currency:normalizedCurrency}})}
 export async function ensureSystemAccount(tx:Tx,code:string,name:string,currency='USD',accountMode:AccountMode=AccountMode.DEMO){return tx.ledgerAccount.upsert({where:{code},update:{},create:{code,name,currency:currency.toUpperCase(),accountMode}})}
 export const PAPER_STARTING_BALANCE=new D(DEMO_OPENING_BALANCE);

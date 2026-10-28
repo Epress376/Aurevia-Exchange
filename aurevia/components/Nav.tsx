@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -16,6 +16,9 @@ const moreMenuGroups=[
   {href:'/portfolio',label:'Portfolio',icon:ChartNoAxesCombined},
   {href:'/orders',label:'Orders',icon:History},
   {href:'/wallet/transactions',label:'Transaction history',icon:FileText},
+ ]},
+ {title:'Community',links:[
+  {href:'/community',label:'Community finance',icon:HeartHandshakeIcon},
  ]},
  {title:'Account',links:[
   {href:'/notifications',label:'Notifications',icon:Bell},
@@ -42,6 +45,7 @@ export default function Nav(){
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
+  {href:'/community',label:'Community finance',group:'Community'},
   {href:'/markets',label:'Markets',group:'Investing'},
   {href:'/trade',label:'Trade',group:'Investing'},
   {href:'/portfolio',label:'Portfolio',group:'Investing'},
@@ -298,3 +302,4 @@ export default function Nav(){
 }
 
 function ActivityIcon(){return <LineChart size={15} aria-hidden="true"/>}
+function HeartHandshakeIcon(){return <HeartHandshake size={16} aria-hidden="true"/>}

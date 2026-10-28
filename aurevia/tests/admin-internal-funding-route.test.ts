@@ -7,7 +7,7 @@ const mocks=vi.hoisted(()=>({
 	userFindUnique:vi.fn(),
 	ensureUserLedger:vi.fn(),
 	ensureSystemAccount:vi.fn(),
-	postDoubleEntry:vi.fn(),
+	postGrossCreditWithFee:vi.fn(),
 	balance:vi.fn(),
 	roundUsdAmount:vi.fn(),
 	createNotification:vi.fn(),
@@ -19,7 +19,7 @@ vi.mock('@/lib/db',()=>({db:{$transaction:mocks.transaction,user:{findUnique:moc
 vi.mock('@/lib/ledger',()=>({
 	ensureUserLedger:mocks.ensureUserLedger,
 	ensureSystemAccount:mocks.ensureSystemAccount,
-	postDoubleEntry:mocks.postDoubleEntry,
+	postGrossCreditWithFee:mocks.postGrossCreditWithFee,
 	balance:mocks.balance,
 	roundUsdAmount:mocks.roundUsdAmount,
 }));
@@ -68,7 +68,7 @@ beforeEach(()=>{
 	mocks.userFindUnique.mockResolvedValue({email:'user@example.test'});
 	mocks.ensureUserLedger.mockResolvedValue({id:'real-usd-ledger',currency:'USD'});
 	mocks.ensureSystemAccount.mockResolvedValue({id:'real-clearing',currency:'USD'});
-	mocks.postDoubleEntry.mockResolvedValue(undefined);
+	mocks.postGrossCreditWithFee.mockResolvedValue(undefined);
 	mocks.balance.mockResolvedValue(new Prisma.Decimal('100.00'));
 	mocks.roundUsdAmount.mockImplementation((value:number|string)=>new Prisma.Decimal(value).toDecimalPlaces(2,Prisma.Decimal.ROUND_HALF_UP));
 	mocks.createNotification.mockResolvedValue(undefined);
@@ -76,19 +76,21 @@ beforeEach(()=>{
 });
 
 describe('administrator-controlled REAL funding route',()=>{
-	it('credits the exact requested USD amount only after approval and records its audit reference',async()=>{
+	it('credits the approved USD amount net of the 10% deposit fee and records the allocation',async()=>{
 		const submittedBalance=new Prisma.Decimal(0);
 		expect(submittedBalance.toFixed(2)).toBe('0.00');
 
 		const response=await PATCH(reviewRequest('APPROVED'));
 		const body=await response.json();
 		expect(response.status).toBe(200);
-		expect(currentFunding).toMatchObject({status:FundingStatus.APPROVED,creditedCurrency:'USD',creditedAmount:new Prisma.Decimal('42.50')});
+		expect(currentFunding).toMatchObject({status:FundingStatus.APPROVED,creditedCurrency:'USD',creditedAmount:new Prisma.Decimal('38.25'),feeAmount:new Prisma.Decimal('4.25'),feePercent:new Prisma.Decimal('10')});
 		expect(mocks.ensureUserLedger).toHaveBeenCalledWith(tx,'user-1',AccountMode.REAL,'USD');
-		expect(mocks.postDoubleEntry).toHaveBeenCalledTimes(1);
-		expect(mocks.postDoubleEntry).toHaveBeenCalledWith(tx,expect.objectContaining({
+		expect(mocks.postGrossCreditWithFee).toHaveBeenCalledTimes(1);
+		expect(mocks.postGrossCreditWithFee).toHaveBeenCalledWith(tx,expect.objectContaining({
 			reference:`FUNDING:${transactionId}:APPROVED`,
-			amount:new Prisma.Decimal('42.50'),
+			grossAmount:new Prisma.Decimal('42.50'),
+			creditedAmount:new Prisma.Decimal('38.25'),
+			feeAmount:new Prisma.Decimal('4.25'),
 		}));
 		expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({
 			actorId:'admin-1',
@@ -101,7 +103,7 @@ describe('administrator-controlled REAL funding route',()=>{
 	it('does not permit a client-supplied amount to alter the approved request credit',async()=>{
 		const response=await PATCH(reviewRequest('APPROVED',{creditedAmount:1}));
 		expect(response.status).toBe(200);
-		expect(mocks.postDoubleEntry).toHaveBeenCalledWith(tx,expect.objectContaining({amount:new Prisma.Decimal('42.50')}));
+		expect(mocks.postGrossCreditWithFee).toHaveBeenCalledWith(tx,expect.objectContaining({grossAmount:new Prisma.Decimal('42.50'),creditedAmount:new Prisma.Decimal('38.25')}));
 	});
 
 	it('uses serializable transactions and returns a conflict when the database detects a concurrent review',async()=>{
@@ -112,14 +114,14 @@ describe('administrator-controlled REAL funding route',()=>{
 		expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function),expect.objectContaining({
 			isolationLevel:Prisma.TransactionIsolationLevel.Serializable,
 		}));
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 	});
 
 	it('does not credit on rejection and records the rejection',async()=>{
 		const response=await PATCH(reviewRequest('REJECTED',{note:'Request does not meet policy'}));
 		expect(response.status).toBe(200);
 		expect(currentFunding.status).toBe(FundingStatus.REJECTED);
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 		expect(tx.auditLog.create).toHaveBeenCalledWith(expect.objectContaining({data:expect.objectContaining({action:'FUNDING_REJECTED'})}));
 	});
 
@@ -129,7 +131,7 @@ describe('administrator-controlled REAL funding route',()=>{
 		const body=await response.json();
 		expect(response.status).toBe(409);
 		expect(body.error).toContain('approve, process, and externally confirmed');
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 	});
 
 	it('requires withdrawal rejection to use the audited lifecycle route',async()=>{
@@ -137,14 +139,14 @@ describe('administrator-controlled REAL funding route',()=>{
 		const response=await PATCH(reviewRequest('REJECTED'));
 		expect(response.status).toBe(409);
 		expect(currentFunding.status).toBe(FundingStatus.PENDING_REVIEW);
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 	});
 
 	it('does not approve legacy non-USD requests or post credits',async()=>{
 		currentFunding=makeRequest({currency:'BTC',amount:new Prisma.Decimal('0.125')});
 		const response=await PATCH(reviewRequest('APPROVED'));
 		expect(response.status).toBe(409);
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 		expect(tx.fundingRequest.updateMany).not.toHaveBeenCalled();
 	});
 
@@ -152,7 +154,7 @@ describe('administrator-controlled REAL funding route',()=>{
 		currentFunding=makeRequest({accountMode:AccountMode.DEMO});
 		const response=await PATCH(reviewRequest('APPROVED'));
 		expect(response.status).toBe(409);
-		expect(mocks.postDoubleEntry).not.toHaveBeenCalled();
+		expect(mocks.postGrossCreditWithFee).not.toHaveBeenCalled();
 		expect(tx.fundingRequest.updateMany).not.toHaveBeenCalled();
 	});
 });

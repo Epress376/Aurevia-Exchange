@@ -3,11 +3,12 @@ import {AccountMode,FundingStatus,FundingType,NotificationType,Prisma} from '@pr
 import {z,ZodError} from 'zod';
 import {requireAdmin} from '@/lib/auth';
 import {db} from '@/lib/db';
-import {ensureSystemAccount,ensureUserLedger,postDoubleEntry,balance,roundUsdAmount} from '@/lib/ledger';
+import {ensureSystemAccount,ensureUserLedger,postGrossCreditWithFee,balance,roundUsdAmount} from '@/lib/ledger';
 import {jsonSafe} from '@/lib/serializers';
 import {createNotification} from '@/lib/notifications';
 import {sendSupportEmail} from '@/lib/email';
 import {validateDepositApproval} from '@/lib/production-policy';
+import {COMMUNITY_FINANCE_POLICY} from '@/lib/community-finance-policy';
 
 const schema=z.object({id:z.string().min(1),decision:z.enum(['APPROVED','REJECTED','REQUEST_INFO']),note:z.string().trim().max(500).optional()}).superRefine((value,context)=>{
 	if(value.decision==='REQUEST_INFO'&&(!value.note||value.note.trim().length<3))context.addIssue({code:z.ZodIssueCode.custom,path:['note'],message:'An administrator review note of at least 3 characters is required.'});
@@ -62,11 +63,12 @@ export async function PATCH(req:Request){
 				return updated;
 			}
 			const creditCurrency='USD';
-			if(input.decision==='APPROVED')validateDepositApproval(current.amount.toString(),current.amount.toString());
-			const approvedCredit=input.decision==='APPROVED'?roundUsdAmount(current.amount):null;
+			const approvedFee=input.decision==='APPROVED'?roundUsdAmount(current.amount.times(COMMUNITY_FINANCE_POLICY.depositFeePercent).div(100)):null;
+			const approvedCredit=input.decision==='APPROVED'?roundUsdAmount(current.amount.minus(approvedFee!)):null;
+			if(input.decision==='APPROVED')validateDepositApproval(current.amount.toString(),approvedCredit!.toString(),approvedFee!.toString());
 			const reviewedAt=new Date();
 			const finalStatus=input.decision==='REJECTED'?FundingStatus.REJECTED:FundingStatus.APPROVED;
-			const changed=await tx.fundingRequest.updateMany({where:{id:current.id,status:{in:pendingStatuses}},data:{status:finalStatus,adminNote:input.note||null,reviewedAt,creditedAmount:approvedCredit,creditedCurrency:approvedCredit?creditCurrency:null}});
+			const changed=await tx.fundingRequest.updateMany({where:{id:current.id,status:{in:pendingStatuses}},data:{status:finalStatus,adminNote:input.note||null,reviewedAt,creditedAmount:approvedCredit,feeAmount:approvedFee,feePercent:input.decision==='APPROVED'?COMMUNITY_FINANCE_POLICY.depositFeePercent:null,creditedCurrency:approvedCredit?creditCurrency:null}});
 			if(changed.count!==1)throw new Error('FUNDING_ALREADY_REVIEWED');
 			let previousBalance:Prisma.Decimal|null=null;
 			let resultingBalance:Prisma.Decimal|null=null;
@@ -76,22 +78,23 @@ export async function PATCH(req:Request){
 				const account=await ensureUserLedger(tx,current.userId,AccountMode.REAL,ledgerCurrency);
 				previousBalance=await balance(tx,account.id);
 				const system=await ensureSystemAccount(tx,`SYSTEM:INTERNAL_${current.type}:REAL:USD`,`Internal Aurevia ${current.type.toLowerCase()} clearing`,ledgerCurrency,AccountMode.REAL);
+				const feeAccount=await ensureSystemAccount(tx,'SYSTEM:INTERNAL_DEPOSIT_FEE:REAL:USD','Internal Aurevia deposit fee revenue',ledgerCurrency,AccountMode.REAL);
 				ledgerTransactionReference=`FUNDING:${current.id}:APPROVED`;
-				await postDoubleEntry(tx,{reference:ledgerTransactionReference,description:'Administrator-approved internal REAL account credit',debitAccountId:system.id,creditAccountId:account.id,amount:approvedCredit!});
+				await postGrossCreditWithFee(tx,{reference:ledgerTransactionReference,description:'Administrator-approved internal REAL deposit net of the 10% deposit fee',clearingAccountId:system.id,userAccountId:account.id,feeAccountId:feeAccount.id,grossAmount:current.amount,creditedAmount:approvedCredit!,feeAmount:approvedFee!});
 				resultingBalance=await balance(tx,account.id);
 			}
 			const updated=await tx.fundingRequest.findUniqueOrThrow({where:{id:current.id}});
-			await tx.auditLog.create({data:{actorId:admin.id,action:`FUNDING_${input.decision}`,entity:'FUNDING',entityId:updated.id,metadata:{userId:updated.userId,type:updated.type,accountMode:updated.accountMode,currency:updated.currency,amount:updated.amount.toString(),status:updated.status,creditedAmount:updated.creditedAmount?.toString()??null,creditedCurrency:updated.creditedCurrency,userSubmittedReference:updated.transactionReference,ledgerTransactionReference,settlementReference:updated.settlementReference,internalLedgerOnly:true,externalEvidenceUserSubmitted:!!updated.receiptKey||!!updated.transactionReference,previousBalance:previousBalance?.toString()??null,resultingBalance:resultingBalance?.toString()??null}}});
+			await tx.auditLog.create({data:{actorId:admin.id,action:`FUNDING_${input.decision}`,entity:'FUNDING',entityId:updated.id,metadata:{userId:updated.userId,type:updated.type,accountMode:updated.accountMode,currency:updated.currency,amount:updated.amount.toString(),feeAmount:updated.feeAmount?.toString()??null,feePercent:updated.feePercent?.toString()??null,status:updated.status,creditedAmount:updated.creditedAmount?.toString()??null,creditedCurrency:updated.creditedCurrency,userSubmittedReference:updated.transactionReference,ledgerTransactionReference,settlementReference:updated.settlementReference,internalLedgerOnly:true,externalEvidenceUserSubmitted:!!updated.receiptKey||!!updated.transactionReference,previousBalance:previousBalance?.toString()??null,resultingBalance:resultingBalance?.toString()??null}}});
 			const notificationType=updated.type===FundingType.DEPOSIT?NotificationType.DEPOSIT:NotificationType.WITHDRAWAL;
 			const approved=input.decision==='APPROVED';
 			const message=approved
-				?`${updated.amount.toFixed(2)} USD was credited to your REAL available balance as an internal Aurevia ledger entry. No external payment was processed.`
+				?`${updated.creditedAmount?.toFixed(2)} USD was credited to your REAL available balance after a ${updated.feePercent?.toFixed(2)}% deposit fee of ${updated.feeAmount?.toFixed(2)} USD. The credit is an internal Aurevia ledger entry; no external payment was processed.`
 				:`Your REAL ${updated.type.toLowerCase()} request was rejected. No ledger balance was changed.${input.note?` Administrator note: ${input.note}`:''}`;
 			await createNotification(tx,{userId:updated.userId,type:notificationType,title:`REAL ${updated.type.toLowerCase()} ${approved?'approved':'rejected'}`,message,dedupeKey:`funding:${updated.id}:${input.decision.toLowerCase()}`,relatedEntity:'FUNDING',relatedId:updated.id,actionUrl:`/wallet/transactions/${updated.id}`});
 			return updated;
 		},{isolationLevel:Prisma.TransactionIsolationLevel.Serializable,maxWait:5_000,timeout:15_000});
 		const user=await db.user.findUnique({where:{id:request.userId},select:{email:true}});
-		const delivery=user?await sendSupportEmail(`Internal funding request ${input.decision.toLowerCase()}`,[`Request: ${request.id}`,`User: ${request.userId}`,`Type: ${request.type}`,`Mode: ${request.accountMode}`,`Amount: ${request.amount.toString()} ${request.currency}`,`Status: ${request.status}`,`Reference: ${request.settlementReference|| (request.status===FundingStatus.REJECTED?request.id:`FUNDING:${request.id}:APPROVED`)}`,`Internal ledger only; no external payment or transfer.`].join('\n')):{sent:false as const,reason:'failed' as const};
+		const delivery=user?await sendSupportEmail(`Internal funding request ${input.decision.toLowerCase()}`,[`Request: ${request.id}`,`User: ${request.userId}`,`Type: ${request.type}`,`Mode: ${request.accountMode}`,`Gross amount: ${request.amount.toString()} ${request.currency}`,`Deposit fee: ${request.feeAmount?.toString()??'0'} ${request.feeAmount?request.currency:''}`,`Net credited: ${request.creditedAmount?.toString()??'0'} ${request.creditedCurrency??request.currency}`,`Status: ${request.status}`,`Reference: ${request.settlementReference|| (request.status===FundingStatus.REJECTED?request.id:`FUNDING:${request.id}:APPROVED`)}`,`Internal ledger only; no external payment or transfer.`].join('\n')):{sent:false as const,reason:'failed' as const};
 		const {receiptKey,...safeRequest}=request;
 		return NextResponse.json({...jsonSafe(safeRequest),hasReceipt:!!receiptKey,emailDelivery:delivery.sent?'sent':delivery.reason||'failed'},{headers:{'Cache-Control':'private, no-store'}});
 	}catch(error){

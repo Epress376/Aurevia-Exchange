@@ -46,9 +46,11 @@ describe('production account policy',()=>{
     expect(()=>validateWithdrawal({balance:'100',pending:'10',amount:'91',withdrawalEnabled:true,kycStatus:KycStatus.PENDING,simulated:true})).toThrow('INSUFFICIENT_BALANCE');
   });
 
-  it('requires an exact deposit credit match before approval',()=>{
+  it('requires net credited amount and fee to equal the gross deposit',()=>{
     expect(()=>validateDepositApproval('100.00','90.00')).toThrow('DEPOSIT_AMOUNT_MISMATCH');
     expect(()=>validateDepositApproval('100.00','100.00')).not.toThrow();
+    expect(validateDepositApproval('100.00','90.00','10.00')).toMatchObject({requestedAmount:'100',creditedAmount:'90',feeAmount:'10'});
+    expect(()=>validateDepositApproval('100.00','89.99','10.00')).toThrow('DEPOSIT_AMOUNT_MISMATCH');
   });
 
   it('only treats an approved real-account KYC state as verified',()=>{
