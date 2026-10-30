@@ -37,14 +37,15 @@ test.describe('public routes and responsive layout',()=>{
 	}
 });
 
-test('homepage investment testimonials use only verified stories and stay compact on mobile',async({page})=>{
-	await page.route('**/api/client-stories',route=>route.fulfill({status:200,contentType:'application/json',body:'[]'}));
+test('homepage keeps Stories in navigation and off the landing content',async({page})=>{
 	for(const width of [320,375,414]){
 		await page.setViewportSize({width,height:844});
 		await page.goto('/');
-		await expect(page.getByRole('heading',{name:'Investment testimonials'})).toBeVisible();
-		await expect(page.getByText(/No published client stories yet/)).toBeVisible();
-		await expect(page.locator('.client-story-card')).toHaveCount(0);
+		await expect(page.locator('.stories-section')).toHaveCount(0);
+		await expect(page.locator('.client-stories-rotator')).toHaveCount(0);
+		const menu=page.getByRole('button',{name:'Open navigation'});
+		if(await menu.isVisible())await menu.click();
+		await expect(page.locator('#primary-navigation').getByRole('link',{name:'Stories',exact:true})).toHaveAttribute('href','/stories');
 		await expectNoHorizontalOverflow(page);
 	}
 });

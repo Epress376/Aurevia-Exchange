@@ -13,7 +13,8 @@ import LivePriceChart from '@/components/LivePriceChart';
 import {InvestmentProgressCard} from '@/components/InvestmentProgressCard';
 import DemoAiTradingPanel from '@/components/DemoAiTradingPanel';
 import DemoAccountControls from '@/components/DemoAccountControls';
-import StoriesExperience from '@/components/StoriesExperience';
+import AccountTierBadge from '@/components/AccountTierBadge';
+import {useAccountTier} from '@/components/useAccountTier';
 import {DEFAULT_WATCHLIST,MARKET_ASSETS,type MarketCandle,type MarketQuote,type TimeframeId} from '@/lib/live-market';
 import {formatUsd} from '@/lib/currency-format';
 
@@ -164,6 +165,7 @@ function ActivityList({items}:{items:Overview['recentActivity']}){
 
 export default function UserDashboardExperience(){
 	const {data:session}=useSession();
+	const accountTier=useAccountTier(session?.user?.role==='USER');
 	const [overview,setOverview]=useState<Overview|null>(null);
 	const [loading,setLoading]=useState(true);
 	const [refreshing,setRefreshing]=useState(false);
@@ -243,29 +245,23 @@ export default function UserDashboardExperience(){
 		try{await Promise.all([load(false),refreshQuotesRef.current()])}
 		finally{setSyncingAll(false)}
 	},[load]);
-	if(loading&&!overview)return <><Nav/><DashboardSidebar name={session?.user?.name||session?.user?.email||''}/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
+	if(loading&&!overview)return <><Nav/><DashboardSidebar name={session?.user?.name||session?.user?.email||''} tier={accountTier}/><main className="user-dashboard-page"><div className="user-dashboard-loading" role="status"><span className="user-dashboard-spinner"/>Loading your account dashboard…</div></main></>;
 
-	return <><Nav/><DashboardSidebar name={overview?.profile.name||session?.user?.email||''}/><main className="user-dashboard-page">
+	return <><Nav/><DashboardSidebar name={overview?.profile.name||session?.user?.email||''} tier={accountTier||overview?.profile.tier||''}/><main className="user-dashboard-page">
 		{error&&<div className="user-dashboard-error" role="alert"><span>{error}</span><button type="button" onClick={()=>void load(true)}>Retry</button></div>}
 		{overview&&<>
 			<header className="user-dashboard-welcome">
-				<div><span className="user-dashboard-eyebrow">AUREVIA EXCHANGE · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><p>Your accounts and activity, organized in one place.</p></div>
+				<div><span className="user-dashboard-eyebrow">AUREVIA EXCHANGE · ACCOUNT OVERVIEW</span><h1>Welcome back, {firstName(overview.profile.name)}</h1><div className="user-dashboard-profile-line"><span>{overview.profile.name||'Your profile'}</span><AccountTierBadge tier={accountTier||overview.profile.tier}/></div><p>Your accounts and activity, organized in one place.</p></div>
 				<div className="user-dashboard-welcome-actions">
 					<span className={`user-mode-pill ${overview.accountMode.toLowerCase()}`}><i/>{overview.accountMode==='DEMO'?'DEMO MODE · VIRTUAL':'REAL ACCOUNT'}</span>
 					<button type="button" className="user-dashboard-refresh" aria-label="Sync all account and market data" disabled={refreshing||syncingAll} onClick={()=>void syncAll()}><RefreshCw size={15} className={refreshing||syncingAll?'is-spinning':''}/><span>{refreshing||syncingAll?'Syncing…':'Sync all'}</span></button>
 					<Link href="/wallet" className="dashboard-wallet-link"><WalletCards size={15}/>Wallet</Link>
 				</div>
 			</header>
-			<section className="user-tier-progress" aria-label="Account tier progress">
-				<div className="user-tier-progress-copy"><span>ACCOUNT PROGRESSION</span><strong>{overview.profile.tier}</strong><p>{overview.profile.tier==='TIER 3'?'All tier reviews are complete.':overview.profile.profileRequirements.profileComplete?'Complete identity review in REAL mode to request Tier 3.':'Verify email and complete your profile details to reach Tier 2.'}</p></div>
-				<div className="user-tier-progress-meter"><div><span>Tier {overview.profile.tier.slice(-1)} of 3</span><b>{Math.round(overview.profile.progress)}%</b></div><div role="progressbar" aria-label="Account tier progression" aria-valuemin={0} aria-valuemax={100} aria-valuenow={overview.profile.progress}><span style={{width:`${overview.profile.progress}%`}}/></div></div>
-				<Link href="/tier" className="user-tier-progress-link">View requirements <ArrowUpRight size={14}/></Link>
-			</section>
-			<StoriesExperience mode="strip"/>
 			<section className="mobile-home-summary" aria-label="Account overview">
 				<header className="mobile-home-greeting">
 					<ProfileAvatar className="mobile-home-avatar" size={44} alt="Your profile picture"/>
-					<div><small>Welcome back</small><strong>{overview.profile.name||'Your account'}</strong></div>
+					<div><small>Welcome back</small><strong>{overview.profile.name||'Your account'}</strong><AccountTierBadge tier={accountTier||overview.profile.tier}/></div>
 					<Link href="/support" aria-label="Contact support"><LifeBuoy size={19}/></Link>
 					<Link href="/notifications" aria-label="View notifications"><Bell size={19}/></Link>
 				</header>
@@ -349,7 +345,7 @@ export default function UserDashboardExperience(){
 	</main></>;
 }
 
-function DashboardSidebar({name}:{name:string}){
+function DashboardSidebar({name,tier}:{name:string;tier:string}){
 	const initial=name.trim().slice(0,1).toUpperCase()||'A';
 	const items=[
 		{href:'/dashboard',label:'Overview',icon:Home},
@@ -363,7 +359,7 @@ function DashboardSidebar({name}:{name:string}){
 		<Link href="/" className="dashboard-sidebar-brand"><Image src="/aurevia-logo.png" alt="" width={36} height={36}/><span><b>Aurevia</b><small>EXCHANGE</small></span></Link>
 		<span className="dashboard-sidebar-label">WORKSPACE</span>
 		<nav>{items.map(({href,label,icon:Icon})=><Link key={href} href={href} aria-current={href==='/dashboard'?'page':undefined} className={href==='/dashboard'?'is-active':''}><Icon size={17}/><span>{label}</span>{href==='/dashboard'&&<i aria-hidden="true"/>}</Link>)}</nav>
-		<div className="dashboard-sidebar-profile"><span>{initial}</span><div><b>{name||'Account'}</b><small>Personal account</small></div></div>
+		<div className="dashboard-sidebar-profile"><span>{initial}</span><div><b>{name||'Account'}</b><AccountTierBadge tier={tier}/></div></div>
 	</aside>;
 }
 

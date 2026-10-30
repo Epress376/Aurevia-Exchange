@@ -142,6 +142,9 @@ test('public stories publish for visitors and members with role, schedule, expir
 		await waitForStartup(page);
 		await expect(page.getByRole('heading',{name:'Stories',exact:true})).toBeVisible();
 		await expect(page.getByRole('button',{name:`Open ${publicStory.title}`})).toBeVisible();
+		await expect(page.locator('.story-card-featured')).toContainText('Featured story');
+		await expect(page.getByRole('button',{name:`Open ${publicStory.title}`})).toContainText('Read more');
+		await expect(page.getByRole('button',{name:`Open ${publicStory.title}`}).locator('time')).not.toHaveText('Publication date unavailable');
 		await expect(page.getByRole('button',{name:`Open ${scheduledStory.title}`})).toBeVisible();
 		await expect(page.getByRole('button',{name:`Open ${draftStory.title}`})).toHaveCount(0);
 		await expect(page.getByRole('button',{name:`Open ${membersStory.title}`})).toHaveCount(0);
@@ -389,16 +392,20 @@ test('login and registration fields receive real pointer and keyboard input',asy
 
 test('dashboard hierarchy remains usable and contained at mobile and desktop widths',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+	const profile=await page.request.get('/api/profile').then(response=>response.json());
 	await page.goto('/dashboard');
 	for(const width of [320,375,390,430,1440]){
 		await page.setViewportSize({width,height:900});
 		if(width<=760){
 			await expect(page.locator('.mobile-home-greeting')).toBeVisible();
+			await expect(page.locator('.mobile-home-greeting .account-tier-badge')).toHaveText(profile.label);
 			await expect(page.locator('.mobile-balance-card')).toBeVisible();
 			await expect(page.getByRole('heading',{name:'My assets'})).toBeVisible();
 			await expect(page.getByRole('heading',{name:'Recent activity'})).toBeVisible();
 		}else{
 			await expect(page.getByRole('heading',{name:/Welcome back/})).toBeVisible();
+			await expect(page.locator('.dashboard-sidebar-profile .account-tier-badge')).toHaveText(profile.label);
+			await expect(page.locator('.user-tier-progress')).toHaveCount(0);
 			await expect(page.getByRole('heading',{name:'Market watch'})).toBeVisible();
 			await expect(page.getByRole('heading',{name:'My portfolio'})).toBeVisible();
 			await expect(page.locator('.dashboard-profile-panel')).toHaveCount(0);
@@ -423,6 +430,11 @@ test('dashboard hierarchy remains usable and contained at mobile and desktop wid
 			}
 		}
 	}
+	await expect(page.locator('.user-topbar-identity .account-tier-badge')).toHaveText(profile.label);
+	await page.getByRole('button',{name:'More account navigation'}).click();
+	await expect(page.locator('.user-more-profile .account-tier-badge')).toHaveText(profile.label);
+	await page.goto('/settings#profile');
+	await expect(page.locator('.account-profile-identity .account-tier-badge')).toHaveText(profile.label);
 });
 
 test('authenticated bottom navigation stays fixed across viewports and More destinations',async({page})=>{

@@ -18,6 +18,13 @@ export type StoryFeedItem={
 type Props={mode?:'strip'|'page';stories?:StoryFeedItem[]};
 type StoryFrame={story:StoryFeedItem;media:StoryFeedItem['media'][number]|null};
 
+function formatPublicationDate(value:string|null){
+	if(!value)return 'Publication date unavailable';
+	const date=new Date(value);
+	if(!Number.isFinite(date.getTime()))return 'Publication date unavailable';
+	return new Intl.DateTimeFormat(undefined,{year:'numeric',month:'short',day:'numeric'}).format(date);
+}
+
 export function StoriesViewer({stories,initialIndex=0,onClose,trackEngagement=true}:{stories:StoryFeedItem[];initialIndex?:number;onClose:()=>void;trackEngagement?:boolean}){
 	const frames=useMemo(()=>stories.reduce<StoryFrame[]>((result,story)=>{
 		if(story.media.length)result.push(...story.media.map(media=>({story,media})));
@@ -162,10 +169,10 @@ export default function StoriesExperience({mode='strip',stories:providedStories}
 		{error&&<p className="stories-status stories-error" role="alert">{error}</p>}
 		{!loading&&!error&&stories.length===0&&<div className="stories-empty"><Radio size={18}/><span>There are no published stories at the moment.</span></div>}
 		{!loading&&!error&&visibleStories.length>0&&<div className={mode==='strip'?'stories-strip':'stories-card-grid'}>
-			{visibleStories.map(story=>{
+			{visibleStories.map((story,index)=>{
 				const image=story.media.find(item=>item.type==='IMAGE');
-				return <button type="button" className={mode==='strip'?'story-bubble':'story-card'} key={story.id} onClick={()=>openStory(story.id)} aria-label={`Open ${story.title}`}>
-					{mode==='strip'?<><span className="story-bubble-ring"><span className="story-bubble-inner">{image?<Image src={image.url} alt="" fill unoptimized sizes="84px"/>:<span className="story-bubble-letter">A</span>}</span></span><span className="story-bubble-title">{story.title}</span><small>{story.category.name}</small></>:<><span className="story-card-media">{image?<Image src={image.url} alt={image.altText||''} fill unoptimized sizes="(max-width: 720px) 100vw, 360px"/>:<span className="story-card-placeholder"><Radio size={22}/></span>}{story.media.some(item=>item.type==='VIDEO')&&<i className="story-card-video"><Play size={13} fill="currentColor"/></i>}</span><span className="story-card-content"><small>{story.category.name}</small><b>{story.title}</b><span>{story.description}</span></span></>}
+				return <button type="button" className={mode==='strip'?'story-bubble':index===0?'story-card story-card-featured':'story-card'} key={story.id} onClick={()=>openStory(story.id)} aria-label={`Open ${story.title}`}>
+					{mode==='strip'?<><span className="story-bubble-ring"><span className="story-bubble-inner">{image?<Image src={image.url} alt="" fill unoptimized sizes="84px"/>:<span className="story-bubble-letter">A</span>}</span></span><span className="story-bubble-title">{story.title}</span><small>{story.category.name}</small></>:<><span className="story-card-media">{image?<Image src={image.url} alt={image.altText||''} fill unoptimized sizes="(max-width: 720px) 100vw, 520px"/>:<span className="story-card-placeholder"><Radio size={22}/></span>}{story.media.some(item=>item.type==='VIDEO')&&<i className="story-card-video"><Play size={13} fill="currentColor"/></i>}</span><span className="story-card-content">{index===0&&<i>Featured story</i>}<small>{story.category.name}</small><b>{story.title}</b><time dateTime={story.publishedAt||undefined}>{formatPublicationDate(story.publishedAt)}</time><span>{story.description}</span><strong>{mode==='page'?'Read more':'Open story'} <ArrowRight size={13}/></strong></span></>}
 				</button>;
 			})}
 		</div>}

@@ -8,6 +8,8 @@ import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
 import ProfileAvatar from '@/components/ProfileAvatar';
+import AccountTierBadge from '@/components/AccountTierBadge';
+import {useAccountTier} from '@/components/useAccountTier';
 import ThemeToggle from '@/components/ThemeToggle';
 import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
@@ -19,8 +21,10 @@ const moreMenuGroups=[
   {href:'/orders',label:'Orders',icon:History},
   {href:'/wallet/transactions',label:'Transaction history',icon:FileText},
  ]},
- {title:'Community',links:[
+ {title:'Explore',links:[
   {href:'/stories',label:'Stories',icon:Radio},
+ ]},
+ {title:'Community',links:[
   {href:'/community',label:'Community finance',icon:HeartHandshakeIcon},
  ]},
  {title:'Account',links:[
@@ -39,7 +43,8 @@ const moreMenuGroups=[
 const realOnlyNavigationPaths=new Set(['/investments','/wallet/transactions','/kyc','/cards','/tax-services']);
 
 export default function Nav(){
- const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
+ const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
+ const tierLabel=useAccountTier(status==='authenticated'&&data?.user?.role==='USER');
  const close=()=>setOpen(false);
  const active=(href:string)=>{
   const [path,hash]=href.split('#');
@@ -49,7 +54,7 @@ export default function Nav(){
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
-  {href:'/stories',label:'Stories',group:'Community'},
+  {href:'/stories',label:'Stories',group:'Explore'},
   {href:'/community',label:'Community finance',group:'Community'},
   {href:'/markets',label:'Markets',group:'Investing'},
   {href:'/trade',label:'Trade',group:'Investing'},
@@ -143,16 +148,6 @@ export default function Nav(){
   };
  },[userMode]);
  useEffect(()=>{
-  if(!userMode){setTierLabel('');return}
-  let active=true;
-  void fetch('/api/profile',{cache:'no-store'}).then(async response=>{
-   const result=await response.json();
-   if(!response.ok)throw new Error(result.error||'Unable to load account tier.');
-   if(active&&typeof result.label==='string')setTierLabel(result.label);
-  }).catch(exception=>{if(active)console.error('Unable to load account tier.',exception instanceof Error?exception.name:'UnknownError')});
-  return()=>{active=false};
- },[userMode,data?.user?.accountMode]);
- useEffect(()=>{
   if(!open)return;
   const nav=userNavRef.current;
   const focusable=()=>nav?.querySelectorAll<HTMLElement>('a[href],button:not(:disabled),input:not(:disabled)');
@@ -209,7 +204,7 @@ export default function Nav(){
     <button type="button" aria-pressed={data.user.accountMode==='REAL'} disabled={modeBusy||loggingOut||data.user.accountMode==='REAL'} onClick={()=>void changeMode('REAL')}>Real</button>
    </div>
    <div className="user-topbar-actions"><button type="button" className="user-account-back" onClick={goBack} aria-label="Go back to previous page" title="Go back to previous page"><ArrowLeft size={16} aria-hidden="true"/></button><NotificationBell/><ThemeToggle/><button ref={userMenuButtonRef} type="button" className={`user-account-back${open||moreMenuGroups.some(group=>group.links.some(item=>active(item.href)))?' is-active':''}`} aria-label="More account navigation" aria-expanded={open} aria-controls="user-more-menu" onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={17} aria-hidden="true"/></button><LanguageSelector/></div>
-   <span className="user-topbar-identity"><ProfileAvatar className="user-topbar-avatar" size={32} alt="Your profile picture"/><span><b>{data.user.name||data.user.email}</b><small>{tierLabel||'Account tier unavailable'}</small></span></span>
+   <span className="user-topbar-identity"><ProfileAvatar className="user-topbar-avatar" size={32} alt="Your profile picture"/><span><b>{data.user.name||data.user.email}</b><AccountTierBadge tier={tierLabel}/></span></span>
    {modeError&&<span className="user-mode-error" role="alert">{modeError}</span>}
   </div>
   </header>
@@ -223,6 +218,7 @@ export default function Nav(){
   {open&&<button type="button" className="user-more-backdrop" aria-label="Close More menu" tabIndex={-1} onClick={close}/>}
   <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>
    <header className="user-more-heading"><div><span>ACCOUNT NAVIGATION</span><h2 id="user-more-title">More</h2></div><button type="button" className="user-more-close" aria-label="Close More menu" onClick={close}><X size={18}/></button></header>
+   <div className="user-more-profile"><ProfileAvatar className="user-topbar-avatar" size={36} alt="Your profile picture"/><span><b>{data.user.name||data.user.email}</b><AccountTierBadge tier={tierLabel}/></span><Link href="/settings#profile" onClick={close}>Profile</Link></div>
    <div className="user-more-groups">{visibleMoreMenuGroups.map(group=><section className="user-more-group" key={group.title} aria-label={group.title}><h3>{group.title}</h3>{group.links.map(({href,label,icon:Icon})=><Link href={href} key={href} aria-current={active(href)?'page':undefined} onClick={close}><Icon size={17} strokeWidth={1.7}/><span>{label}</span></Link>)}</section>)}
     {currentMode!=='DEMO'&&<section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link></section>}
    </div>
@@ -238,13 +234,16 @@ export default function Nav(){
       <Link href="/login" onClick={close}>{translate('signIn')}</Link>
       <Link href="/register" className="nav-cta" onClick={close}>{translate('createAccount')}</Link>
      </section>}
-    {status==='authenticated'&&data?.user&&<div className="nav-account-snapshot"><ProfileAvatar className="nav-account-monogram" size={36} alt="Your profile picture"/><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><em>{data.user.accountMode} ACCOUNT</em></span></div>}
+    {status==='authenticated'&&data?.user&&<div className="nav-account-snapshot"><ProfileAvatar className="nav-account-monogram" size={36} alt="Your profile picture"/><span className="nav-account-copy"><small>ACCOUNT SPACE</small><b>{data.user.name||data.user.email}</b><AccountTierBadge tier={tierLabel}/><em>{data.user.accountMode} ACCOUNT</em></span></div>}
      <section className="nav-menu-group" aria-labelledby="nav-overview-heading">
       <h2 className="nav-menu-section" id="nav-overview-heading">OVERVIEW</h2>
       <Link href="/" onClick={close} aria-current={pathname==='/'?'page':undefined}>{translate('home')}</Link>
       <Link href="/dashboard" onClick={close} aria-current={active('/dashboard')?'page':undefined}><LayoutDashboard size={16} aria-hidden="true"/>{translate('dashboard')}</Link>
-      <Link href="/stories" onClick={close} aria-current={active('/stories')?'page':undefined}><Radio size={16} aria-hidden="true"/>Stories</Link>
       {status==='authenticated'&&data?.user?.role==='ADMIN'&&<Link href="/admin" className="nav-admin-entry" onClick={close} aria-current={active('/admin')?'page':undefined}><ShieldCheck size={16} aria-hidden="true"/>Open Admin Console</Link>}
+     </section>
+     <section className="nav-menu-group" aria-labelledby="nav-explore-heading">
+      <h2 className="nav-menu-section" id="nav-explore-heading">EXPLORE</h2>
+      <Link href="/stories" onClick={close} aria-current={active('/stories')?'page':undefined}><Radio size={16} aria-hidden="true"/>Stories</Link>
      </section>
      <section className="nav-menu-group" aria-labelledby="nav-investing-heading">
       <h2 className="nav-menu-section" id="nav-investing-heading">INVESTING</h2>

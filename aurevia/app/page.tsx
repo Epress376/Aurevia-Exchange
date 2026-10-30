@@ -8,8 +8,6 @@ import Nav from '@/components/Nav';
 import HomeAccountActions from '@/components/HomeAccountActions';
 import HomeMarketPreview from '@/components/HomeMarketPreview';
 import HomeMarketTicker from '@/components/HomeMarketTicker';
-import ClientStoryShowcase from '@/components/ClientStoryShowcase';
-import StoriesExperience from '@/components/StoriesExperience';
 import PublicResourceLinks from '@/components/PublicResourceLinks';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
 import {useLocale} from '@/lib/i18n-context';
@@ -100,13 +98,11 @@ export default function Home(){
 
 			<section className="home-section news-section" id="news"><NewsFeedPanel compact/><PublicResourceLinks placement="NEWS_UPDATES"/></section>
 
-			<ClientStoryShowcase/>
 			<PublicResourceLinks/>
 
 			<section className="home-section faq-section" id="faq"><div className="section-heading"><div><p className="eyebrow">GOOD TO KNOW</p><h2>Questions,<br/><em>answered clearly.</em></h2></div><p className="section-intro">A quick guide to the current Aurevia demo environment.</p></div><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<ChevronDown size={18}/></summary><p>{answer}</p></details>)}</div></section>
 
 			<section className="home-cta" id="support"><div><p className="eyebrow">AUREVIA EXCHANGE</p><h2>Explore the platform<br/><em>at your own pace.</em></h2><p>Choose your account type and access clearly labeled account tools.</p></div><div className="home-cta-actions"><HomeAccountActions variant="cta"/></div></section>
-			<StoriesExperience mode="strip"/>
 		</main>
 		<Footer/>
 	</>;
