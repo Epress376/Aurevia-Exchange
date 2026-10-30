@@ -37,6 +37,7 @@ function internalPriceAt(asset:LiveMarketAsset,base:number,time:number){
 async function currentInternalPrice(asset:LiveMarketAsset,now:number){
 	const symbols=instrumentSymbols[asset.id]||[];
 	const reference=referencePrices[asset.id];
+	if(!Number.isFinite(reference)||reference<=0)throw new Error(`Internal market price is unavailable for ${asset.id}.`);
 	const dayStart=Math.floor(now/86_400_000)*86_400_000;
 	let instrument:null|{id:string;price: string | number | Prisma.Decimal | null} = null;
 	if(symbols.length){

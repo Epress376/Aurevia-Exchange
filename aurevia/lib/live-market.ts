@@ -142,10 +142,14 @@ async function quoteFromAlpacaCrypto(asset:LiveMarketAsset,provider:AlpacaCrypto
 export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?:AlpacaStockDataOptions):Promise<MarketQuote>{
   const provider=alpacaProvider(alpacaData);
   const cryptoProvider=alpacaCryptoProvider(alpacaData);
-  const useInternalFallback=async()=>{
+  const getInternalFallback=async()=>{
     const internalQuote=await getInternalMarketQuote(asset);
     lastKnownQuoteCache.set(asset.id,internalQuote);
     return internalQuote;
+  };
+  const internalFallbackOrThrow=async(providerError:unknown)=>{
+    try{return await getInternalFallback();}
+    catch{throw providerError;}
   };
 
   try{
@@ -154,7 +158,7 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
         try{return quoteFromAlpaca(asset,await provider.getQuote(asset.ticker));}
         catch(error){
           if(!apiKey && !cryptoProvider){
-            return useInternalFallback();
+            return internalFallbackOrThrow(error);
           }
           if(!apiKey){
             throw error;
@@ -165,7 +169,7 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
         try{return await quoteFromAlpacaCrypto(asset,cryptoProvider);}
         catch(error){
           if(!apiKey && !provider){
-            return useInternalFallback();
+            return internalFallbackOrThrow(error);
           }
           if(!apiKey){
             throw error;
@@ -175,12 +179,12 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
       if(apiKey){
         try{return await getFinnhubQuote(asset,apiKey);}catch(error){
           if(!provider && !cryptoProvider){
-            return useInternalFallback();
+            return internalFallbackOrThrow(error);
           }
           throw error;
         }
       }
-      return useInternalFallback();
+      return getInternalFallback();
     });
     const age=Date.now()-Date.parse(quote.updatedAt);
     const staleReason=age>staleQuoteAgeMs?'Provider quote timestamp is older than five minutes.':age< -5_000?'Provider quote timestamp is in the future.':undefined;
@@ -192,7 +196,7 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
     if(lastKnown){
       return {...lastKnown,isStale:true,staleReason:error instanceof Error?error.message:'Market data is temporarily unavailable.'};
     }
-    const internalQuote=await useInternalFallback().catch(() => { throw error; });
+    const internalQuote=await getInternalFallback().catch(() => { throw error; });
     return internalQuote;
   }
 }
@@ -201,7 +205,7 @@ export async function getMarketHistory(asset:LiveMarketAsset,timeframe:Timeframe
   const selection=TIMEFRAMES.find(item=>item.id===timeframe)||TIMEFRAMES[0];
   const provider=alpacaProvider(alpacaData);
   const cryptoProvider=alpacaCryptoProvider(alpacaData);
-  const useInternalFallback=async()=>await getInternalMarketHistory(asset,timeframe);
+  const getInternalFallback=async()=>await getInternalMarketHistory(asset,timeframe);
   if(provider&&asset.type==='STOCK'){
     try{
       const end=new Date();
@@ -215,7 +219,7 @@ export async function getMarketHistory(asset:LiveMarketAsset,timeframe:Timeframe
       return {quote,candles:candles.map(candle=>({...candle,time:Date.parse(candle.time)/1000})),timeframe,interval:selection.interval,source:'Alpaca'};
     }catch(error){
       if(!apiKey && !cryptoProvider){
-        return useInternalFallback();
+        return getInternalFallback();
       }
       if(!apiKey){
         throw error;
@@ -234,7 +238,7 @@ export async function getMarketHistory(asset:LiveMarketAsset,timeframe:Timeframe
       return {quote,candles:candles.map(candle=>({...candle,time:Date.parse(candle.time)/1000})),timeframe,interval:selection.interval,source:'Alpaca Crypto'};
     }catch(error){
       if(!apiKey && !provider){
-        return useInternalFallback();
+        return getInternalFallback();
       }
       if(!apiKey){
         throw error;
@@ -245,12 +249,12 @@ export async function getMarketHistory(asset:LiveMarketAsset,timeframe:Timeframe
     try{return {...await getFinnhubHistory(asset,selection.range,selection.interval,apiKey),timeframe,interval:selection.interval};}
     catch(error){
       if(!provider && !cryptoProvider){
-        return useInternalFallback();
+        return getInternalFallback();
       }
       throw error;
     }
   }
-  return useInternalFallback();
+  return getInternalFallback();
 }
 
 export async function getLiveMarketProviderStatus(apiKey='',alpacaData?:AlpacaStockDataOptions){

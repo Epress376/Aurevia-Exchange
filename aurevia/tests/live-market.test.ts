@@ -6,12 +6,12 @@ afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs()});
 describe('Finnhub market service',()=>{
 	beforeEach(()=>vi.stubEnv('FINNHUB_API_KEY',''));
 
-	it('reports market data as unavailable rather than treating simulated prices as live',async()=>{
+	it('reports the internal market feed when no live provider is configured',async()=>{
 		await expect(getLiveMarketProviderStatus()).resolves.toMatchObject({
-			status:'UNAVAILABLE',
-			provider:'Unavailable',
+			status:'AVAILABLE',
+			provider:'Aurevia Internal',
 			finnhubStatus:'NOT_CONFIGURED',
-			fallbackProvider:null,
+			fallbackProvider:'Aurevia Internal',
 		});
 	});
 
@@ -31,9 +31,9 @@ describe('Finnhub market service',()=>{
 		expect(fetcher).toHaveBeenCalledTimes(3);
 	});
 
-	it('maps Finnhub throttling to a retryable service error',async()=>{
+	it('uses internal prices when Finnhub throttles',async()=>{
 		vi.stubGlobal('fetch',vi.fn().mockResolvedValue(new Response('{}',{status:429})));
-		await expect(getMarketQuote(getMarketAsset('MERV')!,'test-finnhub-key')).rejects.toMatchObject({status:503});
+		await expect(getMarketQuote(getMarketAsset('MERV')!,'test-finnhub-key')).resolves.toMatchObject({source:'Aurevia Internal',price:expect.any(Number)});
 	});
 
 	it('returns its last successful provider quote with an explicit stale marker after a failure',async()=>{
