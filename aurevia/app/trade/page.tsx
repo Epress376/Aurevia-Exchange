@@ -5,7 +5,7 @@ import Nav from "@/components/Nav";
 import { useLocale } from "@/lib/i18n-context";
 import PriceChart from "@/components/PriceChart";
 import LivePriceChart from "@/components/LivePriceChart";
-import type { MarketQuote, TimeframeId } from "@/lib/live-market";
+import type {MarketQuote,TimeframeId} from "@/lib/live-market";
 import { useTradingStore } from "@/lib/store";
 import { io, type Socket } from "socket.io-client";
 import { RefreshCw } from "lucide-react";
@@ -43,12 +43,13 @@ type PositionResponse=Omit<Pos,"quantity"|"entryPrice"|"margin"|"instrument">&{
 };
 type WalletResponse={accountMode:"DEMO"|"REAL";cashBalance:NumericValue;paperReservedBalance:NumericValue;paperAvailableBalance:NumericValue};
 type OrderBookLevel={price:number;quantity:number};
-type OrderBook={bids?:OrderBookLevel[];asks?:OrderBookLevel[]};
+type OrderBook={kind?:"SIMULATED_BOOK"|"TOP_OF_BOOK";bids?:OrderBookLevel[];asks?:OrderBookLevel[];symbol?:string;last?:number;bid?:number|null;ask?:number|null;spread?:number|null;change?:number;changePercent?:number;marketStatus?:'OPEN'|'CLOSED'|'PREMARKET'|'AFTER_HOURS'|'UNKNOWN';source?:string;updatedAt?:string;depthAvailable?:false;error?:string};
 type LiveQuotesResponse={quotes:Array<MarketQuote|{asset:MarketQuote['asset'];error:string}>};
 type MarketUpdate={symbol:string;price:number;change:number;changePercent:number;source:string;dataMode:'SIMULATED'|'LIVE';lastUpdatedAt:string};
 const LIVE_TRADE_ASSET_IDS=["DJI","SPX","NASDAQ","SP100","NDX","DAX","IBEX","NIKKEI","MERV","EURGBP","BTC","AAPL","MSFT","NVDA","AMZN","GOOGL","TSLA"];
 
 function normalizedSymbol(value:string){return value.toUpperCase().replace(/[^A-Z0-9]/g,"")}
+function isExternalMarketDataSource(source:string){return source==='Finnhub'||source.startsWith('Alpaca')}
 
 async function loadTradingMarkets(mode:"DEMO"|"REAL"):Promise<I[]>{
   const instrumentResponse=await fetch("/api/market",{cache:"no-store"});
@@ -60,7 +61,7 @@ async function loadTradingMarkets(mode:"DEMO"|"REAL"):Promise<I[]>{
   if(!quoteResponse.ok)throw new Error("Live provider quotes are unavailable.");
   const {quotes}=await quoteResponse.json() as LiveQuotesResponse;
   const availableQuotes=quotes.filter((quote):quote is MarketQuote=>{
-    if(!("price"in quote)||!Number.isFinite(quote.price)||quote.isStale)return false;
+    if(!("price"in quote)||!Number.isFinite(quote.price)||quote.isStale||!isExternalMarketDataSource(quote.source))return false;
     const age=Date.now()-Date.parse(quote.updatedAt);
     return age<=30_000&&age>=-5_000;
   });
@@ -206,7 +207,7 @@ export default function Trade() {
       setItems(current=>current.map(item=>{
         const update=updates.find(entry=>entry.symbol===item.assetId&&entry.dataMode==="LIVE"&&Number.isFinite(entry.price)&&(entry.source==="Finnhub"||entry.source.startsWith("Alpaca")));
         if(!update||!item.liveQuote)return item;
-        const liveQuote={...item.liveQuote,price:update.price,change:update.change,changePercent:update.changePercent,updatedAt:update.lastUpdatedAt,asOf:update.lastUpdatedAt,source:update.source,isStale:false};
+        const liveQuote={...item.liveQuote,price:update.price,change:update.change,changePercent:update.changePercent,source:update.source,isStale:false};
         return {...item,price:update.price,change:update.changePercent,updatedAt:update.lastUpdatedAt,lastUpdatedAt:update.lastUpdatedAt,source:update.source,liveQuote};
       }));
     };
@@ -217,18 +218,22 @@ export default function Trade() {
     return()=>{socket.off("connect",onConnect);socket.off("disconnect",onDisconnect);socket.off("market:update",onMarketUpdate);socket.disconnect();};
   },[accountMode]);
   useEffect(() => {
-    if(accountMode==="REAL"){
-      setBook({bids:[],asks:[]});
-      return;
-    }
-    if (!selected||accountMode!=='DEMO') return;
-    const load = () =>
-      fetch(`/api/orderbook?instrumentId=${selected}`)
-        .then((r) => r.json())
-        .then(setBook);
-    load();
-    const t = setInterval(load, 2500);
-    return () => clearInterval(t);
+    if(!selected||!['DEMO','REAL'].includes(accountMode))return;
+    let active=true;
+    const load=async()=>{
+      try{
+        const response=await fetch(`/api/orderbook?instrumentId=${encodeURIComponent(selected)}`,{cache:'no-store'});
+        const result=await response.json() as OrderBook;
+        if(!active)return;
+        setBook(response.ok?result:{kind:accountMode==='REAL'?'TOP_OF_BOOK':'SIMULATED_BOOK',error:result.error||'Market data is unavailable.'});
+      }catch{
+        if(active)setBook({kind:accountMode==='REAL'?'TOP_OF_BOOK':'SIMULATED_BOOK',error:'Market data is temporarily unavailable.'});
+      }
+    };
+    setBook({});
+    void load();
+    const t = setInterval(()=>void load(),accountMode==='REAL'?15_000:2500);
+    return () => {active=false;clearInterval(t);};
   }, [selected,accountMode]);
   const cur = items.find((i) => i.id === selected);
   const pnl = (p: Pos) => {
@@ -252,7 +257,9 @@ export default function Trade() {
       .then(async response=>{
         const result=await response.json();
         if(!response.ok)throw new Error(typeof result.error==="string"?result.error:"Provider chart data is unavailable.");
-        return result as {candles:typeof liveCandles};
+        const history=result as {candles:typeof liveCandles;source?:string};
+        if(!history.source||!isExternalMarketDataSource(history.source))throw new Error("Provider chart data is unavailable; internal practice prices are not shown in REAL mode.");
+        return history;
       })
       .then(result=>{if(active)setLiveCandles(result.candles);})
       .catch(error=>{if(active){setLiveCandles([]);setChartError(error instanceof Error?error.message:"Provider chart data is unavailable.");}})
@@ -263,6 +270,7 @@ export default function Trade() {
   const estimatedNotional = (cur?.price ?? 0) * (Number.isFinite(requestedQuantity) ? requestedQuantity : 0);
   const estimatedFee = accountMode==='DEMO'?estimatedNotional * Number(cur?.takerFee ?? 0):0;
   const estimatedRequiredCash = estimatedNotional + estimatedFee;
+  const marketQuoteTime=book.updatedAt??cur?.liveQuote?.updatedAt;
 
   async function place(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -412,12 +420,19 @@ export default function Trade() {
                   </>}
               </div>
               <div className="trade-orderbook">
-                <h3 className="font-bold">{accountMode==="REAL"?"Provider quote":translate('orderBook')} {accountMode==="DEMO"&&<small>{translate('demoFeedOnly')}</small>}</h3>
+                <h3 className="font-bold">{accountMode==="REAL"?"Market quotes":translate('orderBook')} {accountMode==="DEMO"&&<small>{translate('demoFeedOnly')}</small>}</h3>
                 {accountMode==="REAL"?
                   <div className="mt-3 space-y-3 text-xs">
-                    <div className="flex justify-between text-loss"><span>Ask</span><b>{cur?.ask?.toLocaleString(undefined,{maximumFractionDigits:6})??"Unavailable"}</b></div>
-                    <div className="flex justify-between text-profit"><span>Bid</span><b>{cur?.bid?.toLocaleString(undefined,{maximumFractionDigits:6})??"Unavailable"}</b></div>
-                    <p className="muted">Provider quotes only; the DEMO order book is not available in REAL mode.</p>
+                    <p className="muted">Best bid and ask only. Level 2 market depth is not provided.</p>
+                    <div className="flex justify-between"><span>Last</span><b>{(book.last??cur?.price)?.toLocaleString(undefined,{maximumFractionDigits:6})??"Unavailable"}</b></div>
+                    <div className="flex justify-between text-loss"><span>Best ask</span><b>{(book.ask===undefined?cur?.ask:book.ask)?.toLocaleString(undefined,{maximumFractionDigits:6})??"Unavailable"}</b></div>
+                    <div className="flex justify-between text-profit"><span>Best bid</span><b>{(book.bid===undefined?cur?.bid:book.bid)?.toLocaleString(undefined,{maximumFractionDigits:6})??"Unavailable"}</b></div>
+                    <div className="flex justify-between"><span>Spread</span><b>{book.spread!==undefined&&book.spread!==null?book.spread.toLocaleString(undefined,{maximumFractionDigits:6}):cur?.bid!==null&&cur?.bid!==undefined&&cur?.ask!==null&&cur?.ask!==undefined?(cur.ask-cur.bid).toLocaleString(undefined,{maximumFractionDigits:6}):"Unavailable"}</b></div>
+                    <div className="flex justify-between"><span>Daily change</span><b>{book.changePercent!==undefined?`${book.change?.toLocaleString(undefined,{maximumFractionDigits:6})??"—"} (${book.changePercent.toFixed(2)}%)`:cur?.liveQuote?`${cur.liveQuote.change.toLocaleString(undefined,{maximumFractionDigits:6})} (${cur.liveQuote.changePercent.toFixed(2)}%)`:"Unavailable"}</b></div>
+                    <div className="flex justify-between"><span>Market status</span><b>{cur?.assetType==='CRYPTO'?"24/7":book.marketStatus&&book.marketStatus!=='UNKNOWN'?book.marketStatus:"Not reported by provider"}</b></div>
+                    <div className="flex justify-between"><span>Provider</span><b>{book.source??cur?.source??"Unavailable"}</b></div>
+                    <div className="flex justify-between"><span>Updated</span><b>{marketQuoteTime?new Date(marketQuoteTime).toLocaleTimeString():"Waiting for quote"}</b></div>
+                    {book.error&&<p className="text-loss" role="status">{book.error}</p>}
                   </div>
                   :<div className="mt-3 text-xs">
                   {book.asks
@@ -468,7 +483,7 @@ export default function Trade() {
               <label className="account-label">{translate('orderType')}<select className="input" required value={type} onChange={(event) => setType(event.target.value as "MARKET"|"LIMIT"|"STOP")}><option value="MARKET">Market</option><option value="LIMIT">Limit</option><option value="STOP" disabled={accountMode==="REAL"&&cur?.assetType==="CRYPTO"}>Stop</option></select></label>
               <label className="account-label">{translate('quantity')}<input className="input" type="number" min="0.00000001" step="any" inputMode="decimal" required value={qty} onChange={(event) => setQty(event.target.value)} placeholder="0.00"/></label>
               {type !== "MARKET" && <label className="account-label">{type === "STOP" ? translate('stopPrice') : translate('limitPrice')}<input className="input" type="number" min="0.00000001" step="any" inputMode="decimal" required value={price} onChange={(event) => setPrice(event.target.value)} placeholder="0.00"/></label>}
-              <div className="trade-estimate" aria-live="polite"><div><span>Available Aurevia wallet · {accountMode}</span><b>{availableBalance===null?"Loading…":formatUsd(availableBalance)}</b></div>{accountMode==='REAL'&&<><div><span>Reserved for Paper orders</span><b>{formatUsd(paperReservedBalance)}</b></div><div><span>Available Paper buy allocation</span><b>{formatUsd(paperAvailableBalance)}</b></div></>}<div><span>{accountMode==='REAL'?'Estimated buy notional':'Estimated required cash'}</span><b>{cur?formatUsd(estimatedRequiredCash):"—"}</b></div>{accountMode==='DEMO'&&<div><span>{translate('estimatedFee')}</span><b>{cur?.takerFee===undefined?"Not configured":formatUsd(estimatedFee)}</b></div>}</div>
+              <div className="trade-estimate" aria-live="polite"><div><span>Available Aurevia wallet · {accountMode}</span><b>{availableBalance===null?"Loading…":formatUsd(availableBalance)}</b></div>{accountMode==='REAL'&&<><div><span>Reserved from Aurevia wallet for Paper orders</span><b>{formatUsd(paperReservedBalance)}</b></div><div><span>Available Aurevia allocation for Paper orders</span><b>{formatUsd(paperAvailableBalance)}</b></div></>}<div><span>{accountMode==='REAL'?'Estimated buy notional':'Estimated required cash'}</span><b>{cur?formatUsd(estimatedRequiredCash):"—"}</b></div>{accountMode==='DEMO'&&<div><span>{translate('estimatedFee')}</span><b>{cur?.takerFee===undefined?"Not configured":formatUsd(estimatedFee)}</b></div>}</div>
               <p className="trade-estimate-note">{accountMode==='REAL'?'Displayed quotes are estimates; Alpaca Paper determines actual fills and prices. Paper reservations do not debit the Aurevia wallet, and provider cash is not withdrawable.':'Quotes, order matching, positions, and P/L are for practice and isolated to your DEMO account.'}</p>
               <button type="submit" disabled={placing||!selected||!cur||(accountMode==="REAL"&&!cur.liveQuote)} className="btn w-full bg-gold text-black disabled:opacity-50">{placing?translate('submittingOrder'):translate('placeOrder',{side})}</button>
               </fieldset>

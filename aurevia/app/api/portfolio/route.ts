@@ -8,7 +8,7 @@ import {recordedInvestmentPnl} from '@/lib/investment-policy';
 import {valueMarketMark} from '@/lib/portfolio-valuation';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '@/lib/portfolio-metrics';
 import {jsonSafe} from '@/lib/serializers';
-import {getMarketAssetForTradingSymbol} from '@/lib/live-market';
+import {getMarketAssetForTradingSymbol,isExternalMarketDataSource} from '@/lib/live-market';
 import {getMarketQuoteWithFallback,getAlpacaMarketDataOptions} from '@/lib/market-data-service';
 import {getServerConfiguration} from '@/lib/config/env';
 
@@ -53,8 +53,9 @@ export async function GET(){
     const asset=getMarketAssetForTradingSymbol(instrument.symbol);
     if(!asset)return null;
     try{
-     const quote=await getMarketQuoteWithFallback(asset,configuration.marketData.finnhubApiKey,alpacaData);
-     return {instrumentId:instrument.id,price:new Prisma.Decimal(quote.price),quotedAt:new Date(quote.updatedAt),source:quote.source,isStale:quote.isStale===true};
+    const quote=await getMarketQuoteWithFallback(asset,configuration.marketData.finnhubApiKey,alpacaData);
+    if(!isExternalMarketDataSource(quote.source))return null;
+    return {instrumentId:instrument.id,price:new Prisma.Decimal(quote.price),quotedAt:new Date(quote.updatedAt),source:quote.source,isStale:quote.isStale===true};
     }catch{return null;}
    }));
    for(const quote of quotes)if(quote)providerMarks.set(quote.instrumentId,quote);

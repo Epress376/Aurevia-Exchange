@@ -124,11 +124,11 @@ export default function PortfolioExperience(){
 			<div><span className="account-kicker">{translate('accountOverview')}</span><h1>My Portfolio</h1><p>Account-specific balances, positions, investments and recorded performance.</p></div>
 			<div className="portfolio-heading-actions">
 				<span className={`status-pill ${data?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?translate('portfolioAccount',{mode:data.accountMode}):translate('portfolioLoadingAccount')}</span>
-				{data&&<span className="portfolio-mark-status" role="status" aria-label="Market data source: in-app prices"><i aria-hidden="true"/>{data.accountMode==='DEMO'?'DEMO':'IN-APP'} PRICES</span>}
+				{data&&<span className="portfolio-mark-status" role="status" aria-label={data.accountMode==='DEMO'?'Market data source: DEMO prices':'Market data source: provider marks'}><i aria-hidden="true"/>{data.accountMode==='DEMO'?'DEMO':'PROVIDER'} {data.accountMode==='DEMO'?'PRICES':'MARKS'}</span>}
 				<button className="icon-action" type="button" aria-label={translate('portfolioRefresh')} onClick={()=>void load(true)}><RefreshCw size={15}/></button>
 			</div>
 		</header>
-		{data?.accountMode==='REAL'&&<div className="account-callout mb-4"><span>REAL wallet balances are Aurevia’s internal ledger. Alpaca Paper holdings are valued separately using current in-app prices and are not wallet cash or withdrawable. BTC credits require manual verification; investment return targets are estimates, not settled funds.</span></div>}
+		{data?.accountMode==='REAL'&&<div className="account-callout mb-4"><span>REAL wallet balances are Aurevia’s internal ledger. Alpaca Paper holdings are valued separately using fresh external provider quotes and are not wallet cash or withdrawable. BTC credits require manual verification; investment return targets are estimates, not settled funds.</span></div>}
 		{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}
 		{error&&<div className="account-callout mb-4" role="alert"><span>{error}</span><button type="button" className="text-link" onClick={()=>void load(true)}>{translate('portfolioRetry')}</button></div>}
 		{loading&&!data?<p className="account-empty" role="status">{translate('portfolioLoading')}</p>:data&&<>

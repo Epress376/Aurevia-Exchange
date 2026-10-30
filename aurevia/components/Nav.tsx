@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {ArrowLeft,ArrowLeftRight,ArrowRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MoreHorizontal,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowLeftRight,ArrowRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MoreHorizontal,PhoneCall,Radio,Search,Settings,ShieldCheck,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -15,24 +15,32 @@ import {useLocale} from '@/lib/i18n-context';
 import {MARKET_ASSETS} from '@/lib/live-market';
 
 const moreMenuGroups=[
- {title:'Investing',links:[
-  {href:'/investments',label:'Investments',icon:BriefcaseBusiness},
+ {title:'Overview',links:[
+  {href:'/dashboard',label:'Dashboard',icon:House},
+ ]},
+ {title:'Markets & trading',links:[
+  {href:'/markets',label:'Markets',icon:LineChart},
+  {href:'/trade',label:'Trade',icon:ArrowLeftRight},
   {href:'/portfolio',label:'Portfolio',icon:ChartNoAxesCombined},
+  {href:'/investments',label:'Investments',icon:BriefcaseBusiness},
   {href:'/orders',label:'Orders',icon:History},
+ ]},
+ {title:'Wallet & funding',links:[
+  {href:'/wallet',label:'Wallet',icon:Wallet},
+  {href:'/wallet?action=DEPOSIT',label:'Deposits',icon:ArrowRight},
+  {href:'/wallet?action=WITHDRAWAL',label:'Withdrawals',icon:ArrowLeft},
   {href:'/wallet/transactions',label:'Transaction history',icon:FileText},
  ]},
- {title:'Explore',links:[
+ {title:'Updates & membership',links:[
+  {href:'/notifications',label:'Notifications',icon:Bell},
+  {href:'/tier',label:'Tier / membership',icon:Award},
   {href:'/stories',label:'Stories',icon:Radio},
- ]},
- {title:'Community',links:[
+  {href:'/client-stories',label:'Testimonials',icon:HeartHandshake},
   {href:'/community',label:'Community finance',icon:HeartHandshakeIcon},
  ]},
  {title:'Account',links:[
-  {href:'/notifications',label:'Notifications',icon:Bell},
   {href:'/kyc',label:'Identity verification / KYC',icon:ShieldCheck},
   {href:'/cards',label:'Digital cards',icon:CreditCard},
-  {href:'/tier',label:'Tier upgrade',icon:Award},
-  {href:'/settings#profile',label:'Profile',icon:UserRound},
   {href:'/settings#preferences',label:'Account settings',icon:Settings},
   {href:'/settings#security',label:'Security',icon:ShieldCheck},
  ]},
@@ -47,32 +55,41 @@ export default function Nav(){
  const tierLabel=useAccountTier(status==='authenticated'&&data?.user?.role==='USER');
  const close=()=>setOpen(false);
  const active=(href:string)=>{
-  const [path,hash]=href.split('#');
+  const [pathWithQuery,hash]=href.split('#');
+  if(pathWithQuery.includes('?'))return false;
+  const path=pathWithQuery.split('?')[0];
   if(pathname!==path&&!pathname.startsWith(`${path}/`))return false;
   return !hash||pathname!==path||(currentHash||'#profile')===`#${hash}`;
  };
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
-  {href:'/stories',label:'Stories',group:'Explore'},
-  {href:'/community',label:'Community finance',group:'Community'},
-  {href:'/markets',label:'Markets',group:'Investing'},
-  {href:'/trade',label:'Trade',group:'Investing'},
-  {href:'/portfolio',label:'Portfolio',group:'Investing'},
-  {href:'/investments',label:'Investments',group:'Investing'},
-  {href:'/orders',label:'Orders & activity',group:'Investing'},
-  {href:'/wallet',label:'Wallet',group:'Account'},
-  {href:'/notifications',label:'Notifications',group:'Account'},
-  {href:'/kyc',label:'Identity verification',group:'Account'},
-  {href:'/cards',label:'Cards',group:'Account'},
-  {href:'/tier',label:'Tier upgrade',group:'Account'},
-  {href:'/tax-services',label:'Tax services',group:'Account'},
+   {href:'/markets',label:'Markets',group:'Investing'},
+   {href:'/trade',label:'Trade',group:'Investing'},
+   {href:'/portfolio',label:'Portfolio',group:'Investing'},
+   {href:'/investments',label:'Investments',group:'Investing'},
+   {href:'/orders',label:'Orders & activity',group:'Investing'},
+   {href:'/wallet',label:'Wallet',group:'Account'},
+   {href:'/wallet?action=DEPOSIT',label:'Deposits',group:'Wallet & funding'},
+   {href:'/wallet?action=WITHDRAWAL',label:'Withdrawals',group:'Wallet & funding'},
+   {href:'/wallet/transactions',label:'Transaction history',group:'Wallet & funding'},
+   {href:'/notifications',label:'Notifications',group:'Account'},
+   {href:'/tier',label:'Tier / membership',group:'Account'},
+   {href:'/stories',label:'Stories',group:'Explore'},
+   {href:'/client-stories',label:'Testimonials',group:'Explore'},
+   {href:'/community',label:'Community finance',group:'Community'},
+   {href:'/kyc',label:'Identity verification',group:'Account'},
+   {href:'/cards',label:'Cards',group:'Account'},
+   {href:'/tax-services',label:'Tax services',group:'Account'},
   {href:'/settings#profile',label:'Profile',group:'Profile & support'},
   {href:'/settings#security',label:'Settings',group:'Profile & support'},
   {href:'/support',label:'Help & support',group:'Profile & support'},
  ];
  const currentMode=data?.user?.accountMode;
- const visibleDestinations=currentMode==='DEMO'?userDestinations.filter(item=>!realOnlyNavigationPaths.has(item.href)):userDestinations;
+ const visibleDestinations=userDestinations.filter(item=>
+  (currentMode!=='DEMO'||!realOnlyNavigationPaths.has(item.href))&&
+  (item.href!=='/tax-services'||taxServicesAvailable),
+ );
  const visibleMoreMenuGroups=moreMenuGroups.map(group=>({...group,links:group.links.filter(item=>currentMode!=='DEMO'||!realOnlyNavigationPaths.has(item.href))})).filter(group=>group.links.length>0);
  const matchingPages=marketSearch.trim()?visibleDestinations.filter(item=>`${item.label} ${item.group}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,5):[];
  const matchingMarkets=marketSearch.trim()?MARKET_ASSETS.filter(asset=>`${asset.id} ${asset.name} ${asset.ticker}`.toLowerCase().includes(marketSearch.trim().toLowerCase())).slice(0,6):[];
@@ -209,11 +226,11 @@ export default function Nav(){
   </div>
   </header>
   <nav aria-label="Primary account navigation" className="user-bottom-navigation">
-   <Link href="/dashboard" aria-current={pathname==='/dashboard'?'page':undefined} className={pathname==='/dashboard'?'is-active':''}><House size={20} strokeWidth={1.8}/><span>Home</span></Link>
-   <Link href="/wallet" aria-current={active('/wallet')?'page':undefined} className={active('/wallet')?'is-active':''}><Wallet size={20} strokeWidth={1.8}/><span>Wallet</span></Link>
+   <Link href="/dashboard" aria-label="Dashboard" aria-current={pathname==='/dashboard'?'page':undefined} className={pathname==='/dashboard'?'is-active':''}><House size={20} strokeWidth={1.8}/><span>Dashboard</span></Link>
+   <Link href="/markets" aria-current={active('/markets')?'page':undefined} className={active('/markets')?'is-active':''}><LineChart size={20} strokeWidth={1.8}/><span>Markets</span></Link>
    <Link href="/trade" aria-label="Trade markets" aria-current={active('/trade')?'page':undefined} className={`user-bottom-trade ${active('/trade')?'is-active':''}`}><ArrowLeftRight size={22} strokeWidth={2}/><span>Trade</span></Link>
-   <Link href="/tier" aria-current={active('/tier')?'page':undefined} className={active('/tier')?'is-active':''}><Award size={20} strokeWidth={1.8}/><span>Benefits</span></Link>
-   <Link href="/settings" aria-current={active('/settings')?'page':undefined} className={active('/settings')?'is-active':''}><UserRound size={20} strokeWidth={1.8}/><span>Settings</span></Link>
+   <Link href="/portfolio" aria-current={active('/portfolio')?'page':undefined} className={active('/portfolio')?'is-active':''}><ChartNoAxesCombined size={20} strokeWidth={1.8}/><span>Portfolio</span></Link>
+   <button type="button" className={open?'is-active':''} aria-label="Open account navigation menu" aria-expanded={open} aria-controls="user-more-menu" onClick={()=>setOpen(value=>!value)}><MoreHorizontal size={20} strokeWidth={1.8}/><span>More</span></button>
   </nav>
   {open&&<button type="button" className="user-more-backdrop" aria-label="Close More menu" tabIndex={-1} onClick={close}/>}
   <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>

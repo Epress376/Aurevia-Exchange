@@ -22,7 +22,7 @@ function mergeActivity(current:ActivityItem[],incoming:ActivityItem[]){
 export default function MarketExperience(){
 	const {data:session,status:sessionStatus}=useSession();
 	const {translate}=useLocale();
-	const accountMode=sessionStatus==='authenticated'?session?.user?.accountMode||'DEMO':'DEMO';
+	const accountMode=sessionStatus==='authenticated'?session?.user?.accountMode||null:null;
 	const [markets,setMarkets]=useState<Instrument[]>([]);
 	const [watchlistIds,setWatchlistIds]=useState<string[]>([]);
 	const [activity,setActivity]=useState<ActivityItem[]>([]);
@@ -34,6 +34,7 @@ export default function MarketExperience(){
 	const [retryCount,setRetryCount]=useState(0);
 	const selected=markets.find(item=>item.id===selectedId)||markets[0];
 	const isReal=accountMode==='REAL';
+	const isDemo=accountMode==='DEMO';
 	const sortedActivity=useMemo(()=>activity.slice(0,30),[activity]);
 	const watchedMarkets=markets.filter(item=>watchlistIds.includes(item.id));
 	const chartLimits:Record<ChartWindow,number>={'1H':60,'4H':240,'8H':480};
@@ -74,9 +75,9 @@ export default function MarketExperience(){
 	},[sessionStatus,isReal,retryCount]);
 
 	return <><Nav/><main className="account-page market-page">
-		<header className="account-heading"><div><span className="account-kicker">{translate('marketHeader')}</span><h1>{translate('marketTitle')}</h1><p>{selected?`${selected.source} · ${selected.dataMode==='SIMULATED'?'DEMO':'LIVE'} ${translate('dataNotExchangeFeed')}`:translate('marketUnavailable')}</p></div><div className="market-heading-status"><span className={`status-pill ${isReal?'mode-real':'mode-demo'}`}>{isReal?translate('realAccount'):translate('demoAccount')}</span><span className={`market-connection is-${connection}`}><i/>{connection==='polling'?translate('simulatedFeed'):connection==='connecting'?translate('connecting'):translate('offlineRefreshing')}</span></div></header>
+		<header className="account-heading"><div><span className="account-kicker">{translate('marketHeader')}</span><h1>{translate('marketTitle')}</h1><p>{selected?`${selected.source} · ${selected.dataMode==='SIMULATED'?(isDemo?'DEMO':'INTERNAL REFERENCE'):'LIVE'} ${translate('dataNotExchangeFeed')}`:translate('marketUnavailable')}</p></div><div className="market-heading-status"><span className={`status-pill ${isReal?'mode-real':isDemo?'mode-demo':''}`}>{isReal?translate('realAccount'):isDemo?translate('demoAccount'):'PUBLIC MARKET VIEW'}</span><span className={`market-connection is-${connection}`}><i/>{connection==='polling'?translate('simulatedFeed'):connection==='connecting'?translate('connecting'):translate('offlineRefreshing')}</span></div></header>
 		{error&&<div className="account-callout market-error" role="alert"><span>{error}</span><button type="button" className="text-link" disabled={loading} aria-busy={loading} onClick={()=>{setError('');setLoading(true);setRetryCount(value=>value+1)}}><RefreshCw size={14}/> {loading?translate('marketRefreshing'):translate('marketRetry')}</button></div>}
-		<section className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('marketOverview')}</h2><p className="account-panel-subtitle">{translate('enabledInstruments')} · {markets[0]?.source||translate('marketProvider')}</p></div><span className="status-pill">{markets[0]?.marketStatus==='SIMULATED'?'DEMO':markets[0]?.marketStatus||translate('marketStatusUnavailable')}</span></div>
+		<section className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('marketOverview')}</h2><p className="account-panel-subtitle">{translate('enabledInstruments')} · {markets[0]?.source||translate('marketProvider')}</p></div><span className="status-pill">{markets[0]?.marketStatus==='SIMULATED'?(isDemo?'DEMO':'INTERNAL REFERENCE'):markets[0]?.marketStatus||translate('marketStatusUnavailable')}</span></div>
 			{loading&&!markets.length?<div className="account-empty" role="status">{translate('loadingCurrentInstruments')}</div>:markets.length?<div className="market-instrument-grid">{markets.map(instrument=><button type="button" key={instrument.id} className={`market-instrument ${selected?.id===instrument.id?'is-selected':''}`} aria-pressed={selected?.id===instrument.id} onClick={()=>setSelectedId(instrument.id)}><span>{instrument.symbol}</span><b>{Number(instrument.price).toLocaleString(undefined,{maximumFractionDigits:6})}</b><small>{instrument.name}</small><em>{instrument.dataMode==='SIMULATED'?translate('simulatedPrice'):translate('providerQuote')}</em></button>)}</div>:<div className="account-empty">{translate('noInstrumentsAvailable')}</div>}
 		</section>
 		{watchedMarkets.length>0&&<section className="account-panel card p-5 mt-4"><div className="account-panel-title"><div><h2>{translate('watchlistTitle')}</h2><p className="account-panel-subtitle">{translate('savedOnDevice')}</p></div></div><div className="market-instrument-grid">{watchedMarkets.map(instrument=><button type="button" key={instrument.id} className="market-instrument" onClick={()=>setSelectedId(instrument.id)}><span>{instrument.symbol}</span><b>{Number(instrument.price).toLocaleString(undefined,{maximumFractionDigits:6})}</b><small>{instrument.name}</small></button>)}</div></section>}

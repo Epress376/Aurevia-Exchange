@@ -12,7 +12,7 @@ type Transaction={id:string;type:string;status:string;amount:string;currency:str
 type SupportContact={email:string;complaintsEmail:string;phone:string};
 type DemoOrderDraft={instrumentId:string;symbol:string;side:'BUY'|'SELL';type:'MARKET';quantity:number;expectedPrice:number;observedAt:string;estimatedValue:number;accountMode:'DEMO';idempotencyKey:string};
 
-function answerFor(question:string,mode:'DEMO'|'REAL'){
+function answerFor(question:string,mode:'DEMO'|'REAL'|null){
 	const text=question.toLowerCase();
 	if(/demo|real|account mode/.test(text))return 'DEMO and REAL accounts use separate Aurevia ledgers. DEMO trades are simulated for practice and do not affect REAL balances. Eligible REAL orders use Alpaca Paper Trading when enabled; they are not live trades. Submit funding or withdrawal requests in Wallet for review. These requests remain internal ledger records; the application does not send an external payment or payout.';
 	if(/deposit|payment|bitcoin|bank/.test(text))return 'Open Wallet to submit an available funding request. Approved REAL credits are posted to Aurevia’s internal ledger after review. A request or ledger credit is not confirmation of an external payment; no payment processor transfer is initiated here.';
@@ -20,13 +20,13 @@ function answerFor(question:string,mode:'DEMO'|'REAL'){
 	if(/kyc|identity|verification/.test(text))return 'Open Verification to submit your identity details and supported identity documents for administrator review. REAL-account access may require approved verification. External identity verification is not configured.';
 	if(/status|transaction|reference|id/.test(text))return 'Open Wallet and select the request reference to see its status, timestamps, review note, and recorded history. I cannot verify payment receipt or invent an external transaction ID.';
 	if(/setting|profile|password|security/.test(text))return 'Open Settings to review your profile and available account controls. Use Logout in the navigation when you want to end your session.';
-	if(/trade|market|order/.test(text))return mode==='DEMO'?'Open Trade to use the DEMO market workspace. DEMO prices and executions are for practice and remain separate from REAL activity.':'Open Trade to submit an eligible REAL-mode order to Alpaca Paper Trading when the paper integration is enabled. Paper orders are not live trades; check the provider status if submission is unavailable.';
+	if(/trade|market|order/.test(text))return mode==='DEMO'?'Open Trade to use the DEMO market workspace. DEMO prices and executions are for practice and remain separate from REAL activity.':mode==='REAL'?'Open Trade to submit an eligible REAL-mode order to Alpaca Paper Trading when the paper integration is enabled. Paper orders are not live trades; check the provider status if submission is unavailable.':'Sign in to select an account mode and review the trading features available to your account.';
 	return 'I can help with account modes, deposits, withdrawals, verification, settings, and transaction statuses. For account-specific review, choose Contact Admin to open a support ticket.';
 }
 
 export default function SupportExperience(){
 	const {data,status}=useSession();
-	const mode=data?.user?.accountMode||'DEMO';
+	const mode=data?.user?.accountMode??null;
 	const [messages,setMessages]=useState<ChatMessage[]>([{speaker:'nova',text:'Hello, I’m Nova AI, Aurevia’s platform support assistant. I can explain platform workflows, but I cannot verify payments or alter accounts.'}]);
 	const conversationId=useRef<string|undefined>(undefined);
 	const [question,setQuestion]=useState('');
@@ -118,7 +118,7 @@ export default function SupportExperience(){
 	}
 
 	return <><Nav/><main className="account-page support-page">
-		<header className="account-heading"><div><span className="account-kicker">AUREVIA CUSTOMER CARE</span><h1>Nova AI</h1><p>Aurevia’s AI support assistant for platform questions and account workflow guidance.</p></div><span className={`status-pill ${mode==='DEMO'?'mode-demo':'mode-real'}`}>{status==='authenticated'?`${mode} ACCOUNT`:'PUBLIC HELP'}</span></header>
+		<header className="account-heading"><div><span className="account-kicker">AUREVIA CUSTOMER CARE</span><h1>Nova AI</h1><p>Aurevia’s AI support assistant for platform questions and account workflow guidance.</p></div><span className={`status-pill ${mode==='DEMO'?'mode-demo':mode==='REAL'?'mode-real':''}`}>{status==='authenticated'?`${mode||'ACCOUNT'} ACCOUNT`:'PUBLIC HELP'}</span></header>
 		<div className="account-content-grid support-layout">
 			<section className="account-panel card p-5"><div className="account-panel-title"><div><h2><Bot size={17} className="gold"/> Nova AI assistant</h2><p className="account-panel-subtitle">{aiAssisted===null?'Open-ended questions may use configured AI; each reply identifies when AI was used.':aiAssisted?'AI-assisted response · verify important details against Aurevia records.':'Platform response · AI was not used for the latest answer.'}</p></div><div className="flex flex-wrap gap-2"><button type="button" className="text-link" onClick={()=>{setIsComplaint(false);setShowEscalation(!showEscalation)}}><ShieldAlert size={15}/> Contact Admin</button><button type="button" className="text-link" onClick={()=>{setIsComplaint(true);setShowEscalation(true)}}>File complaint</button></div></div>
 				<div className="nova-thread" aria-live="polite">{messages.map((message,index)=><div className={`nova-message ${message.speaker==='user'?'is-user':''}`} key={`${message.speaker}-${index}`}><span>{message.speaker==='nova'?'NOVA AI':'YOU'}</span><p>{message.text}</p></div>)}</div>

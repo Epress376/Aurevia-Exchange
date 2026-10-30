@@ -453,10 +453,11 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 		expect(geometry.left).toBeGreaterThanOrEqual(0);
 		expect(geometry.right).toBeLessThanOrEqual(geometry.viewportWidth);
 		expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
-		for(const [name,href] of [['Home','/dashboard'],['Wallet','/wallet'],['Trade markets','/trade'],['Benefits','/tier'],['Settings','/settings']] as const){
-			await expect(navigation.getByRole('link',{name})).toHaveAttribute('href',href);
+		for(const [name,href] of [['Dashboard','/dashboard'],['Markets','/markets'],['Trade markets','/trade'],['Portfolio','/portfolio']] as const){
+			await expect(navigation.getByRole('link',{name,exact:true})).toHaveAttribute('href',href);
 		}
-		await expect(navigation.getByRole('link',{name:'Home'})).toHaveAttribute('aria-current','page');
+		await expect(navigation.getByRole('button',{name:'Open account navigation menu'})).toBeVisible();
+		await expect(navigation.getByRole('link',{name:'Dashboard',exact:true})).toHaveAttribute('aria-current','page');
 		await page.evaluate(()=>window.scrollTo(0,document.documentElement.scrollHeight));
 		await expect(navigation).toBeInViewport();
 		await expectNoHorizontalOverflow(page);
@@ -472,13 +473,13 @@ test('authenticated bottom navigation stays fixed across viewports and More dest
 	expect(await page.getByRole('navigation',{name:'Administrator navigation'}).count()).toBe(0);
 	await page.setViewportSize({width:390,height:844});
 	await page.goto('/dashboard');
-	await expect(navigation.getByRole('link',{name:'Home'})).toHaveClass(/is-active/);
+	await expect(navigation.getByRole('link',{name:'Dashboard',exact:true})).toHaveClass(/is-active/);
 	await expect(moreButton).toBeVisible();
 	await selectAccountMode(page,'REAL');
 	await moreButton.click();
 	const moreMenu=page.getByRole('dialog',{name:'More'});
 	await expect(moreMenu).toBeVisible();
-	for(const label of ['Investments','Portfolio','Orders','Transaction history','Notifications','Identity verification / KYC','Digital cards','Profile','Account settings','Security','Help and support','Tax services','Tier upgrade','Logout']){
+	for(const label of ['Markets','Trade','Portfolio','Investments','Orders','Wallet','Deposits','Withdrawals','Transaction history','Notifications','Identity verification / KYC','Digital cards','Profile','Account settings','Security','Help and support','Tax services','Tier / membership','Testimonials','Logout']){
 		await expect(moreMenu.getByRole('link',{name:label}).or(moreMenu.getByRole('button',{name:label}))).toBeVisible();
 	}
 	await moreMenu.getByRole('link',{name:'Transaction history'}).click();
@@ -988,7 +989,7 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	const marketResponse=await page.request.get('/api/live-markets?symbols=AAPL');
 	expect(marketResponse.ok()).toBeTruthy();
 	const marketData=await marketResponse.json() as {quotes?:Array<{asset?:{id?:string};source?:string;isStale?:boolean}>};
-	const hasFreshProviderQuote=marketData.quotes?.some(quote=>quote.asset?.id==='AAPL'&&!!quote.source&&!quote.isStale)??false;
+	const hasFreshProviderQuote=marketData.quotes?.some(quote=>quote.asset?.id==='AAPL'&&(quote.source==='Finnhub'||quote.source?.startsWith('Alpaca'))&&!quote.isStale)??false;
 	if(hasFreshProviderQuote)await expect(realOrderButton).toBeEnabled();
 	else{
 		await expect(realOrderButton).toBeDisabled();

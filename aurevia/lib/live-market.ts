@@ -20,6 +20,7 @@ export type MarketQuote = {
   ask?:number|null;
   change: number;
   changePercent: number;
+  marketStatus?:'OPEN'|'CLOSED'|'PREMARKET'|'AFTER_HOURS'|'UNKNOWN';
   previousClose: number | null;
   open: number | null;
   volume: number | null;
@@ -96,6 +97,10 @@ export function getMarketAssetForTradingSymbol(symbol:string){
   return MARKET_ASSETS.find(asset=>[asset.id,asset.ticker].some(value=>value.toUpperCase().replace(/[^A-Z0-9]/g,'')===normalized));
 }
 
+export function isExternalMarketDataSource(source:string){
+  return source==='Finnhub'||source.startsWith('Alpaca');
+}
+
 export function filterSupportedMarketAssets<T extends {symbol:string}>(assets:T[]):T[]{
   return assets.filter(asset=>!!getMarketAsset(asset.symbol));
 }
@@ -114,7 +119,7 @@ function alpacaCryptoProvider(options?:AlpacaStockDataOptions){return options?.a
 function quoteFromAlpaca(asset:LiveMarketAsset,snapshot:Awaited<ReturnType<AlpacaStockMarketDataProvider['getQuote']>>):MarketQuote{
   if(snapshot.previousClose===null||snapshot.previousClose<=0)throw new MarketDataError(`Daily change data is unavailable for ${asset.id}.`,404);
   const change=snapshot.price-snapshot.previousClose;
-  return {asset,price:snapshot.price,bid:snapshot.bid,ask:snapshot.ask,change,changePercent:Number((change/snapshot.previousClose*100).toFixed(6)),previousClose:snapshot.previousClose,open:snapshot.open,volume:snapshot.volume,dayLow:snapshot.low,dayHigh:snapshot.high,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:snapshot.updatedAt,sparkline:[],source:'Alpaca'};
+  return {asset,price:snapshot.price,bid:snapshot.bid,ask:snapshot.ask,change,changePercent:Number((change/snapshot.previousClose*100).toFixed(6)),marketStatus:'UNKNOWN',previousClose:snapshot.previousClose,open:snapshot.open,volume:snapshot.volume,dayLow:snapshot.low,dayHigh:snapshot.high,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:snapshot.updatedAt,sparkline:[],source:'Alpaca'};
 }
 
 async function quoteFromAlpacaCrypto(asset:LiveMarketAsset,provider:AlpacaCryptoMarketDataProvider):Promise<MarketQuote>{
@@ -132,7 +137,7 @@ async function quoteFromAlpacaCrypto(asset:LiveMarketAsset,provider:AlpacaCrypto
   if(previousClose===null||previousClose<=0)throw new MarketDataError(`Daily change data is unavailable for ${asset.id}.`,404);
   const change=trade.price-previousClose;
   return {
-    asset,price:trade.price,bid:snapshot.bid,ask:snapshot.ask,change,
+    asset,price:trade.price,bid:snapshot.bid,ask:snapshot.ask,change,marketStatus:'OPEN',
     changePercent:Number((change/previousClose*100).toFixed(6)),previousClose,
     open:latest?.open??null,volume:latest?.volume??null,dayLow:latest?.low??null,dayHigh:latest?.high??null,
     fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:trade.asOf,sparkline:[],source:'Alpaca Crypto',

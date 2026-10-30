@@ -41,6 +41,7 @@ export async function getFinnhubQuote(asset:LiveMarketAsset,apiKey:string,fetche
 	return {
 		asset,price,change,changePercent,previousClose,open:finite(data.o),volume:null,
 		dayLow:finite(data.l),dayHigh:finite(data.h),fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,
+		marketStatus:asset.type==='CRYPTO'?'OPEN':'UNKNOWN',
 		updatedAt:new Date(asOf*1000).toISOString(),isStale:false,sparkline:[],source:'Finnhub',
 	};
 }
