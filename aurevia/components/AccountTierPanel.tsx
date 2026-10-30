@@ -3,19 +3,20 @@
 import {FormEvent,useCallback,useEffect,useState} from 'react';
 import Link from 'next/link';
 import {useSession} from 'next-auth/react';
-import {Check,Clock3,LockKeyhole,ShieldCheck} from 'lucide-react';
+import {BadgeCheck,Check,Clock3,Crown,LockKeyhole,MailCheck,ShieldCheck,Sparkles,UserRound} from 'lucide-react';
 import Nav from '@/components/Nav';
 
 type TierRequest={id:string;currentTier:number;requestedTier:number;status:string;userMessage:string|null;adminReason:string|null;createdAt:string;reviewedAt:string|null};
 type TierData={
-	tier:string;currentTier:number;canRequest:boolean;
-	requirements:{profileComplete:boolean;verificationSubmitted:boolean;identityDocumentUploaded:boolean;identityDocumentApproved:boolean};
+	tier:string;currentTier:number;progress:number;accountMode:'DEMO'|'REAL';canRequest:boolean;
+	requirements:{emailVerified:boolean;nameComplete:boolean;countryComplete:boolean;phoneComplete:boolean;phoneVerified:boolean;profileComplete:boolean;verificationSubmitted:boolean;identityDocumentUploaded:boolean;identityDocumentApproved:boolean;identityApproved:boolean};
+	permissions:{basicAccountAccess:boolean;profileManagement:boolean;identityVerification:boolean;tierBenefits:boolean;verifiedAccount:boolean;realMoneyServices:boolean};
 	requests:TierRequest[];
 };
 const tiers=[
-	{number:1,title:'Basic access',description:'Explore markets, portfolio data, watchlists, and basic account tools.'},
-	{number:2,title:'Additional capabilities',description:'Available after profile completion and administrator review.'},
-	{number:3,title:'Highest review tier',description:'Requires submitted identity information, an uploaded document, and administrator approval.'},
+	{number:1,title:'Registered account',icon:UserRound,description:'Sign in, use your dashboard, and access basic account features.'},
+	{number:2,title:'Completed profile',icon:Sparkles,description:'Unlock Tier 2 automatically after email, profile, and phone details are complete.'},
+	{number:3,title:'Verified account',icon:Crown,description:'Submit identity details and receive administrator approval.'},
 ];
 
 export default function AccountTierPanel(){
@@ -26,45 +27,103 @@ export default function AccountTierPanel(){
 	const [notice,setNotice]=useState('');
 	const [busy,setBusy]=useState(false);
 	const [loading,setLoading]=useState(true);
-	const isRealAccount=session?.user?.accountMode==='REAL';
 	const load=useCallback(async()=>{
 		setLoading(true);
-		try{const response=await fetch('/api/tier-requests',{cache:'no-store'});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to load tier status.');setData(result);setError('')}
-		catch(exception){setError(exception instanceof Error?exception.message:'Unable to load tier status.')}
+		try{
+			const response=await fetch('/api/tier-requests',{cache:'no-store'});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Unable to load tier status.');
+			setData(result);setError('');
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to load tier status.')}
 		finally{setLoading(false)}
 	},[]);
-	useEffect(()=>{
-		if(isRealAccount){void load();return}
-		setData(null);setError('');setLoading(false);
-	},[isRealAccount,load]);
+	useEffect(()=>{void load()},[load]);
+
 	async function requestUpgrade(event:FormEvent<HTMLFormElement>){
 		event.preventDefault();if(busy)return;setBusy(true);setError('');setNotice('');
-		try{const response=await fetch('/api/tier-requests',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to submit your tier review request.');setNotice(`Your Tier ${result.requestedTier} request is waiting for administrator review.`);setMessage('');await load()}
-		catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit your tier review request.')}
+		try{
+			const response=await fetch('/api/tier-requests',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({message})});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Unable to submit your tier review request.');
+			setNotice('Your Tier 3 request is waiting for administrator review.');
+			setMessage('');await load();
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit your tier review request.')}
 		finally{setBusy(false)}
 	}
+
 	async function submitAdditionalInformation(event:FormEvent<HTMLFormElement>){
-		event.preventDefault();if(!latest||busy)return;setBusy(true);setError('');setNotice('');
-		try{const response=await fetch('/api/tier-requests',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({id:latest.id,message})});const result=await response.json();if(!response.ok)throw new Error(result.error||'Unable to submit additional information.');setNotice('Your additional information is back with the administrator for review.');setMessage('');await load()}
-		catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit additional information.')}
+		event.preventDefault();
+		const latest=data?.requests[0];
+		if(!latest||busy)return;
+		setBusy(true);setError('');setNotice('');
+		try{
+			const response=await fetch('/api/tier-requests',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({id:latest.id,message})});
+			const result=await response.json();
+			if(!response.ok)throw new Error(result.error||'Unable to submit additional information.');
+			setNotice('Your additional information is back with the administrator for review.');
+			setMessage('');await load();
+		}catch(exception){setError(exception instanceof Error?exception.message:'Unable to submit additional information.')}
 		finally{setBusy(false)}
 	}
+
 	const currentTier=data?.currentTier||1;
 	const latest=data?.requests[0];
-	return <><Nav/><main className="account-page mobile-benefits-page">
-		<header className="account-heading"><div><span className="account-kicker">AUREVIA · ACCOUNT BENEFITS</span><h1>Benefits</h1><p>Your account access, verification progress, and available next steps.</p></div><span className={`status-pill ${session?.user?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?.tier||session?.user?.accountMode||'ACCOUNT'} · CURRENT</span></header>
-		<section className="mobile-benefits-banner"><span><ShieldCheck size={19}/> Account access</span><strong>{isRealAccount?data?.tier||'Your current tier':'Demo account'}</strong><p>{isRealAccount?'Your available features follow your verified account tier.':'Explore the platform in demo mode. Tier reviews require a REAL account.'}</p></section>
-		{!isRealAccount?<section className="account-panel card p-5 mt-4" role="status"><h2 className="font-semibold">REAL mode required</h2><p className="mt-2 text-sm leading-6 muted">Tier reviews depend on identity verification and are available only in REAL mode. Switch account mode from the navigation to view or submit a review.</p></section>:<>
-		{loading&&!data&&<p className="account-empty" role="status">Loading tier status…</p>}{error&&<p className="text-sm text-loss" role="alert">{error}</p>}{notice&&<p className="text-sm text-profit" role="status">{notice}</p>}
-		<div className="mt-4 grid gap-4 lg:grid-cols-3">{tiers.map(tier=>{const current=tier.number===currentTier;const complete=tier.number<currentTier;return <article className={`card p-5 ${current?'border-gold/50':''}`} key={tier.number}><div className="flex items-center justify-between"><h2 className="font-bold">TIER {tier.number}</h2>{current||complete?<ShieldCheck size={18} className="gold"/>:<Clock3 size={18} className="muted"/>}</div><h3 className="mt-4 text-lg font-semibold">{tier.title}</h3><p className="mt-2 text-sm leading-6 muted">{tier.description}</p><div className="mt-5 border-t border-white/10 pt-4"><span className="muted text-xs">Status</span><p className="mt-1 text-sm">{current?'Current tier':complete?'Reviewed and completed':'Available after the previous tier'}</p></div></article>})}</div>
-		<section className="account-panel card p-5 mt-4"><div className="account-panel-title"><div><h2>Requirements and progress</h2><p className="account-panel-subtitle">Admin decisions are recorded and never triggered by document submission alone.</p></div><LockKeyhole size={18} className="gold"/></div>
-			<div className="mt-4 grid gap-3 sm:grid-cols-2"><p className="text-sm"><Check size={15} className="mr-2 inline gold"/>Profile name and country {data?.requirements.profileComplete?'complete':'incomplete'}</p><p className="text-sm"><Check size={15} className="mr-2 inline gold"/>Identity information {data?.requirements.verificationSubmitted?'submitted':'not submitted'}</p><p className="text-sm"><Check size={15} className="mr-2 inline gold"/>Identity document {data?.requirements.identityDocumentUploaded?'uploaded':'not uploaded'}</p><p className="text-sm"><Check size={15} className="mr-2 inline gold"/>Identity document review {data?.requirements.identityDocumentApproved?'approved':'not approved'}</p></div>
-			<div className="mt-4 flex flex-wrap gap-2"><Link className="button-secondary" href="/settings">Complete profile</Link><Link className="button-secondary" href="/kyc">Open identity verification</Link></div>
-			{data?.canRequest&&<form className="mt-5 grid gap-3 border-t border-white/10 pt-5" onSubmit={event=>void requestUpgrade(event)}><label className="account-label">Optional note for the reviewer<textarea className="input min-h-20" maxLength={1000} value={message} onChange={event=>setMessage(event.target.value)} placeholder="Add context for your tier review."/></label><button className="btn bg-gold text-black" disabled={busy||!data.requirements.profileComplete}>{busy?'Submitting…':`Request Tier ${currentTier+1} review`}</button><p className="text-xs muted">Submitting is only a request. It does not change access until an administrator records an approval.</p></form>}
-			{latest&&<div className="mt-5 border-t border-white/10 pt-4"><h3 className="text-sm font-semibold">Latest request · Tier {latest.requestedTier} · {latest.status.replaceAll('_',' ')}</h3>{latest.adminReason&&<p className="mt-2 text-sm muted">Administrator note: {latest.adminReason}</p>}{latest.status==='NEEDS_INFORMATION'&&<form className="mt-3 grid gap-3" onSubmit={event=>void submitAdditionalInformation(event)}><label className="account-label">Additional information<textarea className="input min-h-20" required minLength={3} maxLength={1000} value={message} onChange={event=>setMessage(event.target.value)}/></label><button className="btn bg-gold text-black" disabled={busy||message.trim().length<3}>{busy?'Submitting…':'Send information for review'}</button><p className="text-xs muted">Upload any requested identity documents through the private verification page.</p></form>}</div>}
-			{data?.requests&&data.requests.length>1&&<div className="mt-4 grid gap-2">{data.requests.slice(1).map(request=><p className="text-xs muted" key={request.id}>Tier {request.requestedTier} · {request.status.replaceAll('_',' ')} · {new Date(request.createdAt).toLocaleDateString()}</p>)}</div>}
-			
-		</section>
+	const requirements=data?.requirements;
+	const checks=[
+		{label:'Email address verified',complete:requirements?.emailVerified,href:`/verify-email?email=${encodeURIComponent(session?.user?.email||'')}`},
+		{label:'Full name provided',complete:requirements?.nameComplete,href:'/settings#profile'},
+		{label:'Country selected',complete:requirements?.countryComplete,href:'/settings#profile'},
+		{label:'Valid phone number added',complete:requirements?.phoneComplete,href:'/settings#profile'},
+		{label:'Phone number verified for KYC',complete:requirements?.phoneVerified,href:'/kyc'},
+		{label:'Identity information submitted',complete:requirements?.verificationSubmitted,href:'/kyc'},
+		{label:'Identity document uploaded',complete:requirements?.identityDocumentUploaded,href:'/kyc'},
+		{label:'Identity document approved',complete:requirements?.identityDocumentApproved,href:'/kyc'},
+		{label:'KYC profile approved',complete:requirements?.identityApproved,href:'/kyc'},
+	];
+
+	return <><Nav/><main className="account-page tier-page">
+		<header className="account-heading tier-heading"><div><span className="account-kicker">AUREVIA · ACCOUNT PROGRESSION</span><h1>Account tiers</h1><p>See what is active, what is complete, and what remains to reach the next tier.</p></div><span className={`status-pill ${data?.accountMode==='REAL'?'mode-real':'mode-demo'}`}>{data?.accountMode||session?.user?.accountMode||'ACCOUNT'} · TIER {currentTier}</span></header>
+		{loading&&!data&&<p className="account-empty" role="status">Loading your tier progress…</p>}
+		{error&&<div className="account-callout mb-3" role="alert"><span>{error}</span><button className="text-link" type="button" disabled={loading} onClick={()=>void load()}>Retry</button></div>}
+		{notice&&<p className="mb-3 text-sm text-profit" role="status">{notice}</p>}
+		{data&&<>
+			<section className="tier-summary" aria-label="Current tier progress">
+				<div className="tier-summary-copy"><span>YOUR CURRENT STATUS</span><strong>{data.tier}</strong><p>{data.accountMode==='REAL'?'Your tier is separate from REAL account and financial eligibility.':'Your profile can progress through Tier 2 in DEMO; identity approval requires REAL mode.'}</p></div>
+				<div className="tier-progress-wrap"><div className="tier-progress-label"><span>Progression</span><b>{data.progress}%</b></div><div className="tier-progress-track" role="progressbar" aria-label="Account tier progression" aria-valuemin={0} aria-valuemax={100} aria-valuenow={data.progress}><span style={{width:`${data.progress}%`}}/></div><span className="tier-progress-caption">Tier {currentTier} of 3</span></div>
+			</section>
+
+			<section className="tier-progression" aria-label="Three account tiers">
+				{tiers.map(tier=>{
+					const Icon=tier.icon;
+					const current=tier.number===currentTier;
+					const complete=tier.number<currentTier;
+					const awaiting=tier.number===3&&latest&&['PENDING_REVIEW','NEEDS_INFORMATION'].includes(latest.status);
+					const state=current?'Current':complete?'Achieved':awaiting?'In review':tier.number===2?'Complete your profile':'Complete Tier 2 and approved identity review';
+					return <article className={`tier-step ${current?'is-current':''} ${complete?'is-complete':''}`} key={tier.number}>
+						<div className={`tier-icon tier-icon-${tier.number}`} aria-hidden="true"><span/><Icon size={20}/></div>
+						<div className="tier-step-heading"><span>TIER {tier.number}</span><b>{current?<BadgeCheck size={15}/>:complete?<Check size={15}/>:awaiting?<Clock3 size={15}/>:<LockKeyhole size={14}/>}</b></div>
+						<h2>{tier.title}</h2><p>{tier.description}</p>
+						<div className="tier-step-status">{state}</div>
+					</article>;
+				})}
+			</section>
+
+			<div className="tier-details-grid">
+				<section className="tier-panel">
+					<div className="tier-panel-heading"><div><span>YOUR CHECKLIST</span><h2>Completed and outstanding</h2></div><ShieldCheck size={18}/></div>
+					<div className="tier-checklist">{checks.map(item=><div className={`tier-check ${item.complete?'is-done':''}`} key={item.label}><span>{item.complete?<Check size={14}/>:<Clock3 size={14}/>}</span><span>{item.label}</span>{!item.complete&&<Link href={item.href}>Complete</Link>}</div>)}</div>
+					<div className="tier-panel-actions"><Link className="button-secondary" href="/settings#profile">Edit profile</Link>{data.accountMode==='REAL'&&<Link className="button-secondary" href="/kyc">Identity verification</Link>}{data.accountMode==='DEMO'&&<p>Switch to REAL mode to submit identity verification for Tier 3.</p>}</div>
+				</section>
+				<section className="tier-panel">
+					<div className="tier-panel-heading"><div><span>AVAILABLE ACCESS</span><h2>Account permissions</h2></div><LockKeyhole size={18}/></div>
+					<ul className="tier-permissions"><li><Check size={14}/>Dashboard and basic account access</li><li><Check size={14}/>Profile and account settings</li><li className={data.permissions.tierBenefits?'is-enabled':''}>{data.permissions.tierBenefits?<Check size={14}/>:<LockKeyhole size={14}/>}Configured Tier 2 account benefits</li><li className={data.permissions.identityVerification?'is-enabled':''}>{data.permissions.identityVerification?<Check size={14}/>:<LockKeyhole size={14}/>}Identity verification submission</li><li className={data.permissions.verifiedAccount?'is-enabled':''}>{data.permissions.verifiedAccount?<Check size={14}/>:<LockKeyhole size={14}/>}Verified-account status</li><li className={data.permissions.realMoneyServices?'is-enabled':''}>{data.permissions.realMoneyServices?<Check size={14}/>:<LockKeyhole size={14}/>}Real-money services</li></ul>
+					<p className="tier-disclosure"><MailCheck size={14}/> Tier status never bypasses KYC, account restrictions, provider configuration, or financial controls.</p>
+				</section>
+			</div>
+
+			{data.canRequest&&<form className="tier-request-form" onSubmit={event=>void requestUpgrade(event)}><div><span>TIER 3 · ADMIN REVIEW</span><h2>Ready for identity approval?</h2><p>Your profile is complete and identity information is on file. An administrator must approve your KYC record and this Tier 3 request.</p></div><label className="account-label">Optional note for the reviewer<textarea className="input min-h-20" maxLength={1000} value={message} onChange={event=>setMessage(event.target.value)} placeholder="Add context for your review."/></label><button className="btn bg-gold text-black" disabled={busy}>{busy?'Submitting…':'Request Tier 3 review'}</button></form>}
+
+			{latest&&<section className="tier-panel tier-request-history"><div className="tier-panel-heading"><div><span>REVIEW HISTORY</span><h2>Latest Tier {latest.requestedTier} request · {latest.status.replaceAll('_',' ')}</h2></div><Clock3 size={18}/></div><p className="text-sm muted">Submitted {new Date(latest.createdAt).toLocaleString()}{latest.reviewedAt?` · Reviewed ${new Date(latest.reviewedAt).toLocaleString()}`:''}</p>{latest.adminReason&&<p className="mt-2 text-sm muted">Administrator note: {latest.adminReason}</p>}{latest.status==='NEEDS_INFORMATION'&&<form className="mt-3 grid gap-3" onSubmit={event=>void submitAdditionalInformation(event)}><label className="account-label">Additional information<textarea className="input min-h-20" required minLength={3} maxLength={1000} value={message} onChange={event=>setMessage(event.target.value)}/></label><button className="btn bg-gold text-black justify-self-start" disabled={busy||message.trim().length<3}>{busy?'Submitting…':'Send information for review'}</button></form>}{data.requests.length>1&&<div className="mt-3 grid gap-2">{data.requests.slice(1).map(request=><p className="text-xs muted" key={request.id}>Tier {request.requestedTier} · {request.status.replaceAll('_',' ')} · {new Date(request.createdAt).toLocaleDateString()}</p>)}</div>}</section>}
 		</>}
 	</main></>;
 }

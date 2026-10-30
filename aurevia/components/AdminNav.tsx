@@ -37,6 +37,7 @@ const groups=[
 		{href:'/admin/support',label:'Support',icon:MessageSquareText},
 		{href:'/admin/cards',label:'Cards',icon:CreditCard},
 		{href:'/admin/tax-services',label:'Tax services',icon:ShieldCheck},
+		{href:'/admin/stories',label:'Stories',icon:Radio},
 		{href:'/admin/content',label:'Client stories',icon:Radio},
 		{href:'/admin/broadcasts',label:'Broadcasts',icon:Radio},
 		{href:'/admin/waitlist',label:'Waitlist',icon:UsersRound},

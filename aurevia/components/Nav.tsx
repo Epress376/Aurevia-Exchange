@@ -3,7 +3,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import {useSession,signOut} from 'next-auth/react';
 import {usePathname,useRouter} from 'next/navigation';
-import {ArrowLeft,ArrowLeftRight,ArrowRight,ArrowUpRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MoreHorizontal,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
+import {ArrowLeft,ArrowLeftRight,ArrowRight,Award,Bell,BriefcaseBusiness,ChartNoAxesCombined,CreditCard,FileText,HeartHandshake,History,House,LayoutDashboard,LineChart,LogOut,Mail,Menu,MoreHorizontal,PhoneCall,Radio,Search,Settings,ShieldCheck,UserRound,Wallet,X} from 'lucide-react';
 import {useEffect,useRef,useState} from 'react';
 import NotificationBell from '@/components/NotificationBell';
 import LanguageSelector from '@/components/LanguageSelector';
@@ -20,12 +20,14 @@ const moreMenuGroups=[
   {href:'/wallet/transactions',label:'Transaction history',icon:FileText},
  ]},
  {title:'Community',links:[
+  {href:'/stories',label:'Stories',icon:Radio},
   {href:'/community',label:'Community finance',icon:HeartHandshakeIcon},
  ]},
  {title:'Account',links:[
   {href:'/notifications',label:'Notifications',icon:Bell},
   {href:'/kyc',label:'Identity verification / KYC',icon:ShieldCheck},
   {href:'/cards',label:'Digital cards',icon:CreditCard},
+  {href:'/tier',label:'Tier upgrade',icon:Award},
   {href:'/settings#profile',label:'Profile',icon:UserRound},
   {href:'/settings#preferences',label:'Account settings',icon:Settings},
   {href:'/settings#security',label:'Security',icon:ShieldCheck},
@@ -34,7 +36,7 @@ const moreMenuGroups=[
   {href:'/support',label:'Help and support',icon:Mail},
  ]},
 ];
-const realOnlyNavigationPaths=new Set(['/investments','/wallet/transactions','/kyc','/cards','/tier','/tax-services']);
+const realOnlyNavigationPaths=new Set(['/investments','/wallet/transactions','/kyc','/cards','/tax-services']);
 
 export default function Nav(){
  const {data,status,update}=useSession(); const pathname=usePathname(); const router=useRouter(); const {translate}=useLocale(); const [open,setOpen]=useState(false); const [modeError,setModeError]=useState(''); const [modeBusy,setModeBusy]=useState(false); const [loggingOut,setLoggingOut]=useState(false); const [taxServicesAvailable,setTaxServicesAvailable]=useState(false); const [marketSearch,setMarketSearch]=useState(''); const [marketSearchOpen,setMarketSearchOpen]=useState(false); const [tierLabel,setTierLabel]=useState(''); const [currentHash,setCurrentHash]=useState(''); const userNavRef=useRef<HTMLElement>(null); const userMenuButtonRef=useRef<HTMLButtonElement>(null);
@@ -47,6 +49,7 @@ export default function Nav(){
  const userMode=status==='authenticated'&&data?.user?.role==='USER';
  const userDestinations=[
   {href:'/dashboard',label:'Dashboard',group:'Overview'},
+  {href:'/stories',label:'Stories',group:'Community'},
   {href:'/community',label:'Community finance',group:'Community'},
   {href:'/markets',label:'Markets',group:'Investing'},
   {href:'/trade',label:'Trade',group:'Investing'},
@@ -221,7 +224,7 @@ export default function Nav(){
   <section ref={userNavRef} id="user-more-menu" className="user-more-menu" role="dialog" aria-modal={open||undefined} aria-labelledby="user-more-title" hidden={!open}>
    <header className="user-more-heading"><div><span>ACCOUNT NAVIGATION</span><h2 id="user-more-title">More</h2></div><button type="button" className="user-more-close" aria-label="Close More menu" onClick={close}><X size={18}/></button></header>
    <div className="user-more-groups">{visibleMoreMenuGroups.map(group=><section className="user-more-group" key={group.title} aria-label={group.title}><h3>{group.title}</h3>{group.links.map(({href,label,icon:Icon})=><Link href={href} key={href} aria-current={active(href)?'page':undefined} onClick={close}><Icon size={17} strokeWidth={1.7}/><span>{label}</span></Link>)}</section>)}
-    {currentMode!=='DEMO'&&<section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link><Link href="/tier" aria-current={active('/tier')?'page':undefined} onClick={close}><ArrowUpRight size={17}/><span>Tier upgrade</span></Link></section>}
+    {currentMode!=='DEMO'&&<section className="user-more-group" aria-label="Additional account pages"><h3>Additional</h3><Link href="/tax-services" aria-current={active('/tax-services')?'page':undefined} onClick={close}><FileText size={17}/><span>Tax services</span></Link></section>}
    </div>
    <button type="button" className="user-more-logout" disabled={loggingOut} aria-busy={loggingOut} onClick={()=>void logout()}><LogOut size={17}/>{loggingOut?translate('signingOut'):translate('logout')}</button>
   </section>
@@ -240,6 +243,7 @@ export default function Nav(){
       <h2 className="nav-menu-section" id="nav-overview-heading">OVERVIEW</h2>
       <Link href="/" onClick={close} aria-current={pathname==='/'?'page':undefined}>{translate('home')}</Link>
       <Link href="/dashboard" onClick={close} aria-current={active('/dashboard')?'page':undefined}><LayoutDashboard size={16} aria-hidden="true"/>{translate('dashboard')}</Link>
+      <Link href="/stories" onClick={close} aria-current={active('/stories')?'page':undefined}><Radio size={16} aria-hidden="true"/>Stories</Link>
       {status==='authenticated'&&data?.user?.role==='ADMIN'&&<Link href="/admin" className="nav-admin-entry" onClick={close} aria-current={active('/admin')?'page':undefined}><ShieldCheck size={16} aria-hidden="true"/>Open Admin Console</Link>}
      </section>
      <section className="nav-menu-group" aria-labelledby="nav-investing-heading">

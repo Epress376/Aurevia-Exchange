@@ -4,7 +4,8 @@ import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {balance} from '@/lib/ledger';
 import {getUserActivity} from '@/lib/activity';
-import {getAccountTier} from '@/lib/production-policy';
+import {getAccountTier,getTierProfileRequirements} from '@/lib/production-policy';
+import {synchronizeCompletedProfileTier} from '@/lib/tier-progression';
 import {jsonSafe} from '@/lib/serializers';
 import {filterSupportedMarketAssets} from '@/lib/live-market';
 import {removeSimulatedLabels} from '@/lib/display-copy';
@@ -35,7 +36,7 @@ export async function GET(){
       optionalData('orders',()=>db.order.findMany({where:{userId:user.id,accountMode:mode},include:{instrument:{select:{symbol:true,name:true}}},orderBy:{createdAt:'desc'},take:8}),[]),
       mode===AccountMode.REAL?optionalData('investments',()=>db.investmentRequest.findMany({where:{userId:user.id,accountMode:mode},include:{opportunity:{select:{title:true,category:true,riskLevel:true,assetSymbol:true,targetReturnPercent:true,durationDays:true}}},orderBy:{requestedAt:'desc'},take:6}),[]):Promise.resolve([]),
       optionalData('notifications',()=>db.notification.findMany({where:{userId:user.id,archivedAt:null,OR:[{accountMode:mode},{accountMode:null}]},orderBy:{createdAt:'desc'},take:6}),[]),
-      optionalData('profile',()=>db.user.findUnique({where:{id:user.id},select:{id:true,email:true,name:true,avatarKey:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,verifiedAt:true,verifiedChannel:true,phoneVerified:true,phone:true,country:true,createdAt:true}}),null),
+      optionalData('profile',()=>db.$transaction(async tx=>{await synchronizeCompletedProfileTier(tx,user.id);return tx.user.findUnique({where:{id:user.id},select:{id:true,email:true,name:true,avatarKey:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,requiresRegistrationVerification:true,verifiedAt:true,verifiedChannel:true,phoneVerified:true,phone:true,country:true,createdAt:true}})}),null),
       mode===AccountMode.REAL?optionalData('KYC profile',()=>db.kycProfile.findUnique({where:{userId:user.id},select:{submittedAt:true}}),null):Promise.resolve(null),
       mode===AccountMode.REAL?optionalData('verification documents',()=>db.kycDocument.count({where:{userId:user.id,kind:'IDENTITY_DOCUMENT',status:'APPROVED'}}),0):Promise.resolve(0),
       optionalData('market instruments',()=>db.instrument.findMany({where:{enabled:true},orderBy:{symbol:'asc'},take:12}),[]),
@@ -51,8 +52,9 @@ export async function GET(){
     const activity=await optionalData('recent activity',()=>getUserActivity(user.id,mode,'all',8),{items:[],total:0,hasMore:false,cursor:null});
     const recentActivity=activity.items.map(item=>({id:item.id,category:item.category,action:item.action,timestamp:item.timestamp,asset:item.asset,amount:item.amount,status:item.status,source:item.sourceLabel,pnl:item.pnl,adminInitiated:item.adminInitiated,link:item.link}));
     const displayNotifications=notifications.map(notification=>({...notification,title:removeSimulatedLabels(notification.title),message:removeSimulatedLabels(notification.message)}));
-    const tier=getAccountTier({accountMode:mode,kycStatus:mode===AccountMode.REAL?profile?.kycStatus||'PENDING':'PENDING',verificationDocuments,verificationSubmitted:mode===AccountMode.REAL&&!!kyc?.submittedAt,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??undefined:undefined});
-    const safeProfile={id:user.id,email:profile?.email??user.email??null,name:profile?.name??user.name??null,hasAvatar:!!profile?.avatarKey,role:profile?.role??user.role??'USER',status:profile?.status??null,accountMode:mode,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??null:null,kycStatus:mode===AccountMode.REAL?profile?.kycStatus??null:null,verifiedAt:mode===AccountMode.REAL?profile?.verifiedAt??null:null,verifiedChannel:mode===AccountMode.REAL?profile?.verifiedChannel??null:null,phoneVerified:mode===AccountMode.REAL?profile?.phoneVerified??false:false,phone:mode===AccountMode.REAL?profile?.phone??null:null,country:mode===AccountMode.REAL?profile?.country??null:null,createdAt:profile?.createdAt??null,...tier};
+    const profileRequirements=profile?getTierProfileRequirements(profile):null;
+    const tier=getAccountTier({accountMode:mode,kycStatus:mode===AccountMode.REAL?profile?.kycStatus||'PENDING':'PENDING',verificationDocuments,verificationSubmitted:mode===AccountMode.REAL&&!!kyc?.submittedAt,phoneVerified:mode===AccountMode.REAL&&!!profile?.phoneVerified,profileComplete:profileRequirements?.profileComplete??false,approvedTier:profile?.approvedTier});
+    const safeProfile={id:user.id,email:profile?.email??user.email??null,name:profile?.name??user.name??null,hasAvatar:!!profile?.avatarKey,role:profile?.role??user.role??'USER',status:profile?.status??null,accountMode:mode,approvedTier:mode===AccountMode.REAL?profile?.approvedTier??null:null,kycStatus:mode===AccountMode.REAL?profile?.kycStatus??null:null,verifiedAt:mode===AccountMode.REAL?profile?.verifiedAt??null:null,verifiedChannel:mode===AccountMode.REAL?profile?.verifiedChannel??null:null,phoneVerified:mode===AccountMode.REAL?profile?.phoneVerified??false:false,phone:mode===AccountMode.REAL?profile?.phone??null:null,country:mode===AccountMode.REAL?profile?.country??null:null,createdAt:profile?.createdAt??null,profileRequirements,tier:tier.label,...tier};
     return NextResponse.json(jsonSafe({accountMode:mode,cash,financialDataAvailable:cash!==null,positionValue,invested,unrealized,portfolioValue:cash?.plus(positionValue).plus(invested)??null,openOrders:validOrders.filter(o=>o.status==='OPEN').length,activePositions:validPositions.length,activity:recentActivity,orders:validOrders,positions:validPositions,investments:validInvestments,notifications:displayNotifications,profile:safeProfile,marketInstruments:supportedMarketInstruments.map(i=>({id:i.id,symbol:i.symbol,name:i.name,price:Number(i.price),changePercent:0,updatedAt:i.updatedAt.toISOString()}))}),{headers:{'Cache-Control':'private, no-store'}});
   }catch(error){
     const unauthorized=error instanceof Error&&error.message==='UNAUTHORIZED';

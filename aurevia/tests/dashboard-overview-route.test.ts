@@ -5,6 +5,8 @@ import {Prisma} from '@prisma/client';
 const mocks=vi.hoisted(()=>({
 	requireUser:vi.fn(),
 	userFindUnique:vi.fn(),
+	userUpdateMany:vi.fn(),
+	transaction:vi.fn(),
 	accountFindMany:vi.fn(),
 	documentCount:vi.fn(),
 	positionFindMany:vi.fn(),
@@ -19,6 +21,7 @@ const mocks=vi.hoisted(()=>({
 vi.mock('@/lib/auth',()=>({requireUser:mocks.requireUser}));
 vi.mock('@/lib/db',()=>({db:{
 	user:{findUnique:mocks.userFindUnique},
+	$transaction:mocks.transaction,
 	ledgerAccount:{findMany:mocks.accountFindMany},
 	kycDocument:{count:mocks.documentCount},
 	position:{findMany:mocks.positionFindMany},
@@ -38,8 +41,12 @@ describe('user dashboard overview access and mode separation',()=>{
 		mocks.requireUser.mockResolvedValue({id:'user-1',accountMode:AccountMode.DEMO});
 		mocks.userFindUnique.mockResolvedValue({
 			id:'user-1',name:'Aurevia User',role:'USER',status:'ACTIVE',accountMode:AccountMode.REAL,
-			approvedTier:1,kycStatus:'PENDING',avatarKey:null,kyc:null,
+			approvedTier:1,kycStatus:'PENDING',avatarKey:null,kyc:null,country:null,phone:null,requiresRegistrationVerification:true,
 		});
+		mocks.transaction.mockImplementation((operation:(tx:unknown)=>unknown)=>operation({
+			user:{findUnique:mocks.userFindUnique,updateMany:mocks.userUpdateMany},
+			auditLog:{create:vi.fn()},
+		}));
 		mocks.accountFindMany.mockResolvedValue([{id:'real-account'}]);
 		mocks.documentCount.mockResolvedValue(0);
 		mocks.positionFindMany.mockResolvedValue([]);

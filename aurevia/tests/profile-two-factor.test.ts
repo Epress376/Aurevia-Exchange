@@ -18,6 +18,10 @@ describe('profile two-factor status',()=>{
 		vi.clearAllMocks();
 		mocks.requireUser.mockResolvedValue({id:'user-1'});
 		mocks.investmentFindFirst.mockResolvedValue(null);
+		mocks.transaction.mockImplementation((operation:(tx:unknown)=>unknown)=>operation({
+			user:{findUnique:mocks.findUnique,updateMany:vi.fn()},
+			auditLog:{create:vi.fn()},
+		}));
 	});
 
 	it('reports two-factor as unavailable even if the legacy database flag is set',async()=>{
@@ -28,6 +32,8 @@ describe('profile two-factor status',()=>{
 			phone:null,
 			phoneVerified:false,
 			country:'Test',
+			requiresRegistrationVerification:true,
+			approvedTier:1,
 			avatarKey:null,
 			twoFactorEnabled:true,
 			role:'USER',

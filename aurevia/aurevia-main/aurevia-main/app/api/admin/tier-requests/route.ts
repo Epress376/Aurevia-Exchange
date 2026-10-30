@@ -4,7 +4,7 @@ import {z,ZodError} from 'zod';
 import {requireAdmin} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {createNotification} from '@/lib/notifications';
-import {getAccountTier,validateTierThreeApproval,validateTierUpgradeApproval} from '@/lib/production-policy';
+import {getAccountTier,getTierProfileRequirements,validateTierThreeApproval,validateTierUpgradeApproval} from '@/lib/production-policy';
 import {jsonSafe} from '@/lib/serializers';
 
 const schema=z.object({
@@ -42,11 +42,12 @@ export async function PATCH(request:Request){
 			const reviewedAt=input.status===TierUpgradeStatus.NEEDS_INFORMATION?null:new Date();
 			const updated=await tx.tierUpgradeRequest.update({where:{id:current.id},data:{status:input.status,adminReason:input.reason,reviewedById:admin.id,reviewedAt}});
 			if(input.status===TierUpgradeStatus.APPROVED){
-				const profile=await tx.user.findUniqueOrThrow({where:{id:current.userId},select:{accountMode:true,approvedTier:true,kycStatus:true,name:true,country:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT'},select:{status:true}}}});
+				const profile=await tx.user.findUniqueOrThrow({where:{id:current.userId},select:{accountMode:true,approvedTier:true,kycStatus:true,name:true,country:true,phone:true,phoneVerified:true,requiresRegistrationVerification:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT'},select:{status:true}}}});
 				const approvedDocuments=profile.kycDocuments.filter(document=>document.status==='APPROVED').length;
-				const actualTier=Number(getAccountTier({accountMode:profile.accountMode,kycStatus:profile.kycStatus,verificationDocuments:approvedDocuments,verificationSubmitted:!!profile.kyc?.submittedAt,approvedTier:profile.approvedTier}).label.at(-1));
+				const profileRequirements=getTierProfileRequirements(profile);
+				const actualTier=Number(getAccountTier({accountMode:profile.accountMode,kycStatus:profile.kycStatus,verificationDocuments:approvedDocuments,verificationSubmitted:!!profile.kyc?.submittedAt,phoneVerified:profile.phoneVerified,profileComplete:profileRequirements.profileComplete,approvedTier:profile.approvedTier}).label.at(-1));
 				validateTierUpgradeApproval({requestCurrentTier:current.currentTier,requestedTier:current.requestedTier,currentTier:actualTier});
-				if(current.requestedTier===3)validateTierThreeApproval({name:profile.name,country:profile.country,kycStatus:profile.kycStatus,verificationSubmitted:!!profile.kyc?.submittedAt,approvedIdentityDocuments:approvedDocuments});
+				if(current.requestedTier===3)validateTierThreeApproval({profileComplete:profileRequirements.profileComplete,phoneVerified:profile.phoneVerified,kycStatus:profile.kycStatus,verificationSubmitted:!!profile.kyc?.submittedAt,approvedIdentityDocuments:approvedDocuments});
 				await tx.user.update({where:{id:current.userId},data:{approvedTier:Math.max(profile.approvedTier,current.requestedTier)}});
 			}
 			await tx.auditLog.create({data:{actorId:admin.id,action:'TIER_REQUEST_REVIEWED',entity:'TIER_REQUEST',entityId:current.id,metadata:{userId:current.userId,previousTier:current.currentTier,newTier:current.requestedTier,status:input.status,reason:input.reason}}});

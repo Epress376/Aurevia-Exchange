@@ -6,6 +6,7 @@ import {authOptions} from '@/lib/auth-options';
 import {db} from '@/lib/db';
 import {balance,reservedWithdrawalAmount} from '@/lib/ledger';
 import {getAccountTier} from '@/lib/production-policy';
+import {getTierProfileRequirements} from '@/lib/production-policy';
 import {MARKET_ASSETS} from '@/lib/live-market';
 import {getMarketQuoteWithFallback} from '@/lib/market-data-service';
 import {getServerConfiguration} from '@/lib/config/env';
@@ -44,7 +45,7 @@ export async function POST(request:Request){
 		const session=await getServerSession(authOptions);
 		const userId=session?.user?.id;
 		rateLimit(userId?`nova-user:${userId}`:`nova-ip:${clientIp(request)}`,30,60_000);
-		const user=userId?await db.user.findUnique({where:{id:userId},select:{id:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}}):null;
+		const user=userId?await db.user.findUnique({where:{id:userId},select:{id:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,name:true,country:true,phone:true,phoneVerified:true,requiresRegistrationVerification:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}}):null;
 		if(userId&&(!user||user.status!==UserStatus.ACTIVE||user.role!=='USER'))return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		const orderIntent=parseDemoOrderIntent(input.question);
 		const orderIntentRequested=hasDemoOrderIntent(input.question);
@@ -181,7 +182,8 @@ export async function POST(request:Request){
 					eventTypes.push('WATCHLIST_SOURCE_UNAVAILABLE');
 				}
 				if(/\btiers?\b/.test(requested)){
-					const tier=getAccountTier({accountMode:user.accountMode,kycStatus:user.accountMode===AccountMode.REAL?user.kycStatus:'PENDING',verificationDocuments:user.accountMode===AccountMode.REAL?user.kycDocuments.length:0,verificationSubmitted:user.accountMode===AccountMode.REAL&&!!user.kyc?.submittedAt,approvedTier:user.accountMode===AccountMode.REAL?user.approvedTier??undefined:undefined});
+					const requirements=getTierProfileRequirements(user);
+					const tier=getAccountTier({accountMode:user.accountMode,kycStatus:user.accountMode===AccountMode.REAL?user.kycStatus:'PENDING',verificationDocuments:user.accountMode===AccountMode.REAL?user.kycDocuments.length:0,verificationSubmitted:user.accountMode===AccountMode.REAL&&!!user.kyc?.submittedAt,phoneVerified:user.accountMode===AccountMode.REAL&&user.phoneVerified,profileComplete:requirements.profileComplete,approvedTier:user.approvedTier});
 					answers.push(`Current account tier: ${tier.label}. Tier approval does not enable REAL trading.`);
 					eventTypes.push('TIER_STATUS_LOOKUP');
 				}

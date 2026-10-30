@@ -7,6 +7,7 @@ import {balance,ensureSystemAccount,ensureUserLedger,postDoubleEntry,reservedWit
 import {createNotification,notifyActiveAdmins} from '@/lib/notifications';
 import {jsonSafe} from '@/lib/serializers';
 import {configuredTierBoost} from '@/lib/tier-boosts';
+import {getAccountTier,getTierProfileRequirements} from '@/lib/production-policy';
 import {simulatedInvestmentSettlement} from '@/lib/investment-policy';
 
 export const dynamic='force-dynamic';
@@ -60,7 +61,7 @@ export async function POST(request:Request){
     return {investment:prior,replay:true};
    }
    const [profile,opportunity]=await Promise.all([
-   tx.user.findUnique({where:{id:user.id},select:{status:true,role:true,accountMode:true,accountRestricted:true,approvedTier:true}}),
+   tx.user.findUnique({where:{id:user.id},select:{status:true,role:true,accountMode:true,accountRestricted:true,approvedTier:true,name:true,country:true,phone:true,phoneVerified:true,requiresRegistrationVerification:true,kycStatus:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}}),
     tx.investmentOpportunity.findUnique({where:{id:input.opportunityId}}),
    ]);
    if(!profile||profile.status!=='ACTIVE'||profile.role!=='USER')throw new Error('INVESTMENT_USER_UNAVAILABLE');
@@ -77,7 +78,9 @@ export async function POST(request:Request){
     const maturesAt=opportunity.maturesAt??new Date(activatedAt.getTime()+opportunity.durationDays*86_400_000);
     if(!opportunity.requiresApproval&&maturesAt<=activatedAt)throw new Error('INVESTMENT_MATURED');
     const status:InvestmentStatus=opportunity.requiresApproval?InvestmentStatus.PENDING_APPROVAL:activatedAt<=now?InvestmentStatus.ACTIVE:InvestmentStatus.APPROVED;
-    const tierBoostPercent=await configuredTierBoost(tx,profile.approvedTier);
+    const profileRequirements=getTierProfileRequirements(profile);
+    const currentTier=Number(getAccountTier({accountMode:profile.accountMode,kycStatus:profile.kycStatus,verificationDocuments:profile.kycDocuments.length,verificationSubmitted:!!profile.kyc?.submittedAt,phoneVerified:profile.phoneVerified,profileComplete:profileRequirements.profileComplete,approvedTier:profile.approvedTier}).label.at(-1));
+    const tierBoostPercent=await configuredTierBoost(tx,currentTier);
     const investment=await tx.investmentRequest.create({data:{userId:user.id,opportunityId:opportunity.id,accountMode:user.accountMode,amount,status,idempotencyKey,targetReturnPercent:opportunity.targetReturnPercent,tierBoostPercent,durationDays:opportunity.durationDays,...(opportunity.requiresApproval?{}:{approvedAt:now,activatedAt,maturesAt})}});
    const userAccount=await ensureUserLedger(tx,user.id,user.accountMode,'USD');
    const available=await balance(tx,userAccount.id);

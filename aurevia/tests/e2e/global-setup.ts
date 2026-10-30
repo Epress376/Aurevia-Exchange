@@ -127,6 +127,7 @@ export async function cleanup(db:PrismaClient,state:{userId:string;adminId:strin
 	const userIds=[...new Set([state.userId,state.adminId,...(state.legacyUserId?[state.legacyUserId]:[]),...(state.investorId?[state.investorId]:[]),...(state.deletionUserId?[state.deletionUserId]:[]),...(registeredUser?[registeredUser.id]:[]),...(replacementUser?[replacementUser.id]:[]),...isolatedUsers.map(user=>user.id)])];
 	await db.investmentRequest.deleteMany({where:{userId:{in:userIds}}});
 	await db.broadcast.deleteMany({where:{createdById:{in:userIds}}});
+	await db.story.deleteMany({where:{createdById:{in:userIds}}});
 	await db.investmentOpportunity.deleteMany({where:{createdById:{in:userIds}}});
 	await db.auditLog.deleteMany({where:{OR:[{actorId:{in:userIds}},{entityId:{in:userIds}}]}});
 	const accounts=await db.ledgerAccount.findMany({where:{userId:{in:userIds}},select:{id:true}});

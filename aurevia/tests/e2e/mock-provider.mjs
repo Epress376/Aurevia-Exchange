@@ -1,7 +1,7 @@
 import http from 'node:http';
 const codes=new Map();
 const counts={email:0,sms:0};
-const buckets=new Set(['kyc-documents','profile-avatars','wallet-receipts','support-attachments']);
+const buckets=new Set(['kyc-documents','profile-avatars','wallet-receipts','support-attachments','stories']);
 const storageObjects=new Map();
 
 function storageObjectKey(bucket,encodedKey){

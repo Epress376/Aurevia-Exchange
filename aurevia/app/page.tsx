@@ -9,6 +9,7 @@ import HomeAccountActions from '@/components/HomeAccountActions';
 import HomeMarketPreview from '@/components/HomeMarketPreview';
 import HomeMarketTicker from '@/components/HomeMarketTicker';
 import ClientStoryShowcase from '@/components/ClientStoryShowcase';
+import StoriesExperience from '@/components/StoriesExperience';
 import PublicResourceLinks from '@/components/PublicResourceLinks';
 import NewsFeedPanel from '@/components/NewsFeedPanel';
 import {useLocale} from '@/lib/i18n-context';
@@ -66,6 +67,7 @@ export default function Home(){
 			</section>
 
 			<section className="market-ribbon" aria-label={translate('marketDataNotice')}><div className="ribbon-label"><span className="source-dot"/>{translate('demoMarketWatch')}</div><HomeMarketTicker/></section>
+			<StoriesExperience mode="strip"/>
 
 			<section className="home-section platform-section" id="platform">
 				<div className="section-heading"><div><p className="eyebrow">{translate('aureviaExperience')}</p><h2>{translate('usefulToolsClearInformation')}</h2></div><p className="section-intro">{translate('focusedEnvironment')}</p></div>
@@ -112,5 +114,5 @@ export default function Home(){
 }
 
 function Footer(){
-	return <footer className="home-footer"><div className="footer-main"><div className="footer-brand"><Link href="/" className="footer-logo"><Image className="brand-logo-image" src="/aurevia-logo.png" alt="" width={42} height={42}/><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></Link><p>A considered workspace for exploring markets and understanding your account.</p></div><div className="footer-column"><b>Platform</b><Link href="/dashboard">Dashboard</Link><Link href="/trade">Trading</Link><Link href="/wallet">Wallet</Link><Link href="/kyc">Verification</Link></div><div className="footer-column"><b>Explore</b><a href="#markets">Markets</a><Link href="/client-stories">Client stories</Link><a href="#education">Education</a><a href="#news">Market information</a><a href="#faq">FAQs</a></div><div className="footer-column"><b>Information</b><Link href="/risk-disclosure">Risk disclosure</Link><a href="#security">Security</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/support">Support</Link></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} Aurevia Exchange</span><span>Aurevia Exchange</span></div></footer>;
+	return <footer className="home-footer"><div className="footer-main"><div className="footer-brand"><Link href="/" className="footer-logo"><Image className="brand-logo-image" src="/aurevia-logo.png" alt="" width={42} height={42}/><span className="brand-copy"><strong>Aurevia</strong><small>EXCHANGE</small></span></Link><p>A considered workspace for exploring markets and understanding your account.</p></div><div className="footer-column"><b>Platform</b><Link href="/dashboard">Dashboard</Link><Link href="/trade">Trading</Link><Link href="/wallet">Wallet</Link><Link href="/kyc">Verification</Link></div><div className="footer-column"><b>Explore</b><a href="#markets">Markets</a><Link href="/stories">Stories</Link><Link href="/client-stories">Client stories</Link><a href="#education">Education</a><a href="#news">Market information</a><a href="#faq">FAQs</a></div><div className="footer-column"><b>Information</b><Link href="/risk-disclosure">Risk disclosure</Link><a href="#security">Security</a><Link href="/privacy">Privacy</Link><Link href="/terms">Terms</Link><Link href="/support">Support</Link></div></div><div className="footer-bottom"><span>© {new Date().getFullYear()} Aurevia Exchange</span><span>Aurevia Exchange</span></div></footer>;
 }

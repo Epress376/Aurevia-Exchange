@@ -5,7 +5,8 @@ import {db} from '@/lib/db';
 import {getUserActivity} from '@/lib/activity';
 import {balance,DEMO_STARTING_BALANCE} from '@/lib/ledger';
 import {calculateAllocationPercentages,instrumentAssetCategory} from '@/lib/portfolio-metrics';
-import {getAccountTier} from '@/lib/production-policy';
+import {getAccountTier,getTierProfileRequirements} from '@/lib/production-policy';
+import {synchronizeCompletedProfileTier} from '@/lib/tier-progression';
 import {jsonSafe} from '@/lib/serializers';
 import {MARKET_ASSETS} from '@/lib/live-market';
 import {getInternalInstrumentSymbols} from '@/lib/internal-market-data';
@@ -25,12 +26,15 @@ const activeInvestmentStatuses=[
 export async function GET(){
 	try{
 		const sessionUser=await requireUser();
-		const profile=await db.user.findUnique({
-			where:{id:sessionUser.id},
-			select:{
-				id:true,name:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,avatarKey:true,
-				kyc:{select:{submittedAt:true}},
-			},
+		const profile=await db.$transaction(async tx=>{
+			await synchronizeCompletedProfileTier(tx,sessionUser.id);
+			return tx.user.findUnique({
+				where:{id:sessionUser.id},
+				select:{
+					id:true,name:true,country:true,phone:true,phoneVerified:true,requiresRegistrationVerification:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,avatarKey:true,
+					kyc:{select:{submittedAt:true}},
+				},
+			});
 		});
 		if(!profile||profile.role!=='USER'||profile.status!==UserStatus.ACTIVE){
 			return NextResponse.json({error:'This account is unavailable.'},{status:403,headers:{'Cache-Control':'private, no-store'}});
@@ -96,16 +100,19 @@ export async function GET(){
 			allocationValues.set(category,(allocationValues.get(category)??new Prisma.Decimal(0)).plus(investment.amount));
 		}
 		const allocations=calculateAllocationPercentages([...allocationValues].map(([category,value])=>({category,value})));
+		const tierProfileRequirements=getTierProfileRequirements(profile);
 		const tier=getAccountTier({
 			accountMode:mode,
 			kycStatus:profile.kycStatus,
 			verificationDocuments:documents,
 			verificationSubmitted:!!profile.kyc?.submittedAt,
+			phoneVerified:profile.phoneVerified,
+			profileComplete:tierProfileRequirements.profileComplete,
 			approvedTier:profile.approvedTier,
 		});
 
 		return NextResponse.json(jsonSafe({
-			profile:{name:profile.name,accountMode:mode,tier:mode===AccountMode.REAL?tier.label:'DEMO',kycStatus:mode===AccountMode.REAL?profile.kycStatus:'NOT_AVAILABLE',hasAvatar:!!profile.avatarKey},
+			profile:{name:profile.name,accountMode:mode,tier:tier.label,progress:tier.progress,profileRequirements:tierProfileRequirements,kycStatus:mode===AccountMode.REAL?profile.kycStatus:'NOT_AVAILABLE',hasAvatar:!!profile.avatarKey},
 			accountMode:mode,
 			demoStartingBalance:mode===AccountMode.DEMO?DEMO_STARTING_BALANCE:null,
 			balances:{[mode]:activeBalance},

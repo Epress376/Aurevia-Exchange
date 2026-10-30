@@ -15,7 +15,7 @@ const viewports=[
 	{width:1920,height:1080},
 ];
 
-const publicRoutes=['/','/login','/register','/markets','/client-stories','/about','/education','/support','/waitlist','/terms','/privacy','/risk-disclosure','/forgot-password','/reset-password'];
+const publicRoutes=['/','/login','/register','/markets','/stories','/client-stories','/about','/education','/support','/waitlist','/terms','/privacy','/risk-disclosure','/forgot-password','/reset-password'];
 
 test.describe('public routes and responsive layout',()=>{
 	for(const viewport of viewports){

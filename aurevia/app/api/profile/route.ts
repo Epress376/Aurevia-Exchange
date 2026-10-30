@@ -5,10 +5,13 @@ import {requireUser} from '@/lib/auth';
 import {db} from '@/lib/db';
 import {createNotification} from '@/lib/notifications';
 import {getAccountTier} from '@/lib/production-policy';
+import {getTierProfileRequirements} from '@/lib/production-policy';
+import {synchronizeCompletedProfileTier} from '@/lib/tier-progression';
 import {isProfileLocked,profileEditDeadline} from '@/lib/profile-lock';
+import {isValidE164} from '@/lib/registration-validation';
 
 const profileSelect={
-	id:true,email:true,name:true,phone:true,phoneVerified:true,country:true,avatarKey:true,twoFactorEnabled:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,verifiedAt:true,verifiedChannel:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,restrictionReason:true,updatedAt:true,
+	id:true,email:true,name:true,phone:true,phoneVerified:true,country:true,avatarKey:true,twoFactorEnabled:true,role:true,status:true,accountMode:true,approvedTier:true,kycStatus:true,verifiedAt:true,verifiedChannel:true,requiresRegistrationVerification:true,depositEnabled:true,withdrawalEnabled:true,accountRestricted:true,restrictionReason:true,updatedAt:true,
 	kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}},
 	kyc:{select:{address:true,submittedAt:true}},
 } satisfies Prisma.UserSelect;
@@ -19,7 +22,7 @@ const schema=z.object({
 	name:z.string().trim().min(2,'Enter a full name.').max(120,'Full name must be 120 characters or fewer.').optional(),
 	firstName:z.string().trim().max(60,'First name must be 60 characters or fewer.').optional(),
 	lastName:z.string().trim().max(60,'Last name must be 60 characters or fewer.').optional(),
-	phone:z.string().trim().max(40,'Phone number must be 40 characters or fewer.').optional(),
+	phone:z.string().trim().max(40,'Phone number must be 40 characters or fewer.').refine(value=>!value||isValidE164(value),'Enter a valid phone number with its country code.').optional(),
 	country:z.string().trim().max(80,'Country must be 80 characters or fewer.').optional(),
 	address:z.string().trim().max(500,'Address must be 500 characters or fewer.').optional(),
 	twoFactorEnabled:z.boolean().optional(),
@@ -34,8 +37,9 @@ function profileResponse(profile:ProfileRecord){
 	const {avatarKey,kyc,kycDocuments,...safeProfile}=profile;
 	const {firstName,lastName}=nameParts(profile.name);
 	const realAccount=profile.accountMode===AccountMode.REAL;
-	const tier=getAccountTier({accountMode:profile.accountMode as AccountMode,kycStatus:realAccount?profile.kycStatus:'PENDING',verificationDocuments:realAccount?kycDocuments.length:0,verificationSubmitted:realAccount&&!!kyc?.submittedAt,approvedTier:realAccount?profile.approvedTier??undefined:undefined});
-	return {...safeProfile,firstName,lastName,address:realAccount?kyc?.address||null:null,hasAvatar:!!avatarKey,profileLocked:realAccount&&isProfileLocked(profile.verifiedAt),profileLockAt:realAccount?profileEditDeadline(profile.verifiedAt):null,twoFactorEnabled:false,twoFactorAvailable:false,documents:realAccount?kycDocuments.length:0,verificationProfileSubmitted:realAccount&&!!kyc?.submittedAt,...(realAccount?{}:{approvedTier:null,kycStatus:'NOT_AVAILABLE',verifiedAt:null,verifiedChannel:null,phoneVerified:false}),...tier};
+	const profileRequirements=getTierProfileRequirements(profile);
+	const tier=getAccountTier({accountMode:profile.accountMode as AccountMode,kycStatus:realAccount?profile.kycStatus:'PENDING',verificationDocuments:realAccount?kycDocuments.length:0,verificationSubmitted:realAccount&&!!kyc?.submittedAt,phoneVerified:realAccount&&profile.phoneVerified,profileComplete:profileRequirements.profileComplete,approvedTier:profile.approvedTier});
+	return {...safeProfile,firstName,lastName,address:realAccount?kyc?.address||null:null,hasAvatar:!!avatarKey,profileLocked:realAccount&&isProfileLocked(profile.verifiedAt),profileLockAt:realAccount?profileEditDeadline(profile.verifiedAt):null,twoFactorEnabled:false,twoFactorAvailable:false,documents:realAccount?kycDocuments.length:0,verificationProfileSubmitted:realAccount&&!!kyc?.submittedAt,profileRequirements,...(realAccount?{}:{approvedTier:null,kycStatus:'NOT_AVAILABLE',verifiedAt:null,verifiedChannel:null,phoneVerified:false}),...tier};
 }
 
 function safeErrorDetails(error:unknown){
@@ -48,7 +52,12 @@ function safeErrorDetails(error:unknown){
 export async function GET(){
 	try{
 		const user=await requireUser();
-		const profile=await db.user.findUnique({where:{id:user.id},select:profileSelect});
+		const profile=await db.$transaction(async tx=>{
+			const current=await tx.user.findUnique({where:{id:user.id},select:{id:true}});
+			if(!current)return null;
+			await synchronizeCompletedProfileTier(tx,user.id);
+			return tx.user.findUnique({where:{id:user.id},select:profileSelect});
+		});
 		if(!profile)return NextResponse.json({error:'Profile not found.'},{status:404});
 		if(profile.status!=='ACTIVE')return NextResponse.json({error:'This account is unavailable.'},{status:403});
 		const completedInvestment=profile.accountMode===AccountMode.REAL?await db.investmentRequest.findFirst({where:{userId:user.id,accountMode:profile.accountMode,status:{in:[InvestmentStatus.COMPLETED,InvestmentStatus.SETTLED]}},select:{id:true}}):null;
@@ -88,6 +97,7 @@ export async function PATCH(request:Request){
 			}});
 			if(phone!==current.phone)await tx.verificationCode.deleteMany({where:{userId:user.id,channel:'SMS'}});
 			if(input.address!==undefined)await tx.kycProfile.upsert({where:{userId:user.id},update:{address},create:{userId:user.id,address}});
+			await synchronizeCompletedProfileTier(tx,user.id);
 			const fresh=await tx.user.findUnique({where:{id:user.id},select:profileSelect});
 			if(!fresh)return null;
 			if(current.twoFactorEnabled&&input.twoFactorEnabled===false)await createNotification(tx,{userId:user.id,type:NotificationType.SECURITY,title:'Two-factor setting cleared',message:'Two-factor authentication is unavailable and is not protecting this account. No enrollment or login challenge is configured.',dedupeKey:`security:${user.id}:two-factor-disabled:${fresh.updatedAt.toISOString()}`,actionUrl:'/settings#security'});

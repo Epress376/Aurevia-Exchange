@@ -4,13 +4,35 @@ import {createPrivateObjectKey,createPrivateSignedUrl,deletePrivateObject,hasMat
 const owner='user_123';
 const key='user_123/123e4567-e89b-42d3-a456-426614174000.pdf';
 
-afterEach(()=>vi.unstubAllEnvs());
+afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals()});
 
 describe('private Storage ownership and upload validation',()=>{
 	it('generates user-namespaced opaque keys with a normalized extension',()=>{
 		const generated=createPrivateObjectKey('kyc',owner,'image/jpeg');
 		expect(generated).toMatch(/^user_123\/[0-9a-f-]{36}\.jpg$/);
 		expect(isPrivateObjectKeyOwnedBy('kyc',owner,generated)).toBe(true);
+	});
+
+	it('supports opaque video keys in the private stories bucket',()=>{
+		const generated=createPrivateObjectKey('story',owner,'video/mp4');
+		expect(generated).toMatch(/^user_123\/[0-9a-f-]{36}\.mp4$/);
+		expect(isPrivateObjectKeyOwnedBy('story',owner,generated)).toBe(true);
+		expect(isPrivateObjectKeyOwnedBy('clientStory',owner,generated)).toBe(false);
+	});
+
+	it('uploads stories media only through the private Storage bucket',async()=>{
+		vi.stubEnv('SUPABASE_URL','https://story-storage.example.test');
+		vi.stubEnv('SUPABASE_SERVICE_ROLE_KEY','server-only-test-key');
+		const fetchMock=vi.fn(async(input:RequestInfo|URL)=>{
+			const url=String(input);
+			if(url.endsWith('/storage/v1/bucket/stories'))return new Response(JSON.stringify({id:'stories',public:false}),{status:200});
+			return new Response('{}',{status:200});
+		});
+		vi.stubGlobal('fetch',fetchMock);
+		const videoKey=createPrivateObjectKey('story',owner,'video/mp4');
+		await uploadPrivateObject('story',owner,videoKey,Buffer.from('0000ftyp'),'video/mp4');
+		expect(fetchMock).toHaveBeenCalledTimes(2);
+		expect(String(fetchMock.mock.calls[1][0])).toContain('/storage/v1/object/stories/user_123/');
 	});
 
 	it('accepts a key only for its recorded owner and expected Storage area',()=>{

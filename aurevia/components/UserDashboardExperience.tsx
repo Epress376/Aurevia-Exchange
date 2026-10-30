@@ -13,11 +13,12 @@ import LivePriceChart from '@/components/LivePriceChart';
 import {InvestmentProgressCard} from '@/components/InvestmentProgressCard';
 import DemoAiTradingPanel from '@/components/DemoAiTradingPanel';
 import DemoAccountControls from '@/components/DemoAccountControls';
+import StoriesExperience from '@/components/StoriesExperience';
 import {DEFAULT_WATCHLIST,MARKET_ASSETS,type MarketCandle,type MarketQuote,type TimeframeId} from '@/lib/live-market';
 import {formatUsd} from '@/lib/currency-format';
 
 type Overview={
-	profile:{name:string|null;accountMode:'DEMO'|'REAL';tier:string;kycStatus:string;hasAvatar:boolean};
+	profile:{name:string|null;accountMode:'DEMO'|'REAL';tier:string;progress:number;profileRequirements:{emailVerified:boolean;nameComplete:boolean;countryComplete:boolean;phoneComplete:boolean;profileComplete:boolean};kycStatus:string;hasAvatar:boolean};
 	accountMode:'DEMO'|'REAL';
 	demoStartingBalance:string|null;
 	balances:Partial<Record<'DEMO'|'REAL',string>>;
@@ -255,6 +256,12 @@ export default function UserDashboardExperience(){
 					<Link href="/wallet" className="dashboard-wallet-link"><WalletCards size={15}/>Wallet</Link>
 				</div>
 			</header>
+			<section className="user-tier-progress" aria-label="Account tier progress">
+				<div className="user-tier-progress-copy"><span>ACCOUNT PROGRESSION</span><strong>{overview.profile.tier}</strong><p>{overview.profile.tier==='TIER 3'?'All tier reviews are complete.':overview.profile.profileRequirements.profileComplete?'Complete identity review in REAL mode to request Tier 3.':'Verify email and complete your profile details to reach Tier 2.'}</p></div>
+				<div className="user-tier-progress-meter"><div><span>Tier {overview.profile.tier.slice(-1)} of 3</span><b>{Math.round(overview.profile.progress)}%</b></div><div role="progressbar" aria-label="Account tier progression" aria-valuemin={0} aria-valuemax={100} aria-valuenow={overview.profile.progress}><span style={{width:`${overview.profile.progress}%`}}/></div></div>
+				<Link href="/tier" className="user-tier-progress-link">View requirements <ArrowUpRight size={14}/></Link>
+			</section>
+			<StoriesExperience mode="strip"/>
 			<section className="mobile-home-summary" aria-label="Account overview">
 				<header className="mobile-home-greeting">
 					<ProfileAvatar className="mobile-home-avatar" size={44} alt="Your profile picture"/>

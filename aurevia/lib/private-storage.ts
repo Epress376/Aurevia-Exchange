@@ -1,10 +1,10 @@
 import {randomUUID} from 'node:crypto';
 import {getServerConfiguration} from './config/env';
 
-export type PrivateStorageArea='kyc'|'avatar'|'receipt'|'support'|'clientStory'|'tax';
+export type PrivateStorageArea='kyc'|'avatar'|'receipt'|'support'|'clientStory'|'story'|'tax';
 
 type StorageConfiguration={baseUrl:string;serviceKey:string};
-type AreaConfiguration={bucket:string;maxBytes:number;mimeTypes:readonly string[];legacyPrefix:string};
+type AreaConfiguration={bucket:string;maxBytes:number;maxBytesByMime?:Readonly<Record<string,number>>;mimeTypes:readonly string[];legacyPrefix:string};
 
 const areas:Record<PrivateStorageArea,AreaConfiguration>={
 	kyc:{bucket:'kyc-documents',maxBytes:10*1024*1024,mimeTypes:['application/pdf','image/jpeg','image/png','image/webp'],legacyPrefix:'kyc'},
@@ -12,6 +12,7 @@ const areas:Record<PrivateStorageArea,AreaConfiguration>={
 	receipt:{bucket:'wallet-receipts',maxBytes:10*1024*1024,mimeTypes:['application/pdf','image/jpeg','image/png','image/webp'],legacyPrefix:'receipts'},
 	support:{bucket:'support-attachments',maxBytes:10*1024*1024,mimeTypes:['application/pdf','image/jpeg','image/png','image/webp'],legacyPrefix:'support'},
 	clientStory:{bucket:'client-stories',maxBytes:5*1024*1024,mimeTypes:['image/jpeg','image/png','image/webp'],legacyPrefix:'client-stories'},
+	story:{bucket:'stories',maxBytes:50*1024*1024,maxBytesByMime:{'image/jpeg':5*1024*1024,'image/png':5*1024*1024,'image/webp':5*1024*1024},mimeTypes:['image/jpeg','image/png','image/webp','video/mp4','video/webm'],legacyPrefix:'stories'},
 	tax:{bucket:'tax-documents',maxBytes:12*1024*1024,mimeTypes:['application/pdf','image/jpeg','image/png','image/webp'],legacyPrefix:'tax'},
 };
 
@@ -20,6 +21,8 @@ const extensionByMime:Record<string,string>={
 	'image/jpeg':'jpg',
 	'image/png':'png',
 	'image/webp':'webp',
+	'video/mp4':'mp4',
+	'video/webm':'webm',
 };
 const maxSignedUrlSeconds=300;
 
@@ -50,9 +53,9 @@ function validateOwnerId(ownerId:string){
 
 export function isPrivateObjectKeyOwnedBy(area:PrivateStorageArea,ownerId:string,key:string){
 	if(!Object.hasOwn(areas,area)||!/^[A-Za-z0-9_-]{1,128}$/.test(ownerId)||typeof key!=='string')return false;
-	const allowedExtensions=areas[area].mimeTypes.flatMap(mime=>mime==='image/jpeg'?['jpg','jpeg']:[extensionByMime[mime]]);
+	const allowedExtensions=areas[area].mimeTypes.flatMap(mime=>mime==='image/jpeg'?['jpg','jpeg']:[extensionByMime[mime]].filter((value):value is string=>Boolean(value)));
 	if(!allowedExtensions.includes(key.split('.').at(-1)?.toLowerCase()||''))return false;
-	const file='[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(?:pdf|jpg|jpeg|png|webp)';
+	const file=`[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\\.(?:${allowedExtensions.join('|')})`;
 	const canonical=new RegExp(`^${ownerId}/${file}$`,'i');
 	if(canonical.test(key))return true;
 	const legacyPrefix=areas[area].legacyPrefix;
@@ -106,7 +109,7 @@ export async function uploadPrivateObject(area:PrivateStorageArea,ownerId:string
 	assertOwnedKey(area,ownerId,key);
 	const areaConfig=areas[area];
 	if(!areaConfig.mimeTypes.includes(contentType)||!hasMatchingFileExtension(key,contentType))throw new PrivateStorageError('File type and extension do not match.',415);
-	if(bytes.length===0||bytes.length>areaConfig.maxBytes)throw new PrivateStorageError('Uploaded file is outside the permitted size.',413);
+	if(bytes.length===0||bytes.length>(areaConfig.maxBytesByMime?.[contentType]??areaConfig.maxBytes))throw new PrivateStorageError('Uploaded file is outside the permitted size.',413);
 	const config=configuration();
 	await verifyPrivateBucket(config,area);
 	let response:Response;

@@ -8,6 +8,7 @@ import {InvestmentAction,nextInvestmentStatus,simulatedInvestmentSettlement} fro
 import {createNotification} from '@/lib/notifications';
 import {jsonSafe} from '@/lib/serializers';
 import {configuredTierBoost} from '@/lib/tier-boosts';
+import {getAccountTier,getTierProfileRequirements} from '@/lib/production-policy';
 import {postSimulatedInvestmentPayout} from '@/lib/investment-ledger';
 
 export const dynamic='force-dynamic';
@@ -88,7 +89,7 @@ export async function POST(request:Request){
      return {investment:prior,replay:true};
     }
     const [user,opportunity]=await Promise.all([
-     tx.user.findUnique({where:{id:input.userId},select:{id:true,status:true,role:true,accountRestricted:true,approvedTier:true}}),
+     tx.user.findUnique({where:{id:input.userId},select:{id:true,status:true,role:true,accountRestricted:true,approvedTier:true,name:true,country:true,phone:true,phoneVerified:true,requiresRegistrationVerification:true,kycStatus:true,kyc:{select:{submittedAt:true}},kycDocuments:{where:{kind:'IDENTITY_DOCUMENT',status:'APPROVED'},select:{id:true}}}}),
      tx.investmentOpportunity.findUnique({where:{id:input.opportunityId}}),
     ]);
     if(!user||user.status!=='ACTIVE'||user.role!=='USER')throw new Error('INVESTMENT_USER_UNAVAILABLE');
@@ -99,7 +100,8 @@ export async function POST(request:Request){
     if(opportunity.startsAt&&input.startsAt<opportunity.startsAt)throw new Error('INVESTMENT_NOT_STARTED');
     const amount=requestedAmount;
     const targetReturnPercent=input.targetReturnPercent===null?opportunity.targetReturnPercent:new Prisma.Decimal(input.targetReturnPercent);
-    const tierBoostPercent=await configuredTierBoost(tx,user.approvedTier);
+    const profileRequirements=getTierProfileRequirements(user);
+    const tierBoostPercent=await configuredTierBoost(tx,Number(getAccountTier({accountMode:input.accountMode,kycStatus:user.kycStatus,verificationDocuments:user.kycDocuments.length,verificationSubmitted:!!user.kyc?.submittedAt,phoneVerified:user.phoneVerified,profileComplete:profileRequirements.profileComplete,approvedTier:user.approvedTier}).label.at(-1)));
     const now=new Date();
     const status=input.startsAt<=now?InvestmentStatus.ACTIVE:InvestmentStatus.APPROVED;
     const investment=await tx.investmentRequest.create({data:{userId:user.id,opportunityId:opportunity.id,accountMode:input.accountMode,amount,status,idempotencyKey,targetReturnPercent,tierBoostPercent,durationDays,approvedAt:now,activatedAt:input.startsAt,maturesAt:input.maturesAt}});

@@ -237,6 +237,28 @@ enum BroadcastStatus {
   ARCHIVED
 }
 
+enum StoryStatus {
+  DRAFT
+  SCHEDULED
+  PUBLISHED
+  ARCHIVED
+}
+
+enum StoryVisibility {
+  PUBLIC
+  REGISTERED_USERS
+}
+
+enum StoryMediaType {
+  IMAGE
+  VIDEO
+}
+
+enum StoryEngagementType {
+  VIEW
+  LINK_CLICK
+}
+
 model User {
   id                               String                            @id @default(cuid())
   email                            String                            @unique
@@ -289,6 +311,8 @@ model User {
   portfolioSnapshots               PortfolioSnapshot[]
   createdInvestmentOpportunities   InvestmentOpportunity[]           @relation("InvestmentOpportunityCreator")
   createdBroadcasts                Broadcast[]                       @relation("BroadcastCreator")
+  createdStories                   Story[]                           @relation("StoryCreator")
+  deletedStories                   Story[]                           @relation("StoryDeletedBy")
   deletedWaitlistEntries           WaitlistEntry[]                   @relation("WaitlistEntryDeletedBy")
   deletedClientStories             ClientStory[]                     @relation("ClientStoryDeletedBy")
   deletedBroadcasts                Broadcast[]                       @relation("BroadcastDeletedBy")
@@ -953,6 +977,76 @@ model Broadcast {
   @@index([status, startsAt])
   @@index([createdAt])
   @@index([deletedAt, createdAt])
+}
+
+model StoryCategory {
+  id           String   @id @default(cuid())
+  name         String   @unique @db.VarChar(80)
+  slug         String   @unique @db.VarChar(100)
+  displayOrder Int      @default(0)
+  createdAt    DateTime @default(now())
+  stories      Story[]
+
+  @@index([displayOrder, name])
+}
+
+model Story {
+  id           String            @id @default(cuid())
+  title        String            @db.VarChar(120)
+  description  String            @db.VarChar(3000)
+  categoryId   String
+  category     StoryCategory     @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  externalUrl  String?           @db.VarChar(2048)
+  status       StoryStatus       @default(DRAFT)
+  visibility   StoryVisibility   @default(PUBLIC)
+  publishAt    DateTime?
+  publishedAt  DateTime?
+  expiresAt    DateTime?
+  displayOrder Int               @default(0)
+  createdById  String
+  createdBy    User              @relation("StoryCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  archivedAt   DateTime?
+  deletedAt    DateTime?
+  deletedById  String?
+  deletedBy    User?             @relation("StoryDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  media        StoryMedia[]
+  engagements  StoryEngagement[]
+
+  @@index([status, publishAt, expiresAt])
+  @@index([visibility, status, publishAt, displayOrder])
+  @@index([deletedAt, createdAt])
+  @@index([categoryId, displayOrder])
+}
+
+model StoryMedia {
+  id           String         @id @default(cuid())
+  storyId      String
+  story        Story          @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  type         StoryMediaType
+  mimeType     String         @db.VarChar(100)
+  storageKey   String         @db.VarChar(255)
+  sizeBytes    Int
+  altText      String?        @db.VarChar(300)
+  displayOrder Int            @default(0)
+  createdAt    DateTime       @default(now())
+
+  @@unique([storyId, storageKey])
+  @@index([storyId, displayOrder])
+}
+
+model StoryEngagement {
+  id        String              @id @default(cuid())
+  storyId   String
+  story     Story               @relation(fields: [storyId], references: [id], onDelete: Cascade)
+  viewerKey String              @db.VarChar(64)
+  type      StoryEngagementType
+  day       DateTime            @db.Date
+  createdAt DateTime            @default(now())
+
+  @@unique([storyId, viewerKey, type, day])
+  @@index([storyId, type, createdAt])
 }
 
 model AuditLog {

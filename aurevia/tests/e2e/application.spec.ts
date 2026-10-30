@@ -26,7 +26,7 @@ const viewports=[
 ];
 
 const authenticatedRoutes=['/dashboard','/trade','/markets','/portfolio','/orders','/investments','/broadcasts','/wallet','/wallet/transactions','/kyc','/tier','/settings','/support','/notifications','/activity','/wallet/convert'];
-const adminRoutes=['/admin/login','/admin','/admin/users','/admin/content','/admin/positions','/admin/settings','/admin/deleted-items','/admin/broadcasts','/admin/investments','/admin/payments','/admin/approved-deposits','/admin/approved-withdrawals','/admin/settlements','/admin/kyc','/admin/support','/admin/waitlist','/admin/providers','/admin/operations','/admin/receipts','/admin/nova','/admin/audit-logs','/admin/tiers','/admin/verified-accounts','/admin/markets'];
+const adminRoutes=['/admin/login','/admin','/admin/users','/admin/content','/admin/stories','/admin/positions','/admin/settings','/admin/deleted-items','/admin/broadcasts','/admin/investments','/admin/payments','/admin/approved-deposits','/admin/approved-withdrawals','/admin/settlements','/admin/kyc','/admin/support','/admin/waitlist','/admin/providers','/admin/operations','/admin/receipts','/admin/nova','/admin/audit-logs','/admin/tiers','/admin/verified-accounts','/admin/markets'];
 const appOrigin=process.env.AUREVIA_E2E_APP_URL||'http://127.0.0.1:4310';
 const providerOrigin=process.env.AUREVIA_E2E_PROVIDER_URL||'http://127.0.0.1:4311';
 
@@ -85,6 +85,101 @@ async function selectAccountMode(page:import('@playwright/test').Page,accountMod
 	}
 }
 
+test('public stories publish for visitors and members with role, schedule, expiry, and engagement controls',async({browser,page})=>{
+	const unauthenticated=await page.request.get('/api/admin/stories');
+	expect(unauthenticated.status()).toBe(401);
+	const adminContext=await browser.newContext();
+	const adminPage=await adminContext.newPage();
+	const createdIds:string[]=[];
+	try{
+		await loginAs(adminPage,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+		const categories=await adminPage.request.get('/api/admin/stories/categories');
+		expect(categories.ok()).toBe(true);
+		const category=(await categories.json())[0];
+		const extraCategory=await adminPage.request.post('/api/admin/stories/categories',{data:{name:`E2E updates ${randomUUID()}`}});
+		expect(extraCategory.status()).toBe(201);
+		const createStory=async(title:string,status:'DRAFT'|'SCHEDULED'|'PUBLISHED',visibility:'PUBLIC'|'REGISTERED_USERS'='PUBLIC',dates:{publishAt?:Date;expiresAt?:Date}={})=>{
+			const response=await adminPage.request.post('/api/admin/stories',{data:{
+				title,description:`${title} content for the public stories viewer.`,categoryId:category.id,status,visibility,
+				publishAt:dates.publishAt?.toISOString()??null,expiresAt:dates.expiresAt?.toISOString()??null,displayOrder:0,
+			}});
+			expect(response.status(),`create ${title}`).toBe(201);
+			const story=await response.json();
+			createdIds.push(story.id);
+			return story as {id:string;title:string};
+		};
+		const now=Date.now();
+		const publicStory=await createStory(`E2E public story ${randomUUID()}`,'PUBLISHED');
+		const draftStory=await createStory(`E2E draft story ${randomUUID()}`,'DRAFT');
+		const scheduledStory=await createStory(`E2E scheduled story ${randomUUID()}`,'SCHEDULED','PUBLIC',{publishAt:new Date(now+60_000)});
+		const membersStory=await createStory(`E2E members story ${randomUUID()}`,'PUBLISHED','REGISTERED_USERS');
+		const expiredStory=await createStory(`E2E expiring story ${randomUUID()}`,'PUBLISHED','PUBLIC',{expiresAt:new Date(now+60_000)});
+		const png=PNG.sync.write(new PNG({width:1,height:1}));
+		const publicImage=await adminPage.request.post(`/api/admin/stories/${publicStory.id}/media`,{multipart:{file:{name:'story.png',mimeType:'image/png',buffer:png},altText:'Aurevia story artwork'}});
+		expect(publicImage.status()).toBe(201);
+		const draftVideo=await adminPage.request.post(`/api/admin/stories/${draftStory.id}/media`,{multipart:{file:{name:'draft.mp4',mimeType:'video/mp4',buffer:Buffer.from('\u0000\u0000\u0000\u0000ftypisom','binary')}}});
+		expect(draftVideo.status()).toBe(201);
+		const publicMedia=(await publicImage.json()).media;
+		const privateMedia=(await draftVideo.json()).media;
+		await db.story.update({where:{id:scheduledStory.id},data:{publishAt:new Date(now-60_000)}});
+		await db.story.update({where:{id:expiredStory.id},data:{expiresAt:new Date(now-1_000)}});
+
+		const beforeLoginFeed=await page.request.get('/api/stories').then(response=>response.json());
+		const publicFeedStory=beforeLoginFeed.find((story:{id:string})=>story.id===publicStory.id);
+		expect(publicFeedStory.media).toContainEqual(expect.objectContaining({id:publicMedia.id,type:'IMAGE'}));
+		const publicMediaUrl=publicFeedStory.media.find((item:{id:string;url:string})=>item.id===publicMedia.id)?.url;
+		if(!publicMediaUrl)throw new Error('Public story media URL was not returned.');
+		const publicImageResponse=await page.request.get(publicMediaUrl);
+		expect(publicImageResponse.status()).toBe(200);
+		expect(publicImageResponse.headers()['content-type']).toContain('image/png');
+		expect((await page.request.get(`/api/stories/${draftStory.id}/media/${privateMedia.id}`)).status()).toBe(404);
+		const adminVideoResponse=await adminPage.request.get(privateMedia.url);
+		expect(adminVideoResponse.status()).toBe(200);
+		expect(adminVideoResponse.headers()['content-type']).toContain('video/mp4');
+
+		await page.setViewportSize({width:375,height:812});
+		await page.goto('/stories');
+		await waitForStartup(page);
+		await expect(page.getByRole('heading',{name:'Stories',exact:true})).toBeVisible();
+		await expect(page.getByRole('button',{name:`Open ${publicStory.title}`})).toBeVisible();
+		await expect(page.getByRole('button',{name:`Open ${scheduledStory.title}`})).toBeVisible();
+		await expect(page.getByRole('button',{name:`Open ${draftStory.title}`})).toHaveCount(0);
+		await expect(page.getByRole('button',{name:`Open ${membersStory.title}`})).toHaveCount(0);
+		await expect(page.getByRole('button',{name:`Open ${expiredStory.title}`})).toHaveCount(0);
+		await expectNoHorizontalOverflow(page);
+		await page.getByRole('button',{name:`Open ${publicStory.title}`}).click();
+		const storyDialog=page.getByRole('dialog',{name:`Story: ${publicStory.title}`});
+		await expect(storyDialog).toBeVisible();
+		await expect(storyDialog.getByText(`${publicStory.title} content for the public stories viewer.`)).toBeVisible();
+		await page.getByRole('button',{name:'Close stories'}).click();
+
+		await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
+		const memberFeed=await page.request.get('/api/stories').then(response=>response.json());
+		expect(memberFeed).toContainEqual(expect.objectContaining({id:membersStory.id}));
+		expect(memberFeed).not.toContainEqual(expect.objectContaining({id:draftStory.id}));
+		const forbidden=await page.request.post('/api/admin/stories',{data:{}});
+		expect(forbidden.status()).toBe(403);
+
+		const adminLibrary=await adminPage.request.get('/api/admin/stories').then(response=>response.json());
+		expect(adminLibrary.stories).toContainEqual(expect.objectContaining({id:publicStory.id,engagement:expect.objectContaining({views:1})}));
+		expect(adminLibrary.stories).toContainEqual(expect.objectContaining({id:expiredStory.id,status:'ARCHIVED'}));
+		const publicStoryAudit=adminLibrary.stories.find((story:{id:string;auditHistory:Array<{action:string}>})=>story.id===publicStory.id)?.auditHistory;
+		expect(publicStoryAudit).toContainEqual(expect.objectContaining({action:'STORY_CREATED'}));
+		await adminPage.goto('/admin/stories');
+		await waitForStartup(adminPage);
+		const managedStory=adminPage.locator('.admin-story-row').filter({hasText:publicStory.title});
+		await expect(managedStory.getByText(/Created:/)).toBeVisible();
+		await managedStory.getByText(/Audit history/).click();
+		await expect(managedStory.getByText('STORY_CREATED')).toBeVisible();
+		const deletion=await adminPage.request.delete('/api/admin/stories',{data:{storyId:publicStory.id}});
+		expect(deletion.ok()).toBe(true);
+		expect(await page.request.get('/api/stories').then(response=>response.json())).not.toContainEqual(expect.objectContaining({id:publicStory.id}));
+	}finally{
+		for(const id of createdIds)await adminPage.request.delete('/api/admin/stories',{data:{storyId:id}});
+		await adminContext.close();
+	}
+});
+
 test('support fallback gives correct paper-trading and funding guidance',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	await page.route('**/api/support/nova',route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Support assistant unavailable.'})}));
@@ -105,12 +200,15 @@ test('provider health distinguishes paper trading from disabled live services',a
 	await expect(page.getByText(/When enabled, REAL-mode customer orders use this shared Alpaca Paper account/)).toBeVisible();
 });
 
-test('DEMO accounts see REAL-mode gates before KYC and tier API access',async({page})=>{
+test('DEMO accounts can view and complete profile-based tier progression while KYC remains gated',async({page})=>{
 	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
 	await page.goto('/kyc');
 	await expect(page.getByRole('heading',{name:'REAL mode required'})).toBeVisible();
+	const tierState=await page.request.get('/api/tier-requests');
+	expect(tierState.ok()).toBe(true);
 	await page.goto('/tier');
-	await expect(page.getByRole('heading',{name:'REAL mode required'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Account tiers'})).toBeVisible();
+	await expect(page.getByRole('progressbar',{name:'Account tier progression'})).toBeVisible();
 });
 
 test('market view uses disclosed internal quotes and chart history without Finnhub',async({page})=>{
@@ -1466,39 +1564,73 @@ test('Nova escalation reaches admin and admin response appears with notification
 	expect(replyToClosed.status()).toBe(409);
 });
 
-test('tier requests require an administrator decision and never enable real execution',async({page})=>{
-	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	await selectAccountMode(page,'REAL');
+test('profile completion and administrator identity review progress the account through all tiers',async({browser,page})=>{
+	const user=await createIsolatedDemoUser('tier-progression');
+	await db.user.update({where:{email:user.email},data:{requiresRegistrationVerification:false}});
+	await loginAs(page,user.email,user.password);
+	const profileUpdate=await page.request.patch('/api/profile',{data:{name:'Profile Complete User',country:'United States',phone:'+14155552671'}});
+	expect(profileUpdate.ok()).toBe(true);
+	const forgedTier=await page.request.patch('/api/profile',{data:{name:'Profile Complete User',approvedTier:3}});
+	expect(forgedTier.ok()).toBe(true);
+	expect((await forgedTier.json()).label).toBe('TIER 2');
+	await page.goto('/dashboard');
+	await expect(page.getByRole('region',{name:'Account tier progress'})).toContainText('TIER 2');
+	await expect(page.getByRole('link',{name:'View requirements'})).toHaveAttribute('href','/tier');
+	await page.setViewportSize({width:320,height:800});
 	await page.goto('/tier');
-	await expect(page.getByRole('heading',{name:'Benefits'})).toBeVisible();
+	await expect(page.getByRole('heading',{name:'Account tiers'})).toBeVisible();
+	await expect(page.locator('.tier-step.is-current')).toContainText('Current');
+	await expectNoHorizontalOverflow(page);
 	const state=await page.request.get('/api/tier-requests').then(response=>response.json());
-	expect(state.currentTier).toBe(1);
-	await page.getByRole('button',{name:'Request Tier 2 review'}).click();
-	await expect(page.getByRole('status')).toContainText('waiting for administrator review');
-	const request=await page.request.get('/api/tier-requests').then(response=>response.json());
-	const requestId=request.requests[0].id as string;
-	expect(request.requests[0].status).toBe('PENDING_REVIEW');
-	const denied=await page.request.patch('/api/admin/tier-requests',{data:{id:requestId,status:'APPROVED',reason:'Should be denied for a user.'}});
-	expect(denied.status()).toBe(403);
-	await logout(page);
-	await loginAs(page,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
-	await page.goto('/admin/tiers');
-	await expect(page.getByRole('heading',{name:'Tier review queue'})).toBeVisible();
-	await page.getByRole('button').filter({hasText:'Temporary E2E User'}).click();
-	await page.getByLabel('Required review reason').fill('Isolated browser test approval.');
-	await page.getByRole('button',{name:'Approve Tier 2'}).click();
-	await expect(page.getByRole('status')).toContainText('Tier request approved');
-	await logout(page);
-	await loginAs(page,fixture('USER_EMAIL'),fixture('USER_PASSWORD'));
-	const updated=await page.request.get('/api/tier-requests').then(response=>response.json());
-	expect(updated.currentTier).toBe(2);
+	expect(state.currentTier).toBe(2);
+	expect(state.permissions.tierBenefits).toBe(true);
+	expect(state.permissions.realMoneyServices).toBe(false);
+	const demoRequest=await page.request.post('/api/tier-requests',{data:{message:'Should not be accepted in DEMO mode.'}});
+	expect(demoRequest.status()).toBe(403);
+	await page.setViewportSize({width:1280,height:900});
+	await page.goto('/dashboard');
 	await selectAccountMode(page,'REAL');
+	const blockedRequest=await page.request.post('/api/tier-requests',{data:{message:'KYC is not submitted for this isolated profile.'}});
+	expect(blockedRequest.status()).toBe(409);
+	const denied=await page.request.patch('/api/admin/tier-requests',{data:{id:'not-a-real-request',status:'APPROVED',reason:'Should be denied for a user.'}});
+	expect(denied.status()).toBe(403);
+
+	const isolated=await db.user.findUniqueOrThrow({where:{email:user.email},select:{id:true}});
+	const submittedAt=new Date();
+	await db.$transaction(async tx=>{
+		await tx.user.update({where:{id:isolated.id},data:{phoneVerified:true,phoneVerifiedAt:submittedAt,kycStatus:'APPROVED',verifiedAt:submittedAt}});
+		await tx.kycProfile.create({data:{userId:isolated.id,legalName:'Profile Complete User',dob:new Date('1990-01-01'),address:'Test address',idType:'PASSPORT',idNumber:'E2E-IDENTITY',submittedAt,reviewedAt:submittedAt}});
+		await tx.kycDocument.create({data:{userId:isolated.id,kind:'IDENTITY_DOCUMENT',filename:'tier-review-test.jpg',storageKey:`e2e/tier-review/${randomUUID()}.jpg`,mimeType:'image/jpeg',size:1024,status:'APPROVED',reviewedAt:submittedAt}});
+	});
+	const submittedRequest=await page.request.post('/api/tier-requests',{data:{message:'Isolated tier progression review.'}});
+	expect(submittedRequest.status()).toBe(201);
+	const requestRecord=await submittedRequest.json();
+
+	const adminContext=await browser.newContext();
+	const adminPage=await adminContext.newPage();
+	await loginAs(adminPage,fixture('ADMIN_EMAIL'),fixture('ADMIN_PASSWORD'));
+	const informationNeeded=await adminPage.request.patch('/api/admin/tier-requests',{data:{id:requestRecord.id,status:'NEEDS_INFORMATION',reason:'Please confirm the identity record.'}});
+	expect(informationNeeded.ok()).toBe(true);
+	const userReply=await page.request.patch('/api/tier-requests',{data:{id:requestRecord.id,message:'The submitted identity record is accurate.'}});
+	expect(userReply.ok()).toBe(true);
+	const approved=await adminPage.request.patch('/api/admin/tier-requests',{data:{id:requestRecord.id,status:'APPROVED',reason:'Identity record reviewed in the isolated test.'}});
+	expect(approved.ok()).toBe(true);
+	await adminPage.goto('/admin/tiers');
+	await expect(adminPage.getByRole('heading',{name:'Tier management'})).toBeVisible();
+	const directory=await adminPage.request.get(`/api/admin/tier-requests?search=${encodeURIComponent(user.email)}`);
+	expect(directory.ok()).toBe(true);
+	const directoryData=await directory.json();
+	expect(directoryData.accounts).toEqual(expect.arrayContaining([expect.objectContaining({email:user.email,currentTier:3})]));
+	await adminContext.close();
+	const updated=await page.request.get('/api/tier-requests').then(response=>response.json());
+	expect(updated.currentTier).toBe(3);
+	await page.setViewportSize({width:320,height:800});
 	await page.goto('/tier');
-	await expect(page.getByText('TIER 2 · CURRENT')).toBeVisible();
+	await expect(page.locator('.tier-step.is-current')).toContainText('Current');
+	await expectNoHorizontalOverflow(page);
 	const instrument=(await page.request.get('/api/market').then(response=>response.json()))[0];
 	const realOrder=await page.request.post('/api/orders',{headers:{'Idempotency-Key':randomUUID()},data:{instrumentId:instrument.id,side:'BUY',type:'MARKET',quantity:1,expectedPrice:Number(instrument.price),observedAt:instrument.lastUpdatedAt||instrument.updatedAt}});
 	expect(realOrder.status()).toBe(403);
-	expect((await realOrder.json()).error).toContain('Alpaca Paper orders are disabled');
 });
 
 test('administrator email sign-in persists through refresh and logout removes admin access',async({page})=>{

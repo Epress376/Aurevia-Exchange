@@ -20,6 +20,7 @@ Aurevia Exchange is a Next.js application using TypeScript, PostgreSQL, Prisma, 
 - Wallet balance from the ledger
 - Deposit and withdrawal requests
 - Funding history
+- Public Stories feed and fullscreen image/video viewer, available without signing in
 
 ### Administration
 - Role-protected admin area
@@ -32,11 +33,18 @@ Aurevia Exchange is a Next.js application using TypeScript, PostgreSQL, Prisma, 
 - Force-close open positions
 - Instrument enable/disable and configuration API
 - System settings
+- Stories management with categories, private media uploads, previews, drafts, scheduling, visibility, archive/delete controls, engagement analytics, and per-story audit history
 - Deleted Items recycle bin for waitlist entries, client stories, and broadcasts, with search, filtering, audited restore, and audited permanent deletion
 - Audit log
 - Realtime operational statistics
 
 Financial, identity-review, and audit records are intentionally not recyclable: account-erasure requests follow the privacy-preserving closure workflow, and immutable financial/audit history remains subject to its retention rules.
+
+### Public Stories
+
+The public `/stories` feed and homepage/dashboard story strips read only published, non-expired content; scheduled stories become visible when their publication time arrives. Administrators manage stories at `/admin/stories`. Default categories are installed by the additive Stories migration, and additional categories are administrator-created. Public and member-only visibility is enforced in the server-side listing and media routes. Story images and videos are stored in the private Supabase `stories` bucket and served through short-lived signed URLs only after the story's visibility and publication state are checked. Configure the existing server-only `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`; never expose the service-role key to the browser. The migration creates the private bucket if absent and refuses to proceed if an existing bucket is public or too small; it does not change any other Storage bucket.
+
+Anonymous views use a random, HTTP-only visitor cookie whose value is hashed before storage; view and external-link counts are deduplicated per story, action, and UTC day. No visitor IP address is stored for Stories analytics.
 
 ### Financial engine
 - PostgreSQL persistence
@@ -112,7 +120,7 @@ This repository is configured as a Next.js application in `vercel.json`. Vercel 
 
 Configure production and preview environment variables in the Vercel project settings. Required server values are `DATABASE_URL`, `DIRECT_URL`, `NEXTAUTH_SECRET`, `NEXTAUTH_URL`, `NEXT_PUBLIC_APP_URL`, and `CRON_SECRET`. Configure Supabase private-file variables (`SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`) when those workflows are enabled. Add `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` before provisioning the administrator. Set the canonical HTTPS app origin explicitly in `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL`; use a separate staging database and secrets for Preview deployments. Keep all credentials server-only except the explicitly public Supabase URL and anon key.
 
-Use Supabase's pooled connection string for `DATABASE_URL` where appropriate and its direct PostgreSQL connection for `DIRECT_URL`. Apply reviewed Prisma migrations to the target database before promoting the deployment; the Vercel build does not run migrations or seed an administrator. Do not point Preview deployments at production customer data. Configure the four private Storage buckets and restrictive policies documented above before enabling uploads.
+Use Supabase's pooled connection string for `DATABASE_URL` where appropriate and its direct PostgreSQL connection for `DIRECT_URL`. Apply reviewed Prisma migrations to the target database before promoting the deployment; the Vercel build does not run migrations or seed an administrator. Do not point Preview deployments at production customer data. Configure the private Storage buckets and restrictive policies documented above before enabling uploads.
 
 Generate a high-entropy `CRON_SECRET` and store it in Vercel project settings. Vercel Cron sends it as a Bearer token to the market-tick route; calls without that exact secret are rejected. Cron jobs run for production deployments. Local development and the Render Node service continue to use the custom server's ticker; Render remains the option when persistent Socket.IO/WebSocket delivery is required.
 
