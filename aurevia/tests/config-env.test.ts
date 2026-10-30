@@ -92,18 +92,19 @@ describe('canonical environment configuration',()=>{
     expect(getServerConfiguration({SUPPORT_PHONE:'+1 555 010 1234'}).smtp.supportPhone).toBe('+1 555 010 1234');
   });
 
-  it('keeps registration contact verification disabled even when legacy env flags enable it',()=>{
-    expect(getServerConfiguration({}).verification.registrationVerificationEnabled).toBe(false);
+  it('requires email verification for registration independently of legacy flags',()=>{
+    expect(getServerConfiguration({}).verification.registrationVerificationEnabled).toBe(true);
+    expect(getServerConfiguration({}).verification.appUrl).toBe('https://aurevia-exchange-6hfi.onrender.com');
     expect(getServerConfiguration({
       REGISTRATION_VERIFICATION_ENABLED:'true',
       PHONE_VERIFICATION_REQUIRED:'true',
     }).verification).toMatchObject({
-      registrationVerificationEnabled:false,
+      registrationVerificationEnabled:true,
       phoneVerificationRequired:false,
     });
   });
 
-  it('uses the Render HTTPS origin instead of localhost for production auth URLs',()=>{
+  it('uses the Render HTTPS origin until a custom domain is explicitly verified',()=>{
     expect(resolveRenderApplicationUrls({
       NODE_ENV:'production',
       RENDER_EXTERNAL_URL:'https://aurevia.onrender.com',
@@ -118,6 +119,16 @@ describe('canonical environment configuration',()=>{
       RENDER_EXTERNAL_URL:'https://aurevia.onrender.com',
       NEXTAUTH_URL:'https://auth.example.com',
       NEXT_PUBLIC_APP_URL:'https://app.example.com',
+    })).toEqual({
+      nextAuthUrl:'https://aurevia.onrender.com',
+      publicAppUrl:'https://aurevia.onrender.com',
+    });
+    expect(resolveRenderApplicationUrls({
+      NODE_ENV:'production',
+      RENDER_EXTERNAL_URL:'https://aurevia.onrender.com',
+      NEXTAUTH_URL:'https://auth.example.com',
+      NEXT_PUBLIC_APP_URL:'https://app.example.com',
+      AUREVIA_CUSTOM_DOMAIN_VERIFIED:'true',
     })).toEqual({
       nextAuthUrl:'https://app.example.com',
       publicAppUrl:'https://app.example.com',

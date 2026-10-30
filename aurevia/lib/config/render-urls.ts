@@ -15,6 +15,9 @@ export function resolveRenderApplicationUrls(source:EnvironmentSource){
 	if(source.NODE_ENV!=='production')return null;
 	const renderUrl=httpsOrigin(source.RENDER_EXTERNAL_URL);
 	if(!renderUrl)return null;
-	const canonicalUrl=httpsOrigin(source.NEXT_PUBLIC_APP_URL)||httpsOrigin(source.NEXTAUTH_URL)||renderUrl;
+	const customDomain=source.AUREVIA_CUSTOM_DOMAIN_VERIFIED==='true'
+		?httpsOrigin(source.NEXT_PUBLIC_APP_URL)||httpsOrigin(source.NEXTAUTH_URL)
+		:null;
+	const canonicalUrl=customDomain||renderUrl;
 	return {nextAuthUrl:canonicalUrl,publicAppUrl:canonicalUrl};
 }

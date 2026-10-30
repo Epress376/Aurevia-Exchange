@@ -96,9 +96,9 @@ Only `NEXT_PUBLIC_APP_URL` and `NEXT_PUBLIC_SUPABASE_URL` are public configurati
 
 `ADMIN_USERNAME`, `ADMIN_EMAIL`, and `ADMIN_PASSWORD` are server-only administrator credentials. On the dedicated admin login form, the first sign-in using the exact configured username or email and password provisions the configured ADMIN account. The password must be at least 12 characters. An existing customer account is never promoted to administrator; configure a separate administrator email. If the configured email is unused but an administrator already exists, that existing admin record adopts the configured email and username after the configured password is verified; a second admin is not created. The seed remains available for explicit provisioning. Restart the server after changing these values.
 
-Registration completes without an email/SMS ownership challenge. Legacy `REGISTRATION_VERIFICATION_ENABLED` and `PHONE_VERIFICATION_REQUIRED` environment values are ignored. This does not bypass KYC or other eligibility checks for REAL-account funding and trading actions. `NEXT_PUBLIC_APP_URL`, `PORT`, and `MARKET_TICK_MS` are optional and have runtime defaults.
+Registration requires email verification before a new account can sign in. Email delivery uses Resend; configure `RESEND_API_KEY` and a sender verified by Resend in `VERIFICATION_EMAIL_FROM`. Phone verification is separate and occurs during REAL-mode KYC using Termii. Legacy `REGISTRATION_VERIFICATION_ENABLED` and `PHONE_VERIFICATION_REQUIRED` values no longer change these requirements. The production URL defaults to the current Render hostname; `PORT` and `MARKET_TICK_MS` have runtime defaults.
 
-For production, set `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` to the canonical HTTPS domain configured for that deployment. Production startup rejects a missing `NEXTAUTH_SECRET` or `NEXTAUTH_URL`; it never trusts an arbitrary Host header to establish the auth origin. Official support contact defaults to `aureviainvest@gmail.com` and can be overridden with `SUPPORT_EMAIL`; `COMPLAINTS_EMAIL` may be set separately. Configure these destinations separately from `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. When SMTP is missing, password recovery is unavailable and support/funding actions report that no email was sent; in-app tickets and notifications remain recorded.
+For production on Render, keep `NEXTAUTH_URL` and `NEXT_PUBLIC_APP_URL` set to `https://aurevia-exchange-6hfi.onrender.com` until the custom domain has working DNS and verified HTTPS. Render's `RENDER_EXTERNAL_URL` is used as the canonical auth/public origin unless `AUREVIA_CUSTOM_DOMAIN_VERIFIED=true` explicitly opts into the verified custom domain. Production startup fails closed if `NEXTAUTH_SECRET` is missing or no valid HTTPS app origin can be resolved; it never trusts an arbitrary Host header or a hard-coded fallback secret. Official support contact defaults to `aureviainvest@gmail.com` and can be overridden with `SUPPORT_EMAIL`; `COMPLAINTS_EMAIL` may be set separately. Configure these destinations separately from `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASSWORD`, and `SMTP_FROM`. When SMTP is missing, password recovery is unavailable and support/funding actions report that no email was sent; in-app tickets and notifications remain recorded.
 
 ### Vercel deployment
 
@@ -173,10 +173,23 @@ Private file workflows require server-only `SUPABASE_URL` and `SUPABASE_SERVICE_
 | Deposits and withdrawals | Funding-provider contract only; no bank, card, blockchain, or custody adapter | REAL BTC credits require separate manual verification and approval; withdrawals are capped to verified BTC-funded balance and remain incomplete without a payout provider |
 | Investments | No investment execution/settlement provider | Allocations reserve internal funds; settlement returns reserved principal only and never converts an estimated target return into earnings |
 | Identity/KYC | No identity verification provider configured | Documents/details can be submitted for human review only; approval is an administrator decision |
-| Email/OTP | SMTP settings and verification delivery URL/key pairs | No email/SMS is claimed sent; verification-dependent actions report unavailable |
+| Email/OTP | Resend `RESEND_API_KEY` and `VERIFICATION_EMAIL_FROM`; Termii `TERMII_API_KEY` and `TERMII_SENDER_ID` for KYC phone challenges | Registration is blocked until email delivery is configured; KYC phone verification reports unavailable until Termii is configured |
 | Private files | Supabase Storage URL, private bucket, service-role key | Upload and signed access fail closed; no public-file fallback |
 | Deployment | No deployment provider configuration is checked into this repository | Production secret injection, domains, TLS, backups, monitoring, and release controls must be configured in the hosting environment |
-| SMS/OTP | `VERIFICATION_SMS_API_URL`, `VERIFICATION_SMS_API_KEY` | SMS verification cannot be completed; when required, registration fails closed |
+| SMS/OTP | Termii Send Token and Verify Token API | Phone verification cannot be completed until Termii is configured; registration uses email only |
+
+Set the following server-side environment variables for contact verification (the Resend sender domain must be verified with Resend):
+
+```dotenv
+RESEND_API_KEY=
+VERIFICATION_EMAIL_FROM=noreply@aureviaexchanged.dpdns.org
+TERMII_API_KEY=
+TERMII_SENDER_ID=
+NEXT_PUBLIC_APP_URL=https://aureviaexchanged.dpdns.org
+VERIFICATION_CODE_SECRET=
+```
+
+Registration sends a six-digit email code through Resend and blocks sign-in until it is verified. Phone verification happens separately in the REAL-mode KYC page before KYC submission. Existing `VERIFICATION_EMAIL_API_URL` / `VERIFICATION_EMAIL_API_KEY` settings remain supported as a legacy email-delivery fallback.
 
 Password recovery tokens are random, single-use, expire after 30 minutes, and are stored only as SHA-256 hashes. Resetting a password revokes the active account session. Successful and failed credential attempts are written to the existing admin-only audit log with a validated IP when available, bounded user-agent text, and a hashed identifier for unknown accounts; no password or raw token is stored.
 

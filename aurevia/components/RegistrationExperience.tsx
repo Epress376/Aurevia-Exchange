@@ -55,7 +55,7 @@ export default function RegistrationExperience(){
 			if(!response.ok){
 				setError(result.requestId?`${result.error||translate('registrationFailed')} (Reference: ${result.requestId})`:result.error||translate('registrationFailed'));return;
 			}
-			router.replace('/login?registered=1');
+			router.replace(`/verify-email?email=${encodeURIComponent(details.email.trim().toLowerCase())}&delivery=${result.delivery==='failed'?'retry':'sent'}`);
 			router.refresh();
 		}catch{setError(translate('unableRegistration'));}
 		finally{setBusy(false);}

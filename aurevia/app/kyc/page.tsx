@@ -26,6 +26,7 @@ export default function Kyc(){
   const [form,setForm]=useState<VerificationForm>(emptyForm);
   const [status,setStatus]=useState<VerificationStatus>('PENDING');
   const [message,setMessage]=useState('');
+  const [phoneMessage,setPhoneMessage]=useState('');
   const [error,setError]=useState('');
   const [loading,setLoading]=useState(true);
   const [submitting,setSubmitting]=useState(false);
@@ -34,6 +35,11 @@ export default function Kyc(){
   const [uploadKind,setUploadKind]=useState<'IDENTITY_DOCUMENT'|'SELFIE'>('IDENTITY_DOCUMENT');
   const [uploadFile,setUploadFile]=useState<File|null>(null);
   const [uploading,setUploading]=useState(false);
+  const [phone,setPhone]=useState('');
+  const [phoneCode,setPhoneCode]=useState('');
+  const [phoneVerified,setPhoneVerified]=useState(false);
+  const [sendingPhoneCode,setSendingPhoneCode]=useState(false);
+  const [verifyingPhoneCode,setVerifyingPhoneCode]=useState(false);
 
   const load=useCallback(async(active:()=>boolean)=>{
     if(sessionStatus==='loading')return;
@@ -48,6 +54,8 @@ export default function Kyc(){
       const [kyc,profile,uploadedDocuments]=await Promise.all(responses.map(response=>response.json()));
       if(!active())return;
       if(kyc)setForm({legalName:kyc.legalName||'',dob:kyc.dob?String(kyc.dob).slice(0,10):'',address:kyc.address||'',idType:kyc.idType||'PASSPORT',idNumber:kyc.idNumber||''});
+      setPhone(profile.phone||'');
+      setPhoneVerified(Boolean(profile.phoneVerified));
       if(['PENDING','APPROVED','REJECTED','NEEDS_CHANGES'].includes(profile.kycStatus))setStatus(profile.kycStatus);
       setDocuments(uploadedDocuments);
     }catch(exception){if(active())setError(exception instanceof Error?exception.message:translate('unableLoadVerification'))}
@@ -75,6 +83,30 @@ export default function Kyc(){
       setStatus('PENDING');setMessage(translate('verificationSubmitted'));
     }catch(exception){setError(exception instanceof Error?exception.message:translate('unableSubmitVerification'))}
     finally{setSubmitting(false)}
+  }
+
+  async function sendPhoneCode(){
+    if(sendingPhoneCode||!phone.trim())return;
+    setSendingPhoneCode(true);setError('');setPhoneMessage('');
+    try{
+      const response=await fetch('/api/kyc/phone/send',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({phone:phone.trim()})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Unable to send a phone verification code.');
+      setPhoneVerified(false);setPhoneCode('');setPhoneMessage(result.message||'A verification code was sent to your phone.');
+    }catch(exception){setError(exception instanceof Error?exception.message:'Unable to send a phone verification code.')}
+    finally{setSendingPhoneCode(false)}
+  }
+
+  async function verifyPhoneCode(){
+    if(verifyingPhoneCode||phoneCode.length!==6)return;
+    setVerifyingPhoneCode(true);setError('');setPhoneMessage('');
+    try{
+      const response=await fetch('/api/kyc/phone/verify',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:phoneCode})});
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.error||'Unable to verify this phone number.');
+      setPhoneVerified(true);setPhoneMessage(result.message||'Your phone number is verified.');
+    }catch(exception){setError(exception instanceof Error?exception.message:'Unable to verify this phone number.')}
+    finally{setVerifyingPhoneCode(false)}
   }
 
   async function uploadDocument(){
@@ -108,6 +140,18 @@ export default function Kyc(){
       </div>
     </section>
     <div className="account-content-grid">
+      <section className="account-panel card p-5 md:col-span-2"><div className="account-panel-title"><div><h2>Phone verification</h2><p className="account-panel-subtitle">Verify your phone number before submitting your KYC profile.</p></div><ShieldCheck size={18} className="gold" aria-hidden="true"/></div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
+          <label className="account-label">Phone number<input className="input" type="tel" autoComplete="tel" inputMode="tel" value={phone} onChange={event=>{setPhone(event.target.value);setPhoneVerified(false);setPhoneCode('')}} placeholder="+12125550123" required/></label>
+          <button className="btn bg-gold text-black self-end" type="button" disabled={sendingPhoneCode||loading||!phone.trim()} onClick={()=>void sendPhoneCode()}>{sendingPhoneCode?'Sending…':'Send code'}</button>
+        </div>
+        <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_auto]">
+          <label className="account-label">Six-digit verification code<input className="input" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" maxLength={6} value={phoneCode} onChange={event=>setPhoneCode(event.target.value.replace(/\D/g,'').slice(0,6))}/></label>
+          <button className="btn bg-gold text-black self-end" type="button" disabled={verifyingPhoneCode||loading||phoneCode.length!==6||phoneVerified} onClick={()=>void verifyPhoneCode()}>{verifyingPhoneCode?'Verifying…':phoneVerified?'Phone verified':'Verify phone'}</button>
+        </div>
+        <p className="mt-3 text-xs muted" role="status">{phoneVerified?'Phone number verified. You can submit your KYC profile.':'Phone verification is required before KYC submission.'}</p>
+        {phoneMessage&&<p className="mt-2 text-sm text-profit" role="status">{phoneMessage}</p>}
+      </section>
       <section className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('personalInformation')}</h2><p className="account-panel-subtitle">{translate('useIdentityDocument')}</p></div><FileCheck2 size={18} className="gold" aria-hidden="true"/></div>
         <form onSubmit={submit} className="account-form-grid">
           <label className="account-label">{translate('legalName')}<input className="input" autoComplete="name" required minLength={2} maxLength={160} value={form.legalName} onChange={event=>setForm({...form,legalName:event.target.value})}/></label>
@@ -116,7 +160,7 @@ export default function Kyc(){
           <label className="account-label">{translate('identityDocumentType')}<select className="input" value={form.idType} onChange={event=>setForm({...form,idType:event.target.value})}><option value="PASSPORT">{translate('passport')}</option><option value="NATIONAL_ID">{translate('nationalId')}</option><option value="DRIVERS_LICENSE">{translate('driversLicense')}</option></select></label>
           <label className="account-label">{translate('documentNumber')}<input className="input" required minLength={3} maxLength={100} autoComplete="off" value={form.idNumber} onChange={event=>setForm({...form,idNumber:event.target.value})}/></label>
           <div className="account-callout md:col-span-2"><Info size={16}/><span>{translate('identityFilesCopy')}</span></div>
-          <div className="md:col-span-2"><button className="btn bg-gold text-black" type="submit" disabled={submitting||loading} aria-busy={submitting}>{submitting?translate('submitting'):translate('submitForReview')}</button>{message&&<p className="mt-3 text-sm text-profit" role="status">{message}</p>}</div>
+          <div className="md:col-span-2"><button className="btn bg-gold text-black" type="submit" disabled={submitting||loading||!phoneVerified} aria-busy={submitting}>{submitting?translate('submitting'):translate('submitForReview')}</button>{!phoneVerified&&<p className="mt-2 text-xs muted">Verify your phone number before submitting this form.</p>}{message&&<p className="mt-3 text-sm text-profit" role="status">{message}</p>}</div>
         </form>
       </section>
       <aside className="account-panel card p-5"><div className="account-panel-title"><div><h2>{translate('reviewStatus')}</h2><p className="account-panel-subtitle">{translate('currentAccountStatus')}</p></div></div><span className="status-pill">{loading?translate('loading'):state.label}</span><p className="mt-4 text-sm leading-6 muted">{state.description}</p><div className="mt-5 border-t border-white/10 pt-4"><h3 className="text-sm font-semibold">{translate('identityDocuments')}</h3><p className="mt-2 text-xs leading-5 muted">{translate('documentTypes')}</p><div className="mt-3 grid gap-3"><label className="account-label">{translate('documentType')}<select className="input" value={uploadKind} onChange={event=>setUploadKind(event.target.value as 'IDENTITY_DOCUMENT'|'SELFIE')}><option value="IDENTITY_DOCUMENT">Identity document</option><option value="SELFIE">Selfie</option></select></label><label className="account-label">{translate('chooseFile')}<input className="input" type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={event=>setUploadFile(event.target.files?.[0]||null)}/></label><button className="btn bg-gold text-black" type="button" disabled={!uploadFile||uploading||loading} onClick={()=>void uploadDocument()}><Upload size={15}/>{uploading?translate('uploadingDocument'):translate('uploadDocument')}</button></div>{documents.length?<ul className="mt-4 divide-y divide-white/10">{documents.map(document=><li className="py-3 text-sm" key={document.id}><div className="flex flex-wrap items-center justify-between gap-2"><span className="break-all">{document.filename}</span><span className="status-pill">{document.status.replaceAll('_',' ')}</span></div><p className="mt-1 text-xs muted">{document.kind.replaceAll('_',' ')} · {new Date(document.uploadedAt).toLocaleDateString()}{document.reviewNote?` · ${document.reviewNote}`:''}</p></li>)}</ul>:<p className="mt-3 text-sm muted">{translate('noDocumentsSubmitted')}</p>}</div></aside>

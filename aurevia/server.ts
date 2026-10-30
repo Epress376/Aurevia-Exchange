@@ -2,6 +2,7 @@ import next from 'next';
 import {createServer} from 'http';
 import {Server as IOServer} from 'socket.io';
 import {loadEnvConfig} from '@next/env';
+import {randomBytes} from 'node:crypto';
 import {tickMarkets} from './lib/market';
 import {settleMaturedSimulatedInvestments} from './lib/demo-investment-settlement';
 import {resolveRenderApplicationUrls} from './lib/config/render-urls';
@@ -15,12 +16,18 @@ if(renderApplicationUrls){
 const dev=process.env.NODE_ENV!=='production';
 const port=Number(process.env.PORT||3000);
 if(!process.env.NEXTAUTH_SECRET){
-	console.warn('NEXTAUTH_SECRET is not configured; generating an ephemeral fallback secret for this process. Set it in Render for stable sessions.');
-	process.env.NEXTAUTH_SECRET='aurevia-ephemeral-secret-change-me';
+	if(!dev){
+		console.error('Missing required production configuration: NEXTAUTH_SECRET.');
+		process.exit(1);
+	}
+	process.env.NEXTAUTH_SECRET=randomBytes(32).toString('hex');
 }
 if(!process.env.NEXTAUTH_URL){
+	if(!dev){
+		console.error('Missing required production configuration: NEXTAUTH_URL.');
+		process.exit(1);
+	}
 	process.env.NEXTAUTH_URL=`http://localhost:${port}`;
-	console.warn('NEXTAUTH_URL is not configured; defaulting to localhost for this process. Set it to the production URL in Render.');
 }
 if(!process.env.NEXT_PUBLIC_APP_URL){
 	process.env.NEXT_PUBLIC_APP_URL=process.env.NEXTAUTH_URL;
@@ -37,14 +44,15 @@ function safeErrorCode(error:unknown){
 
 async function startServer(){
   if(!dev){
-    const missing=['NEXTAUTH_SECRET','NEXTAUTH_URL'].filter(name=>!process.env[name]?.trim());
-    if(missing.length){
-      console.warn(`Missing production configuration: ${missing.join(', ')}. Falling back to safe runtime defaults for this process.`);
-    }
     for(const [name,value] of [['NEXTAUTH_URL',process.env.NEXTAUTH_URL],['NEXT_PUBLIC_APP_URL',configuredPublicUrl]] as const){
       if(!value)continue;
-      try{new URL(value)}catch{
-        console.warn(`${name} is not a valid absolute URL; continuing with the fallback runtime value: ${value}`);
+      try{
+        const parsed=new URL(value);
+        const isLocalTestHttp=parsed.protocol==='http:'&&['localhost','127.0.0.1','::1'].includes(parsed.hostname)&&process.env.AUREVIA_E2E_ALLOW_HTTP_PROVIDER==='1';
+        if(parsed.protocol!=='https:'&&!isLocalTestHttp)throw new Error('HTTPS_REQUIRED');
+      }catch{
+        console.error(`${name} must be a valid absolute HTTPS URL in production.`);
+        process.exit(1);
       }
     }
   }

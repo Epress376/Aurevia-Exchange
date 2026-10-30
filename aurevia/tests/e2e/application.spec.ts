@@ -145,7 +145,7 @@ test('portfolio timeframe controls filter authenticated snapshot history accessi
 	expect(portfolio.allocations.reduce((sum:number,item:{percentage:string})=>sum+Number(item.percentage),0)).toBeCloseTo(100,2);
 	await page.goto('/portfolio');
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
-	await expect(page.getByRole('status',{name:'Market data source: simulated prices'})).toBeVisible();
+	await expect(page.getByRole('status',{name:'Market data source: in-app prices'})).toBeVisible();
 	const controls=page.getByRole('group',{name:'Performance timeframe'});
 	await controls.getByRole('button',{name:'1W'}).click();
 	await expect(controls.getByRole('button',{name:'1W'})).toHaveAttribute('aria-pressed','true');
@@ -638,7 +638,7 @@ test('sign-in password visibility, recovery link, and account link are accessibl
 	await expectNoHorizontalOverflow(page);
 });
 
-test('registration skips contact verification and platform health remains available after logout',async({page})=>{
+test('registration requires email verification before sign-in',async({page})=>{
 	const email=fixture('REGISTRATION_EMAIL');
 	const password=fixture('REGISTRATION_PASSWORD');
 	await page.request.post(`${providerOrigin}/reset`);
@@ -674,12 +674,17 @@ test('registration skips contact verification and platform health remains availa
 	await page.getByRole('button',{name:'Create account'}).click();
 	const registrationPayload=(await registrationRequest).postDataJSON();
 	expect(registrationPayload).toMatchObject({name:'Temporary Browser Test',country:'United States',phone:'+447400123456',dateOfBirth:'2000-02-29'});
-	expect(await (await registrationResponse).json()).toMatchObject({verificationRequired:false,authMethod:'credentials'});
-	await expect(page).toHaveURL(/\/login\?registered=1/);
-	expect(await db.user.findUniqueOrThrow({where:{email},select:{requiresRegistrationVerification:true}})).toEqual({requiresRegistrationVerification:false});
-	expect(await db.verificationCode.count({where:{user:{email}}})).toBe(0);
+	expect(await (await registrationResponse).json()).toMatchObject({verificationRequired:true,authMethod:'credentials'});
+	await expect(page).toHaveURL(new RegExp(`/verify-email\\?email=${encodeURIComponent(email)}`));
+	expect(await db.user.findUniqueOrThrow({where:{email},select:{requiresRegistrationVerification:true}})).toEqual({requiresRegistrationVerification:true});
+	expect(await db.verificationCode.count({where:{user:{email},channel:'EMAIL'}})).toBe(1);
 	const providerStats=await page.request.get(`${providerOrigin}/stats`);
-	expect(await providerStats.json()).toMatchObject({email:0,sms:0});
+	expect(await providerStats.json()).toMatchObject({email:1,sms:0});
+	const emailCode=await page.request.get(`${providerOrigin}/test-code?email=${encodeURIComponent(email)}`).then(response=>response.json());
+	await page.getByLabel('Six-digit verification code').fill(emailCode.code);
+	await page.getByRole('button',{name:'Verify email'}).click();
+	await expect(page).toHaveURL('/login?verified=1');
+	expect(await db.user.findUniqueOrThrow({where:{email},select:{requiresRegistrationVerification:true,verifiedAt:true}})).toMatchObject({requiresRegistrationVerification:false,verifiedAt:expect.any(Date)});
 	await page.getByLabel('Email or administrator username').fill(email);
 	await page.getByLabel('Password',{exact:true}).fill(password);
 	await page.getByRole('button',{name:'Sign in'}).click();
@@ -1138,7 +1143,7 @@ test('closing a DEMO position records a sell execution, reconciles portfolio, an
 	expect(Number(closedPortfolio.positionValue)).toBe(0);
 	expect(closedPortfolio.realizedPnl).not.toBeNull();
 	const notificationResponse=await page.request.get('/api/notifications?limit=100').then(response=>response.json());
-	expect(notificationResponse.notifications.some((item:{title:string;relatedId:string|null})=>item.relatedId===closeOrder.id&&item.title==='DEMO simulated position closed')).toBe(true);
+	expect(notificationResponse.notifications.some((item:{title:string;relatedId:string|null})=>item.relatedId===closeOrder.id&&item.title==='DEMO position closed')).toBe(true);
 });
 
 test('DEMO currency conversion is disabled and leaves DEMO and REAL ledgers unchanged',async({page})=>{
@@ -1285,7 +1290,7 @@ test('DEMO blocks investment allocations while REAL investment lifecycle remains
 			await expect(page.getByLabel('BTC address')).toHaveCount(0);
 			await expect(page.getByLabel('Optional supporting attachment')).toBeVisible();
 		await page.goto('/investments');
-		await expect(page.getByText(/REAL investment activity is simulated/i)).toBeVisible();
+		await expect(page.getByText(/REAL investment activity uses internal records/i)).toBeVisible();
 		const realRequestResponse=await page.request.post('/api/investments',{headers:{'Idempotency-Key':randomUUID()},data:{opportunityId:opportunity.id,amount:500}});
 		expect(realRequestResponse.status()).toBe(201);
 		const realRequest=await realRequestResponse.json();
@@ -1384,7 +1389,7 @@ test('admin investment initiation reserves once, honors withdrawal reservations,
 		await settleMaturedSimulatedInvestments(new Date(startsAt.getTime()+1000));
 		expect((await db.investmentRequest.findUniqueOrThrow({where:{id:investment.id}})).status).toBe('ACTIVE');
 		expect(Number((await page.request.get('/api/wallet').then(response=>response.json())).balance)).toBe(initialBalance-750);
-		const activationNotification=await db.notification.findFirst({where:{userId,relatedEntity:'INVESTMENT',relatedId:investment.id,title:'Simulated investment started'},select:{accountMode:true}});
+		const activationNotification=await db.notification.findFirst({where:{userId,relatedEntity:'INVESTMENT',relatedId:investment.id,title:'DEMO investment started'},select:{accountMode:true}});
 		expect(activationNotification).toMatchObject({accountMode:'DEMO'});
 	}finally{await adminContext.close();}
 });
@@ -2342,6 +2347,8 @@ test('account deletion reauthenticates, preserves ledger history, and permits re
 	const replacement=await db.user.findUniqueOrThrow({where:{email},select:{id:true,status:true,approvedTier:true}});
 	expect(replacement).toMatchObject({status:'ACTIVE',approvedTier:1});
 	expect(replacement.id).not.toBe(userId);
+	const replacementCode=await page.request.get(`${providerOrigin}/test-code?email=${encodeURIComponent(email)}`).then(response=>response.json());
+	expect((await page.request.post('/api/register/verify',{data:{email,code:replacementCode.code}})).status()).toBe(200);
 	await loginAs(page,email,newPassword);
 	await expect(page.getByRole('heading',{name:'My Portfolio'})).toBeVisible();
 });

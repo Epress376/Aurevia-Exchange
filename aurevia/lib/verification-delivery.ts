@@ -5,7 +5,7 @@ import {getServerConfiguration} from './config/env';
 
 type Contact={email:string;phone:string|null;name:string|null};
 
-function provider(channel:VerificationChannel){
+function legacyProvider(channel:VerificationChannel){
 	const config=getServerConfiguration();
 	const url=channel===VerificationChannel.EMAIL?config.verification.emailApiUrl:config.verification.smsApiUrl;
 	const key=channel===VerificationChannel.EMAIL?config.verification.emailApiKey:config.verification.smsApiKey;
@@ -22,20 +22,26 @@ function provider(channel:VerificationChannel){
 	}
 }
 
-export function hasConfiguredVerificationProvider(){
-	return Boolean(provider(VerificationChannel.EMAIL)||provider(VerificationChannel.SMS));
+export function hasConfiguredVerificationProvider(channel?:VerificationChannel){
+	const config=getServerConfiguration().verification;
+	const emailConfigured=Boolean(config.resendApiKey||legacyProvider(VerificationChannel.EMAIL));
+	const smsConfigured=hasConfiguredTermii()||Boolean(legacyProvider(VerificationChannel.SMS));
+	return channel===VerificationChannel.EMAIL?emailConfigured:channel===VerificationChannel.SMS?smsConfigured:emailConfigured||smsConfigured;
+}
+
+export function hasConfiguredTermii(){
+	const config=getServerConfiguration().verification;
+	return Boolean(config.termiiApiKey&&config.termiiSenderId);
 }
 
 export function availableVerificationChannel(phone:string|null){
-	if(provider(VerificationChannel.EMAIL))return VerificationChannel.EMAIL;
-	if(phone&&provider(VerificationChannel.SMS))return VerificationChannel.SMS;
+	if(hasConfiguredVerificationProvider(VerificationChannel.EMAIL))return VerificationChannel.EMAIL;
+	if(phone&&hasConfiguredVerificationProvider(VerificationChannel.SMS))return VerificationChannel.SMS;
 	return null;
 }
 
-export function registrationVerificationChannel(phone:string|null,phoneRequired=getServerConfiguration().verification.phoneVerificationRequired,enabled=getServerConfiguration().verification.registrationVerificationEnabled){
-	if(!enabled)return null;
-	if(phoneRequired)return phone&&provider(VerificationChannel.SMS)?VerificationChannel.SMS:null;
-	return provider(VerificationChannel.EMAIL)?VerificationChannel.EMAIL:null;
+export function registrationVerificationChannel(){
+	return hasConfiguredVerificationProvider(VerificationChannel.EMAIL)?VerificationChannel.EMAIL:null;
 }
 
 export function generateVerificationCode(){
@@ -55,16 +61,79 @@ export function verificationCodeMatches(userId:string,code:string,hash:string){
 }
 
 export async function deliverVerificationCode(channel:VerificationChannel,contact:Contact,code:string){
-	const configured=provider(channel);
-	if(!configured)return false;
-	const destination=channel===VerificationChannel.EMAIL?contact.email:contact.phone;
-	if(!destination)return false;
+	if(channel!==VerificationChannel.EMAIL)return false;
+	const config=getServerConfiguration().verification;
+	if(!contact.email)return false;
 	const subject='Verify your Aurevia Exchange account';
-	const text=`Your Aurevia Exchange verification code is ${code}. It expires in ${verificationConfig.expiresInMinutes} minutes. If you did not request it, you can ignore this message.`;
+	let text:string;
 	try{
-		const response=await fetch(configured.url,{method:'POST',headers:{authorization:`Bearer ${configured.key}`,'content-type':'application/json'},body:JSON.stringify({channel:channel.toLowerCase(),to:destination,name:contact.name,subject,text}),signal:AbortSignal.timeout(8000)});
+		const verificationUrl=new URL('/verify-email',config.appUrl);
+		verificationUrl.searchParams.set('email',contact.email);
+		text=`Your Aurevia Exchange verification code is ${code}. It expires in ${verificationConfig.expiresInMinutes} minutes. Enter it at ${verificationUrl.toString()}. If you did not request it, you can ignore this message.`;
+	}catch{
+		return false;
+	}
+
+	if(config.resendApiKey){
+		try{
+			const response=await fetch('https://api.resend.com/emails',{
+				method:'POST',
+				headers:{authorization:`Bearer ${config.resendApiKey}`,'content-type':'application/json'},
+				body:JSON.stringify({from:config.emailFrom,to:[contact.email],subject,text}),
+				signal:AbortSignal.timeout(8000),
+			});
+			return response.ok;
+		}catch{
+			return false;
+		}
+	}
+
+	const configured=legacyProvider(channel);
+	if(!configured)return false;
+	try{
+		const response=await fetch(configured.url,{method:'POST',headers:{authorization:`Bearer ${configured.key}`,'content-type':'application/json'},body:JSON.stringify({channel:channel.toLowerCase(),to:contact.email,name:contact.name,subject,text}),signal:AbortSignal.timeout(8000)});
 		return response.ok;
 	}catch{
 		return false;
 	}
+}
+
+export async function sendTermiiVerificationToken(phone:string){
+	const config=getServerConfiguration().verification;
+	if(!config.termiiApiKey||!config.termiiSenderId)throw new Error('PHONE_VERIFICATION_DELIVERY_UNAVAILABLE');
+	const response=await fetch('https://api.ng.termii.com/api/sms/otp/send',{
+		method:'POST',
+		headers:{'content-type':'application/json'},
+		body:JSON.stringify({
+			api_key:config.termiiApiKey,
+			message_type:'NUMERIC',
+			to:phone,
+			from:config.termiiSenderId,
+			channel:'generic',
+			pin_attempts:verificationConfig.maxAttempts,
+			pin_time_to_live:verificationConfig.expiresInMinutes,
+			pin_length:6,
+			pin_type:'NUMERIC',
+			pin_placeholder:'< 123456 >',
+			message:'Your Aurevia Exchange phone verification code is < 123456 >.',
+		}),
+		signal:AbortSignal.timeout(8000),
+	});
+	const result=await response.json().catch(()=>null) as {pin_id?:unknown}|null;
+	if(!response.ok||typeof result?.pin_id!=='string'||!result.pin_id)throw new Error('PHONE_VERIFICATION_DELIVERY_FAILED');
+	return result.pin_id;
+}
+
+export async function verifyTermiiVerificationToken(pinId:string,code:string){
+	const apiKey=getServerConfiguration().verification.termiiApiKey;
+	if(!apiKey)throw new Error('PHONE_VERIFICATION_DELIVERY_UNAVAILABLE');
+	const response=await fetch('https://api.ng.termii.com/api/sms/otp/verify',{
+		method:'POST',
+		headers:{'content-type':'application/json'},
+		body:JSON.stringify({api_key:apiKey,pin_id:pinId,pin:code}),
+		signal:AbortSignal.timeout(8000),
+	});
+	const result=await response.json().catch(()=>null) as {verified?:unknown}|null;
+	if(!response.ok||!result||!['true','false'].includes(String(result.verified).toLowerCase()))throw new Error('PHONE_VERIFICATION_PROVIDER_FAILED');
+	return String(result.verified).toLowerCase()==='true';
 }

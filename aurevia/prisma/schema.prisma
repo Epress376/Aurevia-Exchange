@@ -446,6 +446,7 @@ model VerificationCode {
   user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
   codeHash    String
   channel     VerificationChannel
+  providerReference String?
   expiresAt   DateTime
   resendAfter DateTime
   attempts    Int                 @default(0)

@@ -82,9 +82,11 @@ export async function PATCH(request:Request){
 			await tx.user.update({where:{id:user.id},data:{
 				name,
 				phone,
+				...(phone!==current.phone?{phoneVerified:false,phoneVerifiedAt:null}:{}),
 				country,
 				twoFactorEnabled:input.twoFactorEnabled===false?false:current.twoFactorEnabled,
 			}});
+			if(phone!==current.phone)await tx.verificationCode.deleteMany({where:{userId:user.id,channel:'SMS'}});
 			if(input.address!==undefined)await tx.kycProfile.upsert({where:{userId:user.id},update:{address},create:{userId:user.id,address}});
 			const fresh=await tx.user.findUnique({where:{id:user.id},select:profileSelect});
 			if(!fresh)return null;
