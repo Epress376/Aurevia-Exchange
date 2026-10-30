@@ -15,7 +15,7 @@ const mocks=vi.hoisted(()=>({
 	orderFindMany:vi.fn(),
 	snapshotUpsert:vi.fn(),
 	snapshotFindMany:vi.fn(),
-	candleGroupBy:vi.fn(),
+	marketQuote:vi.fn(),
 	balance:vi.fn(),
 	reservedWithdrawalAmount:vi.fn(),
 	paperOrderCollateral:vi.fn(),
@@ -31,10 +31,13 @@ vi.mock('@/lib/db',()=>({db:{
 	investmentOpportunity:{findMany:mocks.opportunityFindMany},
 	order:{findMany:mocks.orderFindMany},
 	portfolioSnapshot:{upsert:mocks.snapshotUpsert,findMany:mocks.snapshotFindMany},
-	candle:{groupBy:mocks.candleGroupBy},
 }}));
 vi.mock('@/lib/ledger',()=>({balance:mocks.balance,reservedWithdrawalAmount:mocks.reservedWithdrawalAmount}));
 vi.mock('@/lib/bitcoin-funding',()=>({ALPACA_PAPER_PROVIDER:'alpaca-paper',BTC_FUNDING_METHOD:'btc',paperOrderCollateral:mocks.paperOrderCollateral}));
+vi.mock('@/lib/market-data-service',()=>({
+	getMarketQuoteWithFallback:mocks.marketQuote,
+	getAlpacaMarketDataOptions:vi.fn(()=>undefined),
+}));
 
 import {GET} from '@/app/api/portfolio/route';
 
@@ -48,14 +51,18 @@ const paperPosition=(updatedAt:Date)=>({
 	openedAt:new Date('2026-10-28T08:00:00.000Z'),
 	providerName:'alpaca-paper',
 	instrument:{
+		id:'instrument-1',
 		symbol:'AAPL',
 		name:'Apple',
+		category:'STOCK',
+		baseAsset:'AAPL',
+		quoteAsset:'USD',
 		price:new Prisma.Decimal(110),
 		updatedAt,
 	},
 });
 
-describe('portfolio route simulated provider valuation',()=>{
+describe('portfolio route provider valuation',()=>{
 	beforeEach(()=>{
 		vi.clearAllMocks();
 		mocks.requireUser.mockResolvedValue({id:'user-1'});
@@ -70,16 +77,14 @@ describe('portfolio route simulated provider valuation',()=>{
 		mocks.orderFindMany.mockResolvedValue([]);
 		mocks.snapshotUpsert.mockResolvedValue({});
 		mocks.snapshotFindMany.mockResolvedValue([]);
-		mocks.candleGroupBy.mockResolvedValue([]);
 		mocks.balance.mockResolvedValue(new Prisma.Decimal(250));
 		mocks.reservedWithdrawalAmount.mockResolvedValue(new Prisma.Decimal(0));
 		mocks.paperOrderCollateral.mockReturnValue({committed:new Prisma.Decimal(0)});
+		mocks.marketQuote.mockResolvedValue({price:110,updatedAt:new Date().toISOString(),source:'Alpaca',isStale:false});
 	});
 
-	it('values confirmed Paper holdings from a fresh simulated quote without mixing them into Aurevia cash',async()=>{
-		const quotedAt=new Date();
-		mocks.positionFindMany.mockResolvedValue([paperPosition(quotedAt)]);
-		mocks.candleGroupBy.mockResolvedValue([{instrumentId:'instrument-1',_max:{ts:quotedAt}}]);
+	it('values confirmed Paper holdings from a fresh provider quote without mixing them into Aurevia cash',async()=>{
+		mocks.positionFindMany.mockResolvedValue([paperPosition(new Date(Date.now()-120_000))]);
 
 		const response=await GET();
 		const result=await response.json();
@@ -97,12 +102,13 @@ describe('portfolio route simulated provider valuation',()=>{
 		expect(result.cashBalance).toBe('250');
 		expect(result.availableCashBalance).toBe('250');
 		expect(result.totalValue).toBe('250');
+		expect(result.paperPositions[0].valuationSource).toBe('Alpaca');
 	});
 
-	it('does not present a stale simulated mark as a current value',async()=>{
+	it('does not present a stale provider mark as a current value',async()=>{
 		const quotedAt=new Date(Date.now()-120_000);
 		mocks.positionFindMany.mockResolvedValue([paperPosition(quotedAt)]);
-		mocks.candleGroupBy.mockResolvedValue([{instrumentId:'instrument-1',_max:{ts:quotedAt}}]);
+		mocks.marketQuote.mockResolvedValue({price:110,updatedAt:quotedAt.toISOString(),source:'Alpaca',isStale:true});
 
 		const response=await GET();
 		const result=await response.json();
@@ -121,6 +127,7 @@ describe('portfolio route simulated provider valuation',()=>{
 
 	it('leaves paper holdings unvalued when there is no recorded quote timestamp',async()=>{
 		mocks.positionFindMany.mockResolvedValue([paperPosition(new Date())]);
+		mocks.marketQuote.mockRejectedValue(new Error('provider unavailable'));
 
 		const response=await GET();
 		const result=await response.json();
@@ -128,6 +135,37 @@ describe('portfolio route simulated provider valuation',()=>{
 		expect(response.status).toBe(200);
 		expect(result.paperPositions[0]).toMatchObject({valuationStatus:'UNAVAILABLE',valuationAsOf:null,marketValue:null});
 		expect(result.paperValuation).toMatchObject({status:'UNAVAILABLE',valuedCount:0,openCount:1});
+	});
+
+	it('uses provider quotes for REAL positions and marks totals unavailable when quotes are missing',async()=>{
+		mocks.positionFindMany.mockResolvedValue([{...paperPosition(new Date()),providerName:null}]);
+		mocks.marketQuote.mockRejectedValue(new Error('provider unavailable'));
+
+		const response=await GET();
+		const result=await response.json();
+
+		expect(response.status).toBe(200);
+		expect(result.positions[0]).toMatchObject({currentPrice:null,marketValue:null,unrealizedPnl:null,valuationStatus:'UNAVAILABLE'});
+		expect(result.positionValue).toBeNull();
+		expect(result.totalValue).toBeNull();
+		expect(result.unrealizedPnl).toBeNull();
+		expect(result.marketDataMode).toBe('PROVIDER_UNAVAILABLE');
+		expect(mocks.snapshotUpsert).not.toHaveBeenCalled();
+	});
+
+	it('values REAL position P/L from a fresh provider quote',async()=>{
+		mocks.positionFindMany.mockResolvedValue([{...paperPosition(new Date()),providerName:null}]);
+
+		const response=await GET();
+		const result=await response.json();
+
+		expect(response.status).toBe(200);
+		expect(result.positions[0]).toMatchObject({currentPrice:'110',marketValue:'220',unrealizedPnl:'20',valuationStatus:'CURRENT',valuationSource:'Alpaca'});
+		expect(result.positionValue).toBe('220');
+		expect(result.totalValue).toBe('470');
+		expect(result.unrealizedPnl).toBe('20');
+		expect(result.marketDataMode).toBe('LIVE_PROVIDER');
+		expect(mocks.snapshotUpsert).toHaveBeenCalledOnce();
 	});
 
 	it('uses the instrument fee when calculating available cash after Paper reserves',async()=>{

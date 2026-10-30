@@ -67,8 +67,6 @@ export default function Home(){
 			</section>
 
 			<section className="market-ribbon" aria-label={translate('marketDataNotice')}><div className="ribbon-label"><span className="source-dot"/>{translate('demoMarketWatch')}</div><HomeMarketTicker/></section>
-			<StoriesExperience mode="strip"/>
-
 			<section className="home-section platform-section" id="platform">
 				<div className="section-heading"><div><p className="eyebrow">{translate('aureviaExperience')}</p><h2>{translate('usefulToolsClearInformation')}</h2></div><p className="section-intro">{translate('focusedEnvironment')}</p></div>
 				<div className="principle-grid">{principles.map((item,index)=>{const Icon=item.icon;return <article className="principle-item" key={item.title}><span className="principle-index">0{index+1}</span><Icon size={21} strokeWidth={1.5}/><h3>{item.title}</h3><p>{item.copy}</p></article>})}</div>
@@ -108,6 +106,7 @@ export default function Home(){
 			<section className="home-section faq-section" id="faq"><div className="section-heading"><div><p className="eyebrow">GOOD TO KNOW</p><h2>Questions,<br/><em>answered clearly.</em></h2></div><p className="section-intro">A quick guide to the current Aurevia demo environment.</p></div><div className="faq-list">{questions.map(([question,answer])=><details key={question}><summary>{question}<ChevronDown size={18}/></summary><p>{answer}</p></details>)}</div></section>
 
 			<section className="home-cta" id="support"><div><p className="eyebrow">AUREVIA EXCHANGE</p><h2>Explore the platform<br/><em>at your own pace.</em></h2><p>Choose your account type and access clearly labeled account tools.</p></div><div className="home-cta-actions"><HomeAccountActions variant="cta"/></div></section>
+			<StoriesExperience mode="strip"/>
 		</main>
 		<Footer/>
 	</>;

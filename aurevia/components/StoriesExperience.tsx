@@ -151,7 +151,7 @@ export default function StoriesExperience({mode='strip',stories:providedStories}
 
 	return <section className={`stories-section ${mode==='strip'?'stories-section-compact':'stories-section-page'}`} aria-labelledby={mode==='page'?'stories-page-title':'stories-strip-title'}>
 		<header className="stories-section-heading">
-			<div><p className="stories-eyebrow">AUREVIA · STORIES</p>{mode==='page'?<h1 id="stories-page-title">Stories</h1>:<h2 id="stories-strip-title">The latest from Aurevia</h2>}{mode==='page'&&<p>Company updates, market context, and useful platform news.</p>}</div>
+			<div>{mode==='page'?<><p className="stories-eyebrow">UPDATES &amp; INSIGHTS</p><h1 id="stories-page-title">Stories</h1><p>Company updates, market context, and useful platform news.</p></>:<><p className="stories-eyebrow">UPDATES &amp; INSIGHTS</p><h2 id="stories-strip-title">From Aurevia</h2></>}</div>
 			{mode==='strip'&&<Link href="/stories" className="stories-view-all">View all <ArrowRight size={14}/></Link>}
 		</header>
 		{mode==='page'&&categories.length>0&&<div className="stories-category-filters" aria-label="Filter stories by category">

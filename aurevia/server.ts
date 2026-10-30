@@ -4,6 +4,9 @@ import {Server as IOServer} from 'socket.io';
 import {loadEnvConfig} from '@next/env';
 import {randomBytes} from 'node:crypto';
 import {tickMarkets} from './lib/market';
+import {MARKET_ASSETS} from './lib/live-market';
+import {getMarketQuoteWithFallback,getAlpacaMarketDataOptions} from './lib/market-data-service';
+import {getServerConfiguration} from './lib/config/env';
 import {settleMaturedSimulatedInvestments} from './lib/demo-investment-settlement';
 import {resolveRenderApplicationUrls} from './lib/config/render-urls';
 
@@ -68,18 +71,20 @@ async function startServer(){
   const io=new IOServer(http,{cors:{origin:publicUrl,credentials:true}});
   io.on('connection',socket=>{socket.emit('connected',{ok:true});});
   const intervalMs=Math.max(1000,Number(process.env.MARKET_TICK_MS||2500));
+  const liveMarketRefreshMs=30_000;
   let running=false;
+  let liveMarketRunning=false;
   let consecutiveFailures=0;
 
   function scheduleNextTick(delay:number){setTimeout(()=>{void runMarketTick()},delay)}
+  function scheduleNextLiveMarketTick(delay=liveMarketRefreshMs){setTimeout(()=>{void runLiveMarketTick()},delay)}
   const runMarketTick=async()=>{
     if(running)return scheduleNextTick(intervalMs);
     running=true;
     let nextDelay=intervalMs;
     try{
-      const data=await tickMarkets();
+      await tickMarkets();
       consecutiveFailures=0;
-      io.emit('market:update',data);
       try{
         const maturedInvestmentsSettled=await settleMaturedSimulatedInvestments();
         if(maturedInvestmentsSettled)console.log(`Auto-settled ${maturedInvestmentsSettled} matured simulated investment(s).`);
@@ -95,12 +100,51 @@ async function startServer(){
       scheduleNextTick(nextDelay);
     }
   };
+  const runLiveMarketTick=async()=>{
+    if(liveMarketRunning)return scheduleNextLiveMarketTick();
+    liveMarketRunning=true;
+    try{
+      const configuration=getServerConfiguration();
+      if(!configuration.marketData.finnhubApiKey&&!configuration.execution.alpacaTradingConfigured){
+        return;
+      }
+      const alpacaData=getAlpacaMarketDataOptions(configuration.execution);
+      let unavailableCount=0;
+      const updates=await Promise.all(MARKET_ASSETS.map(async asset=>{
+        try{
+          const quote=await getMarketQuoteWithFallback(asset,configuration.marketData.finnhubApiKey,alpacaData);
+          if(quote.isStale||!(quote.source==='Finnhub'||quote.source.startsWith('Alpaca')))return null;
+          return {
+            symbol:asset.id,
+            price:quote.price,
+            change:quote.change,
+            changePercent:quote.changePercent,
+            source:quote.source,
+            dataMode:'LIVE' as const,
+            lastUpdatedAt:quote.updatedAt,
+          };
+        }catch{
+          unavailableCount++;
+          return null;
+        }
+      }));
+      const available=updates.filter((update):update is NonNullable<typeof update>=>update!==null);
+      if(available.length)io.emit('market:update',available);
+      if(unavailableCount)console.warn(`Live market update unavailable for ${unavailableCount} asset(s).`);
+    }catch(error){
+      console.error(`Live market update failed (${safeErrorCode(error)}).`);
+    }finally{
+      liveMarketRunning=false;
+      scheduleNextLiveMarketTick();
+    }
+  };
   async function prepareApplication(){
     try{
       await app.prepare();
       appReady=true;
       console.log('Next.js application ready');
       scheduleNextTick(0);
+      scheduleNextLiveMarketTick(0);
     }catch(error){
       console.error('Next.js preparation failed; startup aborted',error);
       process.exit(1);

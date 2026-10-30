@@ -1,10 +1,19 @@
 import {afterEach,beforeEach,describe,expect,it,vi} from 'vitest';
-import {filterSupportedMarketAssets,getMarketAsset,getMarketHistory,getMarketQuote} from '../lib/live-market';
+import {filterSupportedMarketAssets,getLiveMarketProviderStatus,getMarketAsset,getMarketHistory,getMarketQuote} from '../lib/live-market';
 
 afterEach(()=>{vi.useRealTimers();vi.unstubAllGlobals();vi.unstubAllEnvs()});
 
 describe('Finnhub market service',()=>{
 	beforeEach(()=>vi.stubEnv('FINNHUB_API_KEY',''));
+
+	it('reports market data as unavailable rather than treating simulated prices as live',async()=>{
+		await expect(getLiveMarketProviderStatus()).resolves.toMatchObject({
+			status:'UNAVAILABLE',
+			provider:'Unavailable',
+			finnhubStatus:'NOT_CONFIGURED',
+			fallbackProvider:null,
+		});
+	});
 
 	it('parses Finnhub quotes and historical OHLCV candles',async()=>{
 		const now=Math.floor(Date.now()/1000);
@@ -65,6 +74,30 @@ describe('Finnhub market service',()=>{
 		expect(quote).toMatchObject({price:190,source:'Finnhub',change:2});
 		expect(fetcher.mock.calls[0][1].headers['X-Finnhub-Token']).toBe('server-only-finnhub-test-key');
 		expect(fetcher.mock.calls[0][0]).toContain('/quote?symbol=AAPL');
+	});
+
+	it('uses Alpaca crypto trades, quotes, and bars instead of simulated marks',async()=>{
+		const now=new Date();
+		const fetcher=vi.fn()
+			.mockResolvedValueOnce(new Response(JSON.stringify({quotes:{'BTC/USD':{bp:41990,ap:42010,t:now.toISOString()}}}),{status:200}))
+			.mockResolvedValueOnce(new Response(JSON.stringify({trades:{'BTC/USD':{p:42000,t:now.toISOString()}}}),{status:200}))
+			.mockResolvedValueOnce(new Response(JSON.stringify({bars:{'BTC/USD':[
+				{t:new Date(now.getTime()-86_400_000).toISOString(),o:40000,h:41000,l:39500,c:40500,v:100},
+				{t:now.toISOString(),o:40500,h:42500,l:40200,c:42000,v:125},
+			]}}),{status:200}))
+			.mockResolvedValueOnce(new Response(JSON.stringify({bars:{'BTC/USD':[
+				{t:new Date(now.getTime()-60_000).toISOString(),o:41900,h:42000,l:41800,c:42000,v:5},
+			]}}),{status:200}));
+		const options={apiKey:'alpaca-market-key',apiSecret:'alpaca-market-secret',fetcher};
+		const asset=getMarketAsset('BTC')!;
+
+		const quote=await getMarketQuote(asset,'',options);
+		expect(quote).toMatchObject({price:42000,bid:41990,ask:42010,previousClose:40500,change:1500,source:'Alpaca Crypto'});
+		const history=await getMarketHistory(asset,'1d','',options);
+		expect(history.source).toBe('Alpaca Crypto');
+		expect(history.candles[0]).toMatchObject({open:41900,high:42000,low:41800,close:42000,volume:5});
+		expect(fetcher).toHaveBeenCalledTimes(4);
+		expect(fetcher.mock.calls[0][1].headers).toMatchObject({'x-api-key':'alpaca-market-key'});
 	});
 
 	it('does not call a separate external provider after Finnhub fails',async()=>{

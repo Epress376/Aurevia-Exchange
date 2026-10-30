@@ -60,7 +60,7 @@ function LiveMarketDashboardContent(){
     const failed=result.quotes.find(item=>item.asset.id===selectedAsset.id&&!isQuote(item));
     if(failed&&!isQuote(failed))throw new Error(failed.error);
     return result;
-  },refetchInterval:5_000});
+  },refetchInterval:30_000});
   const historyQuery=useQuery({queryKey:['live-market-history',selectedAsset.id,timeframe],queryFn:()=>fetchHistory(selectedAsset.id,timeframe),refetchInterval:timeframe==='1d'||timeframe==='5d'?15_000:60_000});
   const annualQuery=useQuery({queryKey:['live-market-history',selectedAsset.id,'1y'],queryFn:()=>fetchHistory(selectedAsset.id,'1y'),refetchInterval:60_000,staleTime:45_000,enabled:timeframe!=='1y'});
   const batchQuotes=useMemo(()=>{
@@ -77,6 +77,10 @@ function LiveMarketDashboardContent(){
   },[batchQuery.data?.quotes,streamUpdates]);
   const activeQuote=(batchQuotes.get(selectedAsset.id) && isQuote(batchQuotes.get(selectedAsset.id)) ? batchQuotes.get(selectedAsset.id) as MarketQuote : getQuote(selectedQuery.data,selectedAsset.id)) || historyQuery.data?.quote;
   const error=historyQuery.error instanceof Error?historyQuery.error.message:selectedQuery.error instanceof Error?selectedQuery.error.message:'';
+  const activeProvider=activeQuote?.source;
+  const liveQuotes=[...batchQuotes.values()].filter((item):item is MarketQuote=>isQuote(item)&&!item.isStale);
+  const gainers=[...liveQuotes].filter(item=>item.changePercent>0).sort((a,b)=>b.changePercent-a.changePercent).slice(0,3);
+  const losers=[...liveQuotes].filter(item=>item.changePercent<0).sort((a,b)=>a.changePercent-b.changePercent).slice(0,3);
 
   useEffect(()=>{if(!getMarketAsset(selectedSymbol))selectSymbol('DJI')},[selectedSymbol,selectSymbol]);
   useEffect(()=>{if(getMarketAsset(requestedSymbol))selectSymbol(requestedSymbol)},[requestedSymbol,selectSymbol]);
@@ -84,14 +88,14 @@ function LiveMarketDashboardContent(){
     const socket:Socket = io({path:'/socket.io',transports:['websocket'],autoConnect:true,reconnection:true,reconnectionDelay:700});
     const onConnect=()=>setStreamStatus('connected');
     const onDisconnect=()=>setStreamStatus('offline');
-    const onMarketUpdate=(updates:Array<{symbol:string;price:number;change:number;source:string;dataMode:'SIMULATED'|'LIVE';lastUpdatedAt:string}>)=>{
+    const onMarketUpdate=(updates:Array<{symbol:string;price:number;change:number;changePercent:number;source:string;dataMode:'SIMULATED'|'LIVE';lastUpdatedAt:string}>)=>{
       setStreamUpdates(current=>{
         const next={...current};
         for(const entry of updates){
+          if(entry.dataMode!=='LIVE'||!(entry.source==='Finnhub'||entry.source.startsWith('Alpaca')))continue;
           const asset=getMarketAsset(entry.symbol);
           if(!asset)continue;
-          const change=entry.change>-1?entry.price-entry.price/(1+entry.change):0;
-          next[entry.symbol]={asset,price:entry.price,change,changePercent:entry.change*100,previousClose:null,open:null,volume:null,dayLow:null,dayHigh:null,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:entry.lastUpdatedAt,isStale:false,source:entry.source,sparkline:[]};
+          next[entry.symbol]={asset,price:entry.price,change:entry.change,changePercent:entry.changePercent,previousClose:null,open:null,volume:null,dayLow:null,dayHigh:null,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:entry.lastUpdatedAt,isStale:false,source:entry.source,sparkline:[]};
         }
         return next;
       });
@@ -142,8 +146,8 @@ function LiveMarketDashboardContent(){
 
   return <><Nav/><main className="live-market-page">
     <div className="live-market-topline">
-      <div className="live-market-heading"><span>GLOBAL MARKETS <i/> {activeQuote?.source==='Finnhub'?'FINNHUB DATA':'INTERNAL PAPER MARKET'}</span><h1>Markets</h1><p>Finnhub data is used when available; internal reference prices keep this market view available otherwise.</p></div>
-      <div className={`live-source-status ${activeQuote?.isStale?'is-stale':''} ${activeQuote?.source==='Finnhub'?'is-live':''}`}><span className="live-status-dot"/>{`Market data: ${activeQuote?.source==='Finnhub'?'Live':'Internal'}`} <small>{activeQuote?.source==='Finnhub'?`Finnhub quote · ${formatTime(activeQuote.updatedAt)}`:activeQuote?.isStale?`Last internal quote · ${formatTime(activeQuote.updatedAt)}`:activeQuote?`Internal reference data · ${formatTime(activeQuote.updatedAt)}`:'Internal reference data loading'} · {streamStatus==='connected'?'Update feed connected':'Update feed reconnecting'}</small></div>
+      <div className="live-market-heading"><span>GLOBAL MARKETS <i/> {activeProvider?`${activeProvider.toUpperCase()} PROVIDER DATA`:'LIVE PROVIDER DATA UNAVAILABLE'}</span><h1>Markets</h1><p>Only quotes and candles returned by connected market-data providers are shown. Synthetic demo prices are not presented as live market data.</p></div>
+      <div className={`live-source-status ${activeQuote?.isStale?'is-stale':''} ${activeQuote&&!activeQuote.isStale?'is-live':''}`}><span className="live-status-dot"/>{`Market data: ${activeQuote?activeQuote.isStale?'Stale':'Live':'Unavailable'}`} <small>{activeQuote?`${activeProvider} quote · ${formatTime(activeQuote.updatedAt)}${activeQuote.isStale?' · last provider quote':''}`:'Configure Finnhub or Alpaca market data to view provider quotes'} · {streamStatus==='connected'?'WebSocket connected':'WebSocket reconnecting'}</small></div>
     </div>
 
     <section className="live-ticker" aria-label="Market ticker">
@@ -156,6 +160,13 @@ function LiveMarketDashboardContent(){
           </button>;
         })}
       </div>
+    </section>
+
+    <section className="live-movers" aria-label="Market movers">
+      {[{title:'Top gainers',items:gainers},{title:'Top decliners',items:losers}].map(group=><div className="live-movers-group" key={group.title}>
+        <h2>{group.title}</h2>
+        <div>{group.items.length?group.items.map(quote=><button type="button" className="live-mover" key={quote.asset.id} onClick={()=>selectSymbol(quote.asset.id)}><span><b>{quote.asset.id}</b><small>{quote.asset.name}</small></span><strong className={tone(quote.changePercent)}>{formatPercent(quote.changePercent)}</strong></button>):<p>No current provider quotes available.</p>}</div>
+      </div>)}
     </section>
 
     <div className={`live-market-grid ${sidebarOpen?'sidebar-mobile-open':''}`}>
@@ -235,13 +246,15 @@ function LiveMarketDashboardContent(){
       <aside className="live-right-panel">
         <section className="live-right-card"><div className="live-section-title"><div><span>ASSET SUMMARY</span><h2>Key data</h2></div></div>
           <div className="live-key-row"><span>Price</span><b>{activeQuote?formatPrice(activeQuote.price,selectedAsset.currency,selectedAsset.type==='FOREX'):'—'}</b></div>
+          <div className="live-key-row"><span>Bid</span><b>{activeQuote?.bid===null||activeQuote?.bid===undefined?'—':formatPrice(activeQuote.bid,selectedAsset.currency,selectedAsset.type==='FOREX')}</b></div>
+          <div className="live-key-row"><span>Ask</span><b>{activeQuote?.ask===null||activeQuote?.ask===undefined?'—':formatPrice(activeQuote.ask,selectedAsset.currency,selectedAsset.type==='FOREX')}</b></div>
           <div className="live-key-row"><span>Change</span><b className={activeQuote?tone(activeQuote.changePercent):''}>{activeQuote?formatPercent(activeQuote.changePercent):'—'}</b></div>
           <div className="live-key-row"><span>Currency</span><b>{selectedAsset.currency}</b></div>
           <div className="live-key-row"><span>Type</span><b>{marketTypeLabel(selectedAsset.type)}</b></div>
           <div className="live-key-row"><span>Day range</span><b>{activeQuote?.dayLow!==null&&activeQuote?.dayLow!==undefined&&activeQuote.dayHigh!==null?`${formatPrice(activeQuote.dayLow,selectedAsset.currency)} – ${formatPrice(activeQuote.dayHigh,selectedAsset.currency)}`:'—'}</b></div>
         </section>
-        <section className="live-right-card live-provider-card"><span className="live-provider-mark">{activeQuote?.source==='Finnhub'?'F':'A'}</span><div><b>{`Market data: ${activeQuote?.source==='Finnhub'?'Live':'Internal'}`}</b><small>{activeQuote?.source||'Aurevia Internal'}</small></div><span className="live-provider-dot" title={activeQuote?.source==='Finnhub'?'Finnhub returned a quote':'Internal paper-market reference data'}/></section>
-        <p className="live-disclaimer">{activeQuote?.source==='Finnhub'?'The current quote is from Finnhub and may be delayed.':'The current quote is an Aurevia Internal paper-market reference.'} {historyQuery.data?.source==='Finnhub'?'Chart history is from Finnhub.':historyQuery.data?.source==='Aurevia Internal'?'Chart history is internally generated for this paper-market view.':'Chart history is loading.'} This view is informational; when enabled, eligible REAL-mode orders are submitted separately through Trade to Alpaca Paper Trading only.</p>
+        <section className="live-right-card live-provider-card"><span className="live-provider-mark">{activeProvider==='Finnhub'?'F':activeProvider==='Alpaca'?'A':'—'}</span><div><b>{`Market data: ${activeQuote?activeQuote.isStale?'Stale':'Live':'Unavailable'}`}</b><small>{activeProvider||'No provider quote'}</small></div><span className="live-provider-dot" title={activeQuote?`${activeProvider} provider quote`:'No live market-data provider response'}/></section>
+        <p className="live-disclaimer">{activeQuote?`The current quote is from ${activeProvider} and may be delayed.`:'Aurevia internal market data is active while external providers are disabled or unavailable.'} {historyQuery.data?.source?`Chart history is from ${historyQuery.data.source}.`:'Chart history is using the internal reference feed.'} This view is informational; eligible REAL-mode orders, when enabled, are submitted separately through Trade to Alpaca Paper Trading only.</p>
       </aside>
     </div>
   </main></>;

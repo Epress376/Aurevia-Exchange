@@ -7,6 +7,7 @@ const mocks=vi.hoisted(()=>({
 	ensureUserLedger:vi.fn(),
 	balance:vi.fn(),
 	reservedWithdrawalAmount:vi.fn(),
+	marketQuote:vi.fn(),
 	positionCreate:vi.fn(),
 	executionCreate:vi.fn(),
 }));
@@ -23,6 +24,10 @@ vi.mock('@/lib/db',()=>({db:{
 }}));
 vi.mock('@/lib/notifications',()=>({createNotification:vi.fn()}));
 vi.mock('server-only',()=>({}));
+vi.mock('@/lib/live-market',async importOriginal=>{
+	const original=await importOriginal<typeof import('@/lib/live-market')>();
+	return {...original,getMarketQuote:mocks.marketQuote};
+});
 vi.mock('@/lib/ledger',()=>({
 	ensureUserLedger:mocks.ensureUserLedger,
 	balance:mocks.balance,
@@ -131,6 +136,7 @@ beforeEach(()=>{
 	mocks.ensureUserLedger.mockResolvedValue({id:'real-usd-ledger',currency:'USD'});
 	mocks.balance.mockResolvedValue(new Prisma.Decimal(1000));
 	mocks.reservedWithdrawalAmount.mockResolvedValue(new Prisma.Decimal(0));
+	mocks.marketQuote.mockResolvedValue({price:100,updatedAt:now.toISOString(),isStale:false});
 	provider={
 		getAccount:vi.fn().mockResolvedValue({id:'paper-account-1',status:'ACTIVE',account_blocked:false,trading_blocked:false,trade_suspended_by_user:false}),
 		getAsset:vi.fn().mockResolvedValue({id:'asset-1',symbol:'AAPL',class:'us_equity',status:'active',tradable:true,fractionable:true}),
@@ -206,6 +212,7 @@ beforeEach(()=>{
 		storedOrder=updateStoredOrder(storedOrder,data);
 		return storedOrder;
 	});
+	(db.instrument.findUnique as ReturnType<typeof vi.fn>).mockResolvedValue(instrument);
 });
 
 describe('Alpaca Paper order isolation and status handling',()=>{
@@ -247,6 +254,22 @@ describe('Alpaca Paper order isolation and status handling',()=>{
 	it('does not submit a REAL paper buy when the Aurevia USD ledger lacks collateral',async()=>{
 		mocks.balance.mockResolvedValue(new Prisma.Decimal(100));
 		await expect(submitAlpacaPaperOrder('user-1',request,idempotencyKey)).rejects.toMatchObject({code:'INSUFFICIENT_REAL_WALLET_COLLATERAL'});
+		expect(provider.submitOrder).not.toHaveBeenCalled();
+		expect(storedOrder).toBeNull();
+	});
+
+	it('reserves market-order collateral from the fresh provider quote, not the internal instrument mark',async()=>{
+		mocks.marketQuote.mockResolvedValue({price:125,updatedAt:now.toISOString(),isStale:false});
+		const order=await submitAlpacaPaperOrder('user-1',request,idempotencyKey);
+
+		expect(order.providerReservedAmount?.toString()).toBe('250');
+		expect(mocks.marketQuote).toHaveBeenCalledOnce();
+	});
+
+	it('does not create or submit an order when no current provider quote is available',async()=>{
+		mocks.marketQuote.mockRejectedValue(new Error('provider unavailable'));
+
+		await expect(submitAlpacaPaperOrder('user-1',request,idempotencyKey)).rejects.toMatchObject({code:'ALPACA_PAPER_MARKET_QUOTE_UNAVAILABLE'});
 		expect(provider.submitOrder).not.toHaveBeenCalled();
 		expect(storedOrder).toBeNull();
 	});

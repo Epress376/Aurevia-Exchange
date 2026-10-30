@@ -1,3 +1,4 @@
+import {Prisma} from '@prisma/client';
 import {db} from '@/lib/db';
 import type {LiveMarketAsset,MarketCandle,MarketQuote,TimeframeId} from '@/lib/live-market';
 
@@ -35,22 +36,36 @@ function internalPriceAt(asset:LiveMarketAsset,base:number,time:number){
 
 async function currentInternalPrice(asset:LiveMarketAsset,now:number){
 	const symbols=instrumentSymbols[asset.id]||[];
-	const instrument=symbols.length?await db.instrument.findFirst({
-		where:{symbol:{in:symbols},enabled:true},
-		orderBy:{updatedAt:'desc'},
-		select:{id:true,price:true},
-	}):null;
 	const reference=referencePrices[asset.id];
 	const dayStart=Math.floor(now/86_400_000)*86_400_000;
+	let instrument:null|{id:string;price: string | number | Prisma.Decimal | null} = null;
+	if(symbols.length){
+		try{
+			instrument=await db.instrument.findFirst({
+				where:{symbol:{in:symbols},enabled:true},
+				orderBy:{updatedAt:'desc'},
+				select:{id:true,price:true},
+			});
+		}catch{
+			instrument=null;
+		}
+	}
 	if(!instrument)return {price:internalPriceAt(asset,reference,now),reference,open:internalPriceAt(asset,reference,dayStart)};
-	const price=Number(instrument.price);
+	const priceValue=instrument.price instanceof Prisma.Decimal?instrument.price.toNumber():Number(instrument.price);
+	const price=Number(priceValue);
 	if(!Number.isFinite(price)||price<=0)throw new Error(`Internal market price is unavailable for ${asset.id}.`);
-	const dayOpen=await db.candle.findFirst({
-		where:{instrumentId:instrument.id,ts:{gte:new Date(dayStart)}},
-		orderBy:{ts:'asc'},
-		select:{open:true},
-	});
-	return {price,reference:price,open:dayOpen?Number(dayOpen.open):price};
+	let dayOpen:null|{open:string|number|Prisma.Decimal|null} = null;
+	try{
+		dayOpen=await db.candle.findFirst({
+			where:{instrumentId:instrument.id,ts:{gte:new Date(dayStart)}},
+			orderBy:{ts:'asc'},
+			select:{open:true},
+		});
+	}catch{
+		dayOpen=null;
+	}
+	const openValue=dayOpen&&dayOpen.open instanceof Prisma.Decimal?dayOpen.open.toNumber():Number(dayOpen?.open ?? price);
+	return {price,reference:price,open:Number.isFinite(openValue)?openValue:price};
 }
 
 export async function getInternalMarketQuote(asset:LiveMarketAsset):Promise<MarketQuote>{

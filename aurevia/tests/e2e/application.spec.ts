@@ -211,22 +211,21 @@ test('DEMO accounts can view and complete profile-based tier progression while K
 	await expect(page.getByRole('progressbar',{name:'Account tier progression'})).toBeVisible();
 });
 
-test('market view uses disclosed internal quotes and chart history without Finnhub',async({page})=>{
+test('market view does not present generated reference prices as live data without a provider',async({page})=>{
 	const quotes=await page.request.get('/api/live-markets?symbols=AAPL,BTC');
 	expect(quotes.ok()).toBe(true);
 	const quoteData=await quotes.json();
-	expect(quoteData.marketDataStatus).toBe('INTERNAL');
+	expect(quoteData.marketDataStatus).toBe('UNAVAILABLE');
 	expect(quoteData.quotes).toHaveLength(2);
 	for(const quote of quoteData.quotes){
-		expect(quote).toMatchObject({source:'Aurevia Internal',isStale:false});
-		expect(quote.price).toBeGreaterThan(0);
+		expect(quote).toHaveProperty('error');
+		expect(quote).not.toHaveProperty('price');
 	}
-	const history=await page.request.get('/api/live-markets/AAPL?timeframe=1d').then(response=>response.json());
-	expect(history).toMatchObject({source:'Aurevia Internal',timeframe:'1d'});
-	expect(history.candles).toHaveLength(60);
+	const historyResponse=await page.request.get('/api/live-markets/AAPL?timeframe=1d');
+	expect(historyResponse.status()).toBe(503);
 	await page.goto('/markets');
-	await expect(page.getByText('Market data: Internal').first()).toBeVisible();
-	await expect(page.getByText(/Chart history is internally generated for this paper-market view/)).toBeVisible();
+	await expect(page.getByText('Market data: Unavailable').first()).toBeVisible();
+	await expect(page.getByText(/synthetic demo prices are not presented as live market data/i)).toBeVisible();
 });
 
 test('portfolio timeframe controls filter authenticated snapshot history accessibly on mobile',async({page})=>{
@@ -973,7 +972,16 @@ test('account-mode changes initialize and isolate wallet, trade, history, and su
 	await selectAccountMode(page,'REAL');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('REAL');
 	await expect(page.getByText(/Orders go to the shared Alpaca Paper account/)).toBeVisible();
-	await expect(page.getByRole('button',{name:'Place BUY order'})).toBeEnabled();
+	const realOrderButton=page.getByRole('button',{name:'Place BUY order'});
+	const marketResponse=await page.request.get('/api/live-markets?symbols=AAPL');
+	expect(marketResponse.ok()).toBeTruthy();
+	const marketData=await marketResponse.json() as {quotes?:Array<{asset?:{id?:string};source?:string;isStale?:boolean}>};
+	const hasFreshProviderQuote=marketData.quotes?.some(quote=>quote.asset?.id==='AAPL'&&!!quote.source&&!quote.isStale)??false;
+	if(hasFreshProviderQuote)await expect(realOrderButton).toBeEnabled();
+	else{
+		await expect(realOrderButton).toBeDisabled();
+		await expect(page.locator('.trade-chart-note')).toContainText('No simulated market data is shown for REAL orders.');
+	}
 	await selectAccountMode(page,'DEMO');
 	await expect(page.locator('.account-heading .status-pill')).toContainText('DEMO');
 	await expect(page.getByRole('button',{name:'Place BUY order'})).toBeEnabled();
@@ -1411,7 +1419,7 @@ test('DEMO blocks investment allocations while REAL investment lifecycle remains
 		expect(await page.request.get('/api/positions').then(response=>response.json())).toHaveLength(positionsBeforePaperOrder.length);
 		const realPortfolio=await page.request.get('/api/portfolio').then(response=>response.json());
 		expect(realPortfolio.positions.length).toBe(positionsBeforePaperOrder.length);
-		expect(realPortfolio.marketDataMode).toBe('SIMULATED');
+		expect(['LEDGER_ONLY','PROVIDER_UNAVAILABLE']).toContain(realPortfolio.marketDataMode);
 		const finalRealBalance=Number((await page.request.get('/api/wallet').then(response=>response.json())).balance);
 		expect(finalRealBalance).toBeCloseTo(initialRealBalance+1040,2);
 

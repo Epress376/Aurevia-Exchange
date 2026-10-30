@@ -8,7 +8,7 @@ import {balance,reservedWithdrawalAmount} from '@/lib/ledger';
 import {getAccountTier} from '@/lib/production-policy';
 import {getTierProfileRequirements} from '@/lib/production-policy';
 import {MARKET_ASSETS} from '@/lib/live-market';
-import {getMarketQuoteWithFallback} from '@/lib/market-data-service';
+import {getAlpacaMarketDataOptions,getMarketQuoteWithFallback} from '@/lib/market-data-service';
 import {getServerConfiguration} from '@/lib/config/env';
 import {getSupportContact} from '@/lib/config';
 import {calculateTradePlan,formatTradePlan,hasDemoOrderIntent,missingTradePlanInputs,parseDemoOrderIntent,parseTradePlan,requestsUnsupportedOrderType} from '@/lib/nova-assistant';
@@ -103,9 +103,9 @@ export async function POST(request:Request){
 		if(asset&&/\b(price|quote|market|movement|trading at|value|ticker)\b/i.test(input.question)){
 			try{
 				const config=getServerConfiguration();
-				const quote=await getMarketQuoteWithFallback(asset,config.marketData.finnhubApiKey);
+				const quote=await getMarketQuoteWithFallback(asset,config.marketData.finnhubApiKey,getAlpacaMarketDataOptions(config.execution));
 				const ageMinutes=Math.max(0,Math.round((Date.now()-Date.parse(quote.updatedAt))/60_000));
-				const freshness=quote.source==='Finnhub'?(quote.isStale||ageMinutes>5?'STALE FINNHUB DATA':'FINNHUB DATA'):'INTERNAL PAPER-MARKET DATA';
+				const freshness=quote.isStale||ageMinutes>5?'STALE PROVIDER DATA':quote.source==='Finnhub'?'FINNHUB DATA':`${quote.source.toUpperCase()} MARKET DATA`;
 				quoteAnswer=`${asset.name} (${asset.id}): ${quote.price} ${asset.currency}; daily change ${quote.change} (${quote.changePercent}%). Source: ${quote.source}. Timestamp: ${quote.updatedAt}. Status: ${freshness}. This is market information, not a trade recommendation.`;
 				quoteAudit={symbol:asset.id,source:quote.source,freshness:quote.isStale?'STALE':'UNVERIFIED',updatedAt:quote.updatedAt,externalAction:false,providerResult:'quote-returned'};
 			}catch{

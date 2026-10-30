@@ -58,6 +58,15 @@ export class AlpacaCryptoMarketDataProvider {
 		const response=await this.request(`/v1beta3/crypto/us/latest/quotes?symbols=${encodeURIComponent(symbol)}`);
 		return quoteFromResponse(response,symbol);
 	}
+	async getLatestTrade(symbol:string):Promise<{price:number;asOf:string}>{
+		const response=await this.request(`/v1beta3/crypto/us/latest/trades?symbols=${encodeURIComponent(symbol)}`);
+		const trades=record(record(response)?.trades);
+		const trade=record(trades?.[symbol]);
+		const price=finitePositive(trade?.p??trade?.price);
+		const asOf=timestamp(trade?.t??trade?.timestamp??trade?.time);
+		if(price===null||!asOf)throw new Error('ALPACA_MARKET_DATA_INVALID_TRADE');
+		return {price,asOf};
+	}
 	async getBars(symbol:string,from:string,to:string,interval:string):Promise<MarketBar[]>{
 		const response=await this.request(`/v1beta3/crypto/us/historical/bars?symbols=${encodeURIComponent(symbol)}&start=${encodeURIComponent(from)}&end=${encodeURIComponent(to)}&timeframe=${encodeURIComponent(interval)}`);
 		const bars=record(record(response)?.bars);

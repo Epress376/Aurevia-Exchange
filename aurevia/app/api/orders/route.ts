@@ -64,6 +64,7 @@ function paperOrderMessage(code:string){
 	if(code==='ALPACA_PAPER_CLIENT_ORDER_ID_MISMATCH')return 'The provider response did not match this order request. It requires administrator review.';
 	if(code==='INSUFFICIENT_REAL_WALLET_COLLATERAL')return 'Your available Aurevia REAL balance is not sufficient after existing paper-trading reservations.';
 	if(code==='STALE_MARKET_QUOTE')return 'The quote is stale. Refresh market data before submitting this order.';
+	if(code==='ALPACA_PAPER_MARKET_QUOTE_UNAVAILABLE')return 'A fresh provider quote is unavailable. No paper order was sent.';
 	if(code.startsWith('PRECHECK_FAILED:'))return 'Alpaca Paper could not validate this order. Ask an administrator to review provider connectivity.';
 	if(code==='PRECHECK_UNAVAILABLE')return 'Alpaca Paper could not be reached before submission. No provider order was sent.';
 	if(code==='ALPACA_PAPER_FILL_SNAPSHOT_CONFLICT'||code==='ALPACA_PAPER_POSITION_RECONCILIATION_REQUIRED')return 'The provider execution requires administrator reconciliation. No wallet balance was changed.';

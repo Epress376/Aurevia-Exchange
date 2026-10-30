@@ -12,16 +12,18 @@ type NotificationResponse={notifications:NotificationItem[];unreadCount:number};
 const iconByType:Record<string,typeof Bell>={ACCOUNT:UserRound,SECURITY:ShieldCheck,KYC:ShieldCheck,DEPOSIT:CircleDollarSign,WITHDRAWAL:WalletCards,TRADE:Activity,MARKET:Activity,SUPPORT:LifeBuoy,SYSTEM:Info};
 
 export default function NotificationBell(){
-	const {status}=useSession();
+	const {data:session,status}=useSession();
 	const router=useRouter();
 	const {translate}=useLocale();
 	const panelRef=useRef<HTMLDivElement>(null);
+	const notificationChannel=useRef<BroadcastChannel|null>(null);
 	const [open,setOpen]=useState(false);
 	const [notifications,setNotifications]=useState<NotificationItem[]>([]);
 	const [unreadCount,setUnreadCount]=useState(0);
 	const [loading,setLoading]=useState(true);
 	const [error,setError]=useState('');
 	const [busy,setBusy]=useState(false);
+	const userId=session?.user?.id;
 
 	const load=useCallback(async(showLoading=false)=>{
 		if(status!=='authenticated'){setLoading(false);return;}
@@ -38,13 +40,33 @@ export default function NotificationBell(){
 
 	useEffect(()=>{
 		if(status!=='authenticated')return;
-		let active=true;
-		const refresh=()=>{if(active)void load()};
+		setNotifications([]);
+		setUnreadCount(0);
+		setError('');
+		setLoading(true);
+		const refresh=()=>{if(document.visibilityState==='visible')void load()};
+		const channel=typeof BroadcastChannel==='undefined'||!userId?null:new BroadcastChannel(`aurevia-notifications:${userId}`);
+		notificationChannel.current=channel;
+		if(channel)channel.onmessage=refresh;
 		void load(true);
-		const interval=window.setInterval(refresh,45000);
+		const interval=window.setInterval(refresh,30_000);
 		window.addEventListener('aurevia:notifications',refresh);
-		return()=>{active=false;window.clearInterval(interval);window.removeEventListener('aurevia:notifications',refresh)};
-	},[load,status]);
+		window.addEventListener('focus',refresh);
+		document.addEventListener('visibilitychange',refresh);
+		return()=>{
+			window.clearInterval(interval);
+			window.removeEventListener('aurevia:notifications',refresh);
+			window.removeEventListener('focus',refresh);
+			document.removeEventListener('visibilitychange',refresh);
+			channel?.close();
+			if(notificationChannel.current===channel)notificationChannel.current=null;
+		};
+	},[load,status,userId]);
+
+	function announceNotificationChange(){
+		window.dispatchEvent(new Event('aurevia:notifications'));
+		notificationChannel.current?.postMessage({type:'refresh'});
+	}
 
 	useEffect(()=>{
 		if(!open)return;
@@ -58,7 +80,7 @@ export default function NotificationBell(){
 		if(busy)return;
 		if(!item.isRead){
 			setBusy(true);setError('');
-			try{const response=await fetch('/api/notifications',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({action:'read',id:item.id})});if(!response.ok)throw new Error('Unable to mark this notification as read.');const result=await response.json();setNotifications(current=>current.map(notification=>notification.id===item.id?{...notification,isRead:true}:notification));setUnreadCount(result.unreadCount);}
+			try{const response=await fetch('/api/notifications',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({action:'read',id:item.id})});if(!response.ok)throw new Error('Unable to mark this notification as read.');const result=await response.json();setNotifications(current=>current.map(notification=>notification.id===item.id?{...notification,isRead:true}:notification));setUnreadCount(result.unreadCount);announceNotificationChange();}
 			catch(exception){setError(exception instanceof Error?exception.message:'Unable to update notifications.');return;}
 			finally{setBusy(false);}
 		}
@@ -71,7 +93,7 @@ export default function NotificationBell(){
 	async function markAllRead(){
 		if(busy||!unreadCount)return;
 		setBusy(true);setError('');
-		try{const response=await fetch('/api/notifications',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({action:'read-all'})});if(!response.ok)throw new Error('Unable to update notifications.');const result=await response.json();setNotifications(current=>current.map(item=>({...item,isRead:true})));setUnreadCount(result.unreadCount);}
+		try{const response=await fetch('/api/notifications',{method:'PATCH',headers:{'content-type':'application/json'},body:JSON.stringify({action:'read-all'})});if(!response.ok)throw new Error('Unable to update notifications.');const result=await response.json();setNotifications(current=>current.map(item=>({...item,isRead:true})));setUnreadCount(result.unreadCount);announceNotificationChange();}
 		catch(exception){setError(exception instanceof Error?exception.message:'Unable to update notifications.');}
 		finally{setBusy(false);}
 	}

@@ -12,15 +12,15 @@ import {useLocale} from '@/lib/i18n-context';
 import {formatUsd} from '@/lib/currency-format';
 import {filterPerformanceSnapshots,type PortfolioTimeframe} from '@/lib/portfolio-timeframes';
 
-type Position={id:string;side:string;quantity:string;entryPrice:string;currentPrice:string|null;marketValue:string|null;unrealizedPnl:string|null;openedAt:string;instrument:{symbol:string;name:string;price:string}};
-type PaperPosition={id:string;symbol:string;name:string;side:string;quantity:string;averageEntryPrice:string;realizedPnl:string;currentPrice:string|null;marketValue:string|null;unrealizedPnl:string|null;openedAt:string;valuationStatus:'CURRENT'|'STALE'|'UNAVAILABLE';valuationAsOf:string|null};
+type Position={id:string;side:string;quantity:string;entryPrice:string;currentPrice:string|null;marketValue:string|null;unrealizedPnl:string|null;valuationStatus:'CURRENT'|'STALE'|'UNAVAILABLE';valuationAsOf:string|null;valuationSource:string|null;openedAt:string;instrument:{symbol:string;name:string;price:string}};
+type PaperPosition={id:string;symbol:string;name:string;side:string;quantity:string;averageEntryPrice:string;realizedPnl:string;currentPrice:string|null;marketValue:string|null;unrealizedPnl:string|null;openedAt:string;valuationStatus:'CURRENT'|'STALE'|'UNAVAILABLE';valuationAsOf:string|null;valuationSource:string|null};
 type Snapshot={snapshotBucket:string;totalValue:string};
-type Holding={id:string;name:string;category:string;invested:string;value:string;gainLoss:string;status:string};
+type Holding={id:string;name:string;category:string;invested:string;value:string|null;gainLoss:string|null;status:string;valuationSource?:string|null};
 type Allocation={category:string;value:string;percentage:string};
 type Investment={id:string;status:string;amount:string;tierBoostPercent:string;targetReturnPercent:string|null;simulatedPayout:string|null;requestedAt:string;settlementReference:string|null;opportunity:{title:string;category:string;assetSymbol:string|null;riskLevel:string;durationDays:number}};
 type FundingActivity={id:string;type:string;method:string;amount:string;currency:string;status:string;createdAt:string};
 type AvailableOpportunity={id:string;title:string;category:string;assetSymbol:string|null;minimumAmount:string;targetReturnPercent:string|null;durationDays:number;riskLevel:string};
-type Portfolio={accountMode:'DEMO'|'REAL';cashBalance:string;availableCashBalance:string;positionValue:string;investmentValue:string;totalValue:string;totalInvested:string;totalCurrentValue:string;realizedPnl:string|null;unrealizedPnl:string|null;totalPnl:string|null;returnPercent:string|null;dailyPnl:string|null;dailyPercent:string|null;positions:Position[];paperPositions:PaperPosition[];paperPositionValue:string|null;paperUnrealizedPnl:string|null;paperValuation:{status:'CURRENT'|'PARTIAL'|'STALE'|'UNAVAILABLE'|'NOT_APPLICABLE';valuedCount:number;openCount:number};paperReservedBalance:string;paperAvailableBalance:string;investments:Investment[];holdings:Holding[];allocations:Allocation[];recentFunding:FundingActivity[];availableOpportunities:AvailableOpportunity[];topGainers:Position[];topLosers:Position[];performance:Snapshot[];marketDataMode:string;externalValuationAvailable:boolean};
+type Portfolio={accountMode:'DEMO'|'REAL';cashBalance:string;availableCashBalance:string;positionValue:string|null;positionValuationStatus:'CURRENT'|'PARTIAL'|'STALE'|'UNAVAILABLE'|'NOT_APPLICABLE';investmentValue:string;totalValue:string|null;totalInvested:string;totalCurrentValue:string|null;realizedPnl:string|null;unrealizedPnl:string|null;totalPnl:string|null;returnPercent:string|null;dailyPnl:string|null;dailyPercent:string|null;positions:Position[];paperPositions:PaperPosition[];paperPositionValue:string|null;paperUnrealizedPnl:string|null;paperValuation:{status:'CURRENT'|'PARTIAL'|'STALE'|'UNAVAILABLE'|'NOT_APPLICABLE';valuedCount:number;openCount:number};paperReservedBalance:string;paperAvailableBalance:string;investments:Investment[];holdings:Holding[];allocations:Allocation[];recentFunding:FundingActivity[];availableOpportunities:AvailableOpportunity[];topGainers:Position[];topLosers:Position[];performance:Snapshot[];marketDataMode:string;externalValuationAvailable:boolean};
 type ChartPoint=Snapshot&{periodChange:number};
 type ChartTooltipProps={active?:boolean;payload?:Array<{payload:ChartPoint}>;label?:string};
 
@@ -154,11 +154,12 @@ export default function PortfolioExperience(){
 			</nav>
 			{data.accountMode==='DEMO'&&<div className="account-callout mt-4" role="status">This is a virtual practice account. Its balance and trading records are separate from REAL account records.</div>}
 			<section className="portfolio-summary">
-				<div className="portfolio-total"><span>Aurevia account value</span><strong>{money(data.totalValue)}</strong><small>{data.accountMode==='DEMO'?'Virtual cash and open DEMO positions':'Internal cash, open positions and allocated investment principal; Paper holdings are separate'}</small></div>
+				<div className="portfolio-total"><span>Aurevia account value</span><strong>{money(data.totalValue)}</strong><small>{data.accountMode==='DEMO'?'Virtual cash and open DEMO positions':'REAL ledger cash, provider-marked open positions and recorded investment principal; Paper holdings are separate'}</small></div>
 				<div className="portfolio-metric"><span>Available internal cash</span><b>{money(data.availableCashBalance)}</b><small>After pending withdrawals and Paper reserves</small></div>
 				<div className="portfolio-metric"><span>Open position value</span><b>{money(data.positionValue)}</b></div>
 				{data.accountMode==='REAL'&&<div className="portfolio-metric"><span>Allocated investment principal</span><b>{money(data.investmentValue)}</b></div>}
 			</section>
+			{data.accountMode==='REAL'&&data.positionValuationStatus!=='CURRENT'&&data.positionValuationStatus!=='NOT_APPLICABLE'&&<div className="account-callout mt-4" role="status">Fresh provider marks are unavailable for some open positions. Unverified positions are excluded from REAL account value and P/L; no internal DEMO prices are used as REAL marks.</div>}
 			{data.accountMode==='REAL'&&<section className="account-panel card mt-4 p-5">
 				<div className="account-panel-title"><div><h2>Alpaca Paper holdings</h2><p className="account-panel-subtitle">Your confirmed fills only · shown separately from the Aurevia wallet</p></div><span className="status-pill mode-real">{data.paperPositions.length} open</span></div>
 				<div className="portfolio-paper-summary">
@@ -173,9 +174,9 @@ export default function PortfolioExperience(){
 					<div><span>Current Paper mark</span><b>{position.valuationStatus==='CURRENT'?money(position.currentPrice):'—'}</b></div>
 					<div><span>Marked position value</span><b>{position.valuationStatus==='CURRENT'?money(position.marketValue):'—'}</b></div>
 					<div><span>Unrealized P/L</span><b className={position.unrealizedPnl===null?'':Number(position.unrealizedPnl)>=0?'text-profit':'text-loss'}>{signed(position.unrealizedPnl)}</b></div>
-					<div className={`portfolio-paper-quote portfolio-paper-quote--${position.valuationStatus.toLowerCase()}`}>{position.valuationStatus==='CURRENT'&&position.valuationAsOf?`Paper mark · ${new Date(position.valuationAsOf).toLocaleString()}`:position.valuationStatus==='STALE'&&position.valuationAsOf?`Last quote is stale · ${new Date(position.valuationAsOf).toLocaleString()}`:'No recent Paper quote available'}</div>
+					<div className={`portfolio-paper-quote portfolio-paper-quote--${position.valuationStatus.toLowerCase()}`}>{position.valuationStatus==='CURRENT'&&position.valuationAsOf?`${position.valuationSource||'Provider'} mark · ${new Date(position.valuationAsOf).toLocaleString()}`:position.valuationStatus==='STALE'&&position.valuationAsOf?`Last provider quote is stale · ${new Date(position.valuationAsOf).toLocaleString()}`:'No recent provider quote available'}</div>
 				</article>)}</div>:<p className="account-empty mt-3">Confirmed Alpaca Paper fills will appear here. Provider-wide positions are not copied into your account.</p>}
-				<p className="portfolio-paper-disclosure" role="status">{data.paperValuation.valuedCount} of {data.paperValuation.openCount} open positions have a current in-app mark. Paper holdings are valued from Aurevia’s latest internal instrument prices (up to 60 seconds old). These estimates are not live external quotes, are excluded from Aurevia account value and wallet balances, and cannot be withdrawn. A stale or invalid quote is left unvalued instead of being presented as current.</p>
+				<p className="portfolio-paper-disclosure" role="status">{data.paperValuation.valuedCount} of {data.paperValuation.openCount} open positions have a current provider mark. Paper holdings use fresh Alpaca or Finnhub quotes where supported; they remain separate from Aurevia balances and cannot be withdrawn. Stale or unavailable marks are left unvalued.</p>
 			</section>}
 			<DisplayCurrencyPanel values={[
 				{label:'Recorded total value',amount:data.totalValue},
@@ -213,7 +214,7 @@ export default function PortfolioExperience(){
 				</section>
 			</div>
 			<section className="account-panel card p-5 mt-4">
-				<div className="account-panel-title"><div><h2>Holdings</h2><p className="account-panel-subtitle">Current values are internal reference values, not external assets.</p></div><span className="muted text-sm">{data.holdings.length} records</span></div>
+				<div className="account-panel-title"><div><h2>Holdings</h2><p className="account-panel-subtitle">{data.accountMode==='DEMO'?'DEMO values use the internal practice feed.':'REAL open positions use fresh provider marks; unavailable marks are excluded.'}</p></div><span className="muted text-sm">{data.holdings.length} records</span></div>
 				{data.holdings.length===0?<p className="account-empty">No holdings are recorded for this account yet.</p>:<>
 					<div className="investment-opportunity-filters">
 						<label className="account-label">Search holdings<input className="input" type="search" value={holdingSearch} onChange={event=>setHoldingSearch(event.target.value)} placeholder="Name, category or status"/></label>
@@ -222,8 +223,8 @@ export default function PortfolioExperience(){
 					{visibleHoldings.length===0?<p className="account-empty">No holdings match these filters.</p>:<>
 						<div className="portfolio-holdings-head" aria-hidden="true"><span>Asset</span><span>% of portfolio</span><span>Cost basis</span><span>Current value</span><span>Unrealized P/L</span></div>
 						<div className="portfolio-holdings">{visibleHoldings.map(holding=><details className="portfolio-holding" key={holding.id}>
-							<summary><span className="portfolio-holding-asset"><AssetIcon category={holding.category} name={holding.name}/><span><b>{holding.name}</b><small>{holding.category} · {holding.status.replaceAll('_',' ').toLowerCase()}</small></span></span><span>{Number(data.totalValue)>0?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(1)}%`:'0.0%'}</span><span>{money(holding.invested)}</span><span>{money(holding.value)}</span><strong className={Number(holding.gainLoss)>=0?'text-profit':'text-loss'}>{signed(holding.gainLoss)}</strong></summary>
-							<dl><div><dt>Recorded asset</dt><dd>{holding.name}</dd></div><div><dt>Category</dt><dd>{holding.category}</dd></div><div><dt>Portfolio share</dt><dd>{Number(data.totalValue)>0?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(2)}%`:'0.00%'}</dd></div><div><dt>Position status</dt><dd>{holding.status.replaceAll('_',' ')}</dd></div><div><dt>Valuation source</dt><dd>{data.accountMode==='DEMO'?'DEMO':'Internal'} account record</dd></div></dl>
+							<summary><span className="portfolio-holding-asset"><AssetIcon category={holding.category} name={holding.name}/><span><b>{holding.name}</b><small>{holding.category} · {holding.status.replaceAll('_',' ').toLowerCase()}</small></span></span><span>{Number(data.totalValue)>0&&holding.value!==null?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(1)}%`:'—'}</span><span>{money(holding.invested)}</span><span>{money(holding.value)}</span><strong className={holding.gainLoss===null?'':Number(holding.gainLoss)>=0?'text-profit':'text-loss'}>{signed(holding.gainLoss)}</strong></summary>
+							<dl><div><dt>Recorded asset</dt><dd>{holding.name}</dd></div><div><dt>Category</dt><dd>{holding.category}</dd></div><div><dt>Portfolio share</dt><dd>{Number(data.totalValue)>0&&holding.value!==null?`${(Number(holding.value)/Number(data.totalValue)*100).toFixed(2)}%`:'—'}</dd></div><div><dt>Position status</dt><dd>{holding.status.replaceAll('_',' ')}</dd></div><div><dt>Valuation source</dt><dd>{holding.valuationSource|| (data.accountMode==='DEMO'?'DEMO practice price':'Unavailable')}</dd></div></dl>
 						</details>)}</div>
 					</>}
 				</>}

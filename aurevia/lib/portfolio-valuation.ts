@@ -11,7 +11,7 @@ export type SimulatedMark={
 	quotedAt:Date;
 };
 
-export function valueSimulatedMark(mark:SimulatedMark,now=Date.now()){
+export function valueMarketMark(mark:SimulatedMark,now=Date.now()){
 	const age=now-mark.quotedAt.getTime();
 	const validPrice=mark.currentPrice.isFinite()&&mark.currentPrice.gt(0);
 	const validPosition=mark.quantity.isFinite()&&mark.quantity.gt(0)&&mark.entryPrice.isFinite()&&mark.entryPrice.gt(0);
@@ -25,3 +25,5 @@ export function valueSimulatedMark(mark:SimulatedMark,now=Date.now()){
 	const unrealizedPnl=mark.entryPrice.mul(-direction).plus(mark.currentPrice.mul(direction)).mul(mark.quantity);
 	return {status:'CURRENT' as const,currentPrice:mark.currentPrice,marketValue,unrealizedPnl};
 }
+
+export const valueSimulatedMark=valueMarketMark;

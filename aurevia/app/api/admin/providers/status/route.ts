@@ -1,6 +1,7 @@
 import {NextResponse} from 'next/server';
 import {requireAdmin} from '@/lib/auth';
 import {getLiveMarketProviderStatus} from '@/lib/live-market';
+import {getAlpacaMarketDataOptions} from '@/lib/market-data-service';
 import {getServerConfiguration} from '@/lib/config/env';
 import {getInternalSimulationHealth} from '@/lib/providers/simulation-health';
 import {getAlpacaPaperAccountHealth} from '@/lib/providers/alpaca-crypto-provider';
@@ -10,9 +11,10 @@ export const dynamic='force-dynamic';
 export async function GET(){
 	try{
 		await requireAdmin();
+		const configuration=getServerConfiguration();
 		const [health,marketProvider,alpacaPaperAccount]=await Promise.all([
 			getInternalSimulationHealth(true),
-			getLiveMarketProviderStatus(getServerConfiguration().marketData.finnhubApiKey),
+			getLiveMarketProviderStatus(configuration.marketData.finnhubApiKey,getAlpacaMarketDataOptions(configuration.execution)),
 			getAlpacaPaperAccountHealth(),
 		]);
 		return NextResponse.json({
@@ -23,6 +25,7 @@ export async function GET(){
 				status:marketProvider.status,
 				provider:marketProvider.provider,
 				finnhubStatus:marketProvider.finnhubStatus,
+				alpacaStatus:marketProvider.alpacaStatus,
 				fallbackProvider:marketProvider.fallbackProvider,
 				usedForOrderExecution:false,
 			},

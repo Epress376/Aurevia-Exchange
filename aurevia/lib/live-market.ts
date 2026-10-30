@@ -1,5 +1,7 @@
 import {getFinnhubHistory,getFinnhubQuote} from './providers/finnhub-market-data';
 import {AlpacaStockMarketDataProvider,type AlpacaStockDataOptions} from './providers/alpaca-stock-market-data';
+import {AlpacaCryptoMarketDataProvider} from './providers/alpaca-crypto.market-data';
+import {getInternalMarketHistory,getInternalMarketQuote} from '@/lib/internal-market-data';
 
 export type MarketAssetType = 'INDEX' | 'STOCK' | 'FOREX' | 'CRYPTO';
 
@@ -14,6 +16,8 @@ export type LiveMarketAsset = {
 export type MarketQuote = {
   asset: LiveMarketAsset;
   price: number;
+  bid?:number|null;
+  ask?:number|null;
   change: number;
   changePercent: number;
   previousClose: number | null;
@@ -87,6 +91,11 @@ export class MarketDataError extends Error {
 
 export function getMarketAsset(id:string){return MARKET_ASSETS.find(asset=>asset.id===id.toUpperCase());}
 
+export function getMarketAssetForTradingSymbol(symbol:string){
+  const normalized=symbol.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  return MARKET_ASSETS.find(asset=>[asset.id,asset.ticker].some(value=>value.toUpperCase().replace(/[^A-Z0-9]/g,'')===normalized));
+}
+
 export function filterSupportedMarketAssets<T extends {symbol:string}>(assets:T[]):T[]{
   return assets.filter(asset=>!!getMarketAsset(asset.symbol));
 }
@@ -100,24 +109,78 @@ function getCached<T>(cache:Map<string,Cached<T>>,key:string,ttl:number,loader:(
 }
 
 function alpacaProvider(options?:AlpacaStockDataOptions){return options?.apiKey&&options.apiSecret?new AlpacaStockMarketDataProvider(options):null}
+function alpacaCryptoProvider(options?:AlpacaStockDataOptions){return options?.apiKey?new AlpacaCryptoMarketDataProvider({baseUrl:'https://data.alpaca.markets',apiKey:options.apiKey,fetcher:options.fetcher}):null}
 
 function quoteFromAlpaca(asset:LiveMarketAsset,snapshot:Awaited<ReturnType<AlpacaStockMarketDataProvider['getQuote']>>):MarketQuote{
   if(snapshot.previousClose===null||snapshot.previousClose<=0)throw new MarketDataError(`Daily change data is unavailable for ${asset.id}.`,404);
   const change=snapshot.price-snapshot.previousClose;
-  return {asset,price:snapshot.price,change,changePercent:Number((change/snapshot.previousClose*100).toFixed(6)),previousClose:snapshot.previousClose,open:snapshot.open,volume:snapshot.volume,dayLow:snapshot.low,dayHigh:snapshot.high,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:snapshot.updatedAt,sparkline:[],source:'Alpaca'};
+  return {asset,price:snapshot.price,bid:snapshot.bid,ask:snapshot.ask,change,changePercent:Number((change/snapshot.previousClose*100).toFixed(6)),previousClose:snapshot.previousClose,open:snapshot.open,volume:snapshot.volume,dayLow:snapshot.low,dayHigh:snapshot.high,fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:snapshot.updatedAt,sparkline:[],source:'Alpaca'};
+}
+
+async function quoteFromAlpacaCrypto(asset:LiveMarketAsset,provider:AlpacaCryptoMarketDataProvider):Promise<MarketQuote>{
+  const symbol=asset.ticker.replace('-','/');
+  const end=new Date();
+  const start=new Date(end.getTime()-3*86_400_000);
+  const [snapshot,trade,bars]=await Promise.all([
+    provider.getQuote(symbol),
+    provider.getLatestTrade(symbol),
+    provider.getBars(symbol,start.toISOString(),end.toISOString(),'1Day'),
+  ]);
+  const latest=bars.at(-1);
+  const previous=bars.length>1?bars.at(-2):undefined;
+  const previousClose=previous?.close??null;
+  if(previousClose===null||previousClose<=0)throw new MarketDataError(`Daily change data is unavailable for ${asset.id}.`,404);
+  const change=trade.price-previousClose;
+  return {
+    asset,price:trade.price,bid:snapshot.bid,ask:snapshot.ask,change,
+    changePercent:Number((change/previousClose*100).toFixed(6)),previousClose,
+    open:latest?.open??null,volume:latest?.volume??null,dayLow:latest?.low??null,dayHigh:latest?.high??null,
+    fiftyTwoWeekLow:null,fiftyTwoWeekHigh:null,updatedAt:trade.asOf,sparkline:[],source:'Alpaca Crypto',
+  };
 }
 
 export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?:AlpacaStockDataOptions):Promise<MarketQuote>{
+  const provider=alpacaProvider(alpacaData);
+  const cryptoProvider=alpacaCryptoProvider(alpacaData);
+  const useInternalFallback=async()=>{
+    const internalQuote=await getInternalMarketQuote(asset);
+    lastKnownQuoteCache.set(asset.id,internalQuote);
+    return internalQuote;
+  };
+
   try{
-    const provider=alpacaProvider(alpacaData);
-    const quote=await getCached(quoteCache,`${provider&&asset.type==='STOCK'?'alpaca':apiKey?'finnhub':'yahoo'}:${asset.id}`,5_000,async()=>{
+    const quote=await getCached(quoteCache,`${provider&&asset.type==='STOCK'?'alpaca-stock':cryptoProvider&&asset.type==='CRYPTO'?'alpaca-crypto':apiKey?'finnhub':'unconfigured'}:${asset.id}`,5_000,async()=>{
       if(provider&&asset.type==='STOCK'){
-        try{return quoteFromAlpaca(asset,await provider.getQuote(asset.ticker));}catch{}
+        try{return quoteFromAlpaca(asset,await provider.getQuote(asset.ticker));}
+        catch(error){
+          if(!apiKey && !cryptoProvider){
+            return useInternalFallback();
+          }
+          if(!apiKey){
+            throw error;
+          }
+        }
+      }
+      if(cryptoProvider&&asset.type==='CRYPTO'){
+        try{return await quoteFromAlpacaCrypto(asset,cryptoProvider);}
+        catch(error){
+          if(!apiKey && !provider){
+            return useInternalFallback();
+          }
+          if(!apiKey){
+            throw error;
+          }
+        }
       }
       if(apiKey){
-        return getFinnhubQuote(asset,apiKey);
+        try{return await getFinnhubQuote(asset,apiKey);}catch(error){
+          if(!provider && !cryptoProvider){
+            return useInternalFallback();
+          }
+          throw error;
+        }
       }
-      throw new MarketDataError('Finnhub is not configured.',503);
+      return useInternalFallback();
     });
     const age=Date.now()-Date.parse(quote.updatedAt);
     const staleReason=age>staleQuoteAgeMs?'Provider quote timestamp is older than five minutes.':age< -5_000?'Provider quote timestamp is in the future.':undefined;
@@ -126,14 +189,19 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
     return timestamped;
   }catch(error){
     const lastKnown=lastKnownQuoteCache.get(asset.id);
-    if(!lastKnown)throw error;
-    return {...lastKnown,isStale:true,staleReason:error instanceof Error?error.message:'Market data is temporarily unavailable.'};
+    if(lastKnown){
+      return {...lastKnown,isStale:true,staleReason:error instanceof Error?error.message:'Market data is temporarily unavailable.'};
+    }
+    const internalQuote=await useInternalFallback().catch(() => { throw error; });
+    return internalQuote;
   }
 }
 
 export async function getMarketHistory(asset:LiveMarketAsset,timeframe:TimeframeId,apiKey='',alpacaData?:AlpacaStockDataOptions){
   const selection=TIMEFRAMES.find(item=>item.id===timeframe)||TIMEFRAMES[0];
   const provider=alpacaProvider(alpacaData);
+  const cryptoProvider=alpacaCryptoProvider(alpacaData);
+  const useInternalFallback=async()=>await getInternalMarketHistory(asset,timeframe);
   if(provider&&asset.type==='STOCK'){
     try{
       const end=new Date();
@@ -145,12 +213,44 @@ export async function getMarketHistory(asset:LiveMarketAsset,timeframe:Timeframe
       if(!candles.length)throw new MarketDataError(`No historical data is available for ${asset.id}.`,404);
       const quote=await getMarketQuote(asset,apiKey,alpacaData);
       return {quote,candles:candles.map(candle=>({...candle,time:Date.parse(candle.time)/1000})),timeframe,interval:selection.interval,source:'Alpaca'};
-    }catch{}
+    }catch(error){
+      if(!apiKey && !cryptoProvider){
+        return useInternalFallback();
+      }
+      if(!apiKey){
+        throw error;
+      }
+    }
+  }
+  if(cryptoProvider&&asset.type==='CRYPTO'){
+    try{
+      const end=new Date();
+      const days:Record<TimeframeId,number>={ '1d':1,'5d':5,'1m':31,'3m':92,'ytd':Math.ceil((end.getTime()-Date.UTC(end.getUTCFullYear(),0,1))/86_400_000),'1y':366,'3y':1097,'5y':1827,'max':3650 };
+      const start=new Date(end.getTime()-days[timeframe]*86_400_000);
+      const intervals:Record<string,string>={'1m':'1Min','5m':'5Min','30m':'15Min','1d':'1Day','1wk':'1Day','1mo':'1Day'};
+      const candles=await cryptoProvider.getBars(asset.ticker.replace('-','/'),start.toISOString(),end.toISOString(),intervals[selection.interval]||'1Day');
+      if(!candles.length)throw new MarketDataError(`No historical data is available for ${asset.id}.`,404);
+      const quote=await getMarketQuote(asset,apiKey,alpacaData);
+      return {quote,candles:candles.map(candle=>({...candle,time:Date.parse(candle.time)/1000})),timeframe,interval:selection.interval,source:'Alpaca Crypto'};
+    }catch(error){
+      if(!apiKey && !provider){
+        return useInternalFallback();
+      }
+      if(!apiKey){
+        throw error;
+      }
+    }
   }
   if(apiKey){
-    return {...await getFinnhubHistory(asset,selection.range,selection.interval,apiKey),timeframe,interval:selection.interval};
+    try{return {...await getFinnhubHistory(asset,selection.range,selection.interval,apiKey),timeframe,interval:selection.interval};}
+    catch(error){
+      if(!provider && !cryptoProvider){
+        return useInternalFallback();
+      }
+      throw error;
+    }
   }
-  throw new MarketDataError('Finnhub is not configured.',503);
+  return useInternalFallback();
 }
 
 export async function getLiveMarketProviderStatus(apiKey='',alpacaData?:AlpacaStockDataOptions){
@@ -158,11 +258,11 @@ export async function getLiveMarketProviderStatus(apiKey='',alpacaData?:AlpacaSt
   const provider=alpacaProvider(alpacaData);
   let alpacaStatus:'NOT_CONFIGURED'|'HEALTHY'|'AUTHENTICATION_FAILED'|'UNAVAILABLE'=provider?'UNAVAILABLE':'NOT_CONFIGURED';
   if(provider){
-    try{await provider.healthCheck();alpacaStatus='HEALTHY';return {status:'AVAILABLE' as const,provider:'Alpaca',finnhubStatus:apiKey?'NOT_CONFIGURED' as const:'NOT_CONFIGURED' as const,fallbackProvider:null,alpacaStatus};}
+    try{await provider.healthCheck();alpacaStatus='HEALTHY';return {status:'AVAILABLE' as const,provider:'Alpaca',finnhubStatus:apiKey?'CONFIGURED' as const:'NOT_CONFIGURED' as const,fallbackProvider:'Aurevia Internal',alpacaStatus};}
     catch(error){alpacaStatus=error instanceof Error&&/:(401|403)$/.test(error.message)?'AUTHENTICATION_FAILED':'UNAVAILABLE';}
   }
   if(apiKey){
-    try{await getFinnhubQuote(asset,apiKey);return {status:'AVAILABLE' as const,provider:'Finnhub',finnhubStatus:'AVAILABLE' as const,fallbackProvider:null,alpacaStatus};}
+    try{await getFinnhubQuote(asset,apiKey);return {status:'AVAILABLE' as const,provider:'Finnhub',finnhubStatus:'AVAILABLE' as const,fallbackProvider:'Aurevia Internal',alpacaStatus};}
     catch{
       return {status:'AVAILABLE' as const,provider:'Aurevia Internal',finnhubStatus:'ERROR' as const,fallbackProvider:'Aurevia Internal',alpacaStatus};
     }

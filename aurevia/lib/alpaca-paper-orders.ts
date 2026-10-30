@@ -9,6 +9,8 @@ import {AlpacaTradingApiError,createIndividualTradingApiProviderFromEnvironment}
 import type {ProviderOrder} from '@/lib/providers/contracts';
 import {matchesOrder,type PlaceOrderInput} from '@/lib/orders';
 import {getServerConfiguration} from '@/lib/config/env';
+import {getMarketAssetForTradingSymbol,getMarketQuote} from '@/lib/live-market';
+import {getAlpacaMarketDataOptions} from '@/lib/market-data-service';
 
 export {ALPACA_PAPER_PROVIDER};
 
@@ -189,6 +191,24 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 	if(!getServerConfiguration().execution.alpacaPaperOrdersEnabled)throw new AlpacaPaperOrderError('ALPACA_PAPER_ORDERS_DISABLED',403);
 	const provider=createIndividualTradingApiProviderFromEnvironment();
 	if(!provider)throw new AlpacaPaperOrderError('ALPACA_PAPER_NOT_CONFIGURED',503);
+	const marketInstrument=await db.instrument.findUnique({where:{id:input.instrumentId},select:{id:true,symbol:true,enabled:true}});
+	if(!marketInstrument||!marketInstrument.enabled)throw new AlpacaPaperOrderError('INSTRUMENT_UNAVAILABLE',409);
+	const marketAsset=getMarketAssetForTradingSymbol(marketInstrument.symbol);
+	if(!marketAsset)throw new AlpacaPaperOrderError('ALPACA_PAPER_MARKET_QUOTE_UNAVAILABLE',503);
+	const configuration=getServerConfiguration();
+	const alpacaData=getAlpacaMarketDataOptions(configuration.execution);
+	let providerQuote;
+	try{
+		providerQuote=await getMarketQuote(marketAsset,configuration.marketData.finnhubApiKey,alpacaData);
+		if(providerQuote.isStale)throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',503);
+		assertFreshQuote(providerQuote.updatedAt);
+		if(Math.abs(Date.parse(input.observedAt)-Date.parse(providerQuote.updatedAt))>30_000)throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409);
+	}catch(error){
+		if(error instanceof AlpacaPaperOrderError)throw error;
+		if(error instanceof Error&&error.message==='STALE_MARKET_QUOTE')throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',503);
+		throw new AlpacaPaperOrderError('ALPACA_PAPER_MARKET_QUOTE_UNAVAILABLE',503);
+	}
+	const providerPrice=new Prisma.Decimal(providerQuote.price);
 
 	type PaperOrderRecord=Prisma.OrderGetPayload<{include:{executions:true;instrument:true}}>;
 	let createResult:{order:PaperOrderRecord;created:boolean};
@@ -203,11 +223,7 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 		if(!user||user.role!=='USER'||user.status!=='ACTIVE'||user.accountMode!==AccountMode.REAL||user.accountRestricted)throw new AlpacaPaperOrderError('REAL_PAPER_ORDER_USER_UNAVAILABLE',403);
 		const instrument=await tx.instrument.findUnique({where:{id:input.instrumentId}});
 		if(!instrument||!instrument.enabled)throw new AlpacaPaperOrderError('INSTRUMENT_UNAVAILABLE',409);
-		if(instrument.updatedAt.getTime()>Date.now()+5_000)throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409);
-		try{
-			assertFreshQuote(instrument.updatedAt);
-			if(Math.abs(Date.parse(input.observedAt)-instrument.updatedAt.getTime())>5_000)throw new Error('STALE_MARKET_QUOTE');
-		}catch{throw new AlpacaPaperOrderError('STALE_MARKET_QUOTE',409)}
+		if(instrument.symbol!==marketInstrument.symbol)throw new AlpacaPaperOrderError('INSTRUMENT_UNAVAILABLE',409);
 		const history=await tx.order.findMany({
 			where:{userId,accountMode:AccountMode.REAL,providerName:ALPACA_PAPER_PROVIDER},
 			select:{instrumentId:true,side:true,quantity:true,filledQuantity:true,averageFillPrice:true,providerReservedAmount:true,status:true,createdAt:true,instrument:{select:{takerFee:true}}},
@@ -222,7 +238,7 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 				balance(tx,account.id),
 				reservedWithdrawalAmount(tx,userId,AccountMode.REAL,'USD'),
 			]);
-			const reservePrice=new Prisma.Decimal(input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:instrument.price);
+			const reservePrice=new Prisma.Decimal(input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:providerPrice);
 			const requestedCollateral=new Prisma.Decimal(input.quantity).mul(reservePrice);
 			try{assertPaperBuyCollateral(walletBalance,pendingWithdrawals,collateral.committed,requestedCollateral)}
 			catch{throw new AlpacaPaperOrderError('INSUFFICIENT_REAL_WALLET_COLLATERAL',409)}
@@ -231,7 +247,7 @@ export async function submitAlpacaPaperOrder(userId:string,input:PlaceOrderInput
 			const position=paperPositionAvailable(history.filter(order=>order.instrumentId===instrument.id));
 			assertSellableQuantity(position.owned,position.reserved,new Prisma.Decimal(input.quantity));
 		}
-		const reservePrice=input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:instrument.price;
+		const reservePrice=input.type===OrderType.LIMIT?input.price!:input.type===OrderType.STOP?input.stopPrice!:providerPrice;
 		const providerReservedAmount=input.side===OrderSide.BUY
 			?new Prisma.Decimal(input.quantity).mul(reservePrice)
 			:null;

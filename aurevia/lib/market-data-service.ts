@@ -1,30 +1,28 @@
 import {getMarketHistory,getMarketQuote,type LiveMarketAsset,type TimeframeId} from '@/lib/live-market';
 import {getInternalMarketHistory,getInternalMarketQuote} from '@/lib/internal-market-data';
+import type {ServerConfiguration} from '@/lib/config/env';
+import type {AlpacaStockDataOptions} from '@/lib/providers/alpaca-stock-market-data';
 
-export async function getMarketQuoteWithFallback(asset:LiveMarketAsset,apiKey:string){
-	if(!apiKey)return getInternalMarketQuote(asset);
+export function getAlpacaMarketDataOptions(execution:ServerConfiguration['execution']):AlpacaStockDataOptions|undefined{
+	if(!execution.alpacaTradingConfigured)return undefined;
+	return {apiKey:execution.alpacaTradingApiKey,apiSecret:execution.alpacaTradingApiSecret};
+}
+
+export async function getMarketQuoteWithFallback(asset:LiveMarketAsset,apiKey:string,alpacaData?:AlpacaStockDataOptions){
 	try{
-		const quote=await getMarketQuote(asset,apiKey);
-		if(!quote.isStale)return quote;
-		console.warn('Finnhub quote is stale; using internal market data.');
-		return getInternalMarketQuote(asset);
+		return await getMarketQuote(asset,apiKey,alpacaData);
 	}
 	catch(error){
-		console.warn(`Finnhub quote unavailable; using internal market data (${error instanceof Error?error.name:'UnknownError'}).`);
+		console.warn(`Configured market quote providers are unavailable (${error instanceof Error?error.name:'UnknownError'}).`);
 		return getInternalMarketQuote(asset);
 	}
 }
 
-export async function getMarketHistoryWithFallback(asset:LiveMarketAsset,timeframe:TimeframeId,apiKey:string){
-	if(!apiKey)return getInternalMarketHistory(asset,timeframe);
+export async function getMarketHistoryWithFallback(asset:LiveMarketAsset,timeframe:TimeframeId,apiKey:string,alpacaData?:AlpacaStockDataOptions){
 	try{
-		const history=await getMarketHistory(asset,timeframe,apiKey);
-		if(!history.quote.isStale)return history;
-		console.warn('Finnhub history quote is stale; using internal market data.');
-		return getInternalMarketHistory(asset,timeframe);
-	}
-	catch(error){
-		console.warn(`Finnhub history unavailable; using internal market data (${error instanceof Error?error.name:'UnknownError'}).`);
+		return await getMarketHistory(asset,timeframe,apiKey,alpacaData);
+	}catch(error){
+		console.warn(`Configured market history providers are unavailable (${error instanceof Error?error.name:'UnknownError'}).`);
 		return getInternalMarketHistory(asset,timeframe);
 	}
 }
