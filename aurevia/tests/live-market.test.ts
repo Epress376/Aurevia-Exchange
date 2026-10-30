@@ -50,6 +50,20 @@ describe('Finnhub market service',()=>{
 		expect(stale.staleReason).toContain('unreachable');
 	});
 
+	it('prefers a fresh internal quote over a stale cached provider quote',async()=>{
+		const asset=getMarketAsset('MSFT')!;
+		const payload={c:123,d:1,dp:0.8,o:122,h:124,l:121,pc:122,t:Math.floor(Date.now()/1000)};
+		const fetcher=vi.fn().mockResolvedValueOnce(new Response(JSON.stringify(payload),{status:200})).mockRejectedValueOnce(new Error('offline'));
+		vi.stubGlobal('fetch',fetcher);
+		await getMarketQuote(asset,'test-finnhub-key');
+		vi.useFakeTimers();
+		await vi.advanceTimersByTimeAsync(9_000);
+		const fallback=await getMarketQuote(asset,'test-finnhub-key');
+		expect(fallback.source).toBe('Aurevia Internal');
+		expect(fallback.isStale).toBe(false);
+		expect(Date.now()-Date.parse(fallback.updatedAt)).toBeLessThan(5_000);
+	});
+
 	it('marks provider quotes stale when their quote timestamp is old',async()=>{
 		const asset={id:'OLD_PROVIDER_QUOTE_TEST',ticker:'OLD_PROVIDER_QUOTE_TEST',name:'Old provider quote test',type:'STOCK' as const,currency:'USD'};
 		const payload={c:123,d:1,dp:0.8,o:122,h:124,l:121,pc:122,t:Math.floor(Date.now()/1000)-6*60};

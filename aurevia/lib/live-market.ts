@@ -193,11 +193,15 @@ export async function getMarketQuote(asset:LiveMarketAsset,apiKey='',alpacaData?
     return timestamped;
   }catch(error){
     const lastKnown=lastKnownQuoteCache.get(asset.id);
+    try{
+      return await getInternalFallback();
+    }catch{
+      if(!lastKnown)throw error;
+    }
     if(lastKnown){
       return {...lastKnown,isStale:true,staleReason:error instanceof Error?error.message:'Market data is temporarily unavailable.'};
     }
-    const internalQuote=await getInternalFallback().catch(() => { throw error; });
-    return internalQuote;
+    throw error;
   }
 }
 
